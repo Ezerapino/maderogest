@@ -9,15 +9,17 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || "";
 async function sbFetch(path, options = {}) {
   const separator = path.includes("?") ? "&" : "?";
   const url = `${SUPABASE_URL}/rest/v1/${path}${separator}apikey=${SUPABASE_KEY}`;
+  const isWrite = options.method && options.method !== "GET";
   const res = await fetch(url, {
+    method: options.method || "GET",
     headers: {
       "apikey": SUPABASE_KEY,
       "Authorization": `Bearer ${SUPABASE_KEY}`,
-      "Content-Type": "application/json",
+      ...(isWrite ? { "Content-Type": "application/json" } : {}),
       "Prefer": "return=representation",
       ...options.headers,
     },
-    ...options,
+    ...(options.body ? { body: options.body } : {}),
   });
   if (!res.ok) {
     const err = await res.text();
