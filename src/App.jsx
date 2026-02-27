@@ -793,15 +793,15 @@ export default function App() {
     if (!confirm("¿Eliminar esta obra?")) return;
     const obra = obras.find(o => o.id === id);
     try {
-      await deleteObra(id);
       await agregarHistorial({
-        obra_id: id,
+        obra_id: null,
         obra_nombre: obra?.nombre || id,
         usuario_id: sesion.id,
         usuario_nombre: sesion.nombre,
         accion: "eliminó",
         detalle: "Obra eliminada",
       });
+      await deleteObra(id);
       await recargarObras();
     } catch { alert("Error al eliminar."); return; }
     setDetalle(null);
