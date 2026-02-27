@@ -670,10 +670,13 @@ function ConfigWhatsApp({ obras, onClose }) {
   const [numero, setNumero] = useState("");
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => { localGet("mg_wa_numero").then(n => n && setNumero(n)); }, []);
+  useEffect(() => {
+    const n = localStorage.getItem("mg_wa_numero");
+    if (n) setNumero(n);
+  }, []);
 
   async function guardar() {
-    await localSet("mg_wa_numero", numero);
+    localStorage.setItem("mg_wa_numero", numero);
     setSaved(true); setTimeout(() => setSaved(false), 2000);
   }
 
