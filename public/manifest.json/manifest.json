@@ -1,0 +1,22 @@
+{
+  "name": "MaderoGest",
+  "short_name": "MaderoGest",
+  "description": "Gestión de obras - Fábrica de Muebles",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0a04",
+  "theme_color": "#1a0e00",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "https://api.dicebear.com/7.x/initials/svg?seed=MG&backgroundColor=c8933a&textColor=1a0e00",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "https://api.dicebear.com/7.x/initials/svg?seed=MG&backgroundColor=c8933a&textColor=1a0e00",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
