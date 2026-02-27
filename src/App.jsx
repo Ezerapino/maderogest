@@ -760,9 +760,19 @@ export default function App() {
 
   async function guardarObra(obra) {
     const existente = obras.find(o => o.id === obra.id);
-    const obraFinal = existente
-      ? { ...obra, editado_por: sesion.id, editado_en: new Date().toISOString() }
-      : { ...obra, creado_por: sesion.id, creado_en: new Date().toISOString() };
+    const obraFinal = {
+      id: obra.id,
+      nombre: obra.nombre,
+      lugar: obra.lugar,
+      fecha: obra.fecha,
+      estado: obra.estado,
+      muebles: obra.muebles,
+      notas: obra.notas,
+      creado_por: existente ? obra.creado_por : sesion.id,
+      creado_en: existente ? obra.creado_en : new Date().toISOString(),
+      editado_por: existente ? sesion.id : null,
+      editado_en: existente ? new Date().toISOString() : null,
+    };
     try {
       await upsertObra(obraFinal);
       await agregarHistorial({
@@ -771,7 +781,7 @@ export default function App() {
         usuario_id: sesion.id,
         usuario_nombre: sesion.nombre,
         accion: existente ? "editó" : "creó",
-        detalle: existente ? `Obra actualizada` : `Obra creada`,
+        detalle: existente ? "Obra actualizada" : "Obra creada",
       });
       await recargarObras();
     } catch (e) { alert("Error al guardar. Verificá tu conexión."); return; }
