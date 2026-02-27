@@ -262,7 +262,7 @@ function enviarWhatsApp(obras, numero) {
   const url = num
     ? `https://wa.me/${num}?text=${encodeURIComponent(msg)}`
     : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-  window.open(url, "_blank");
+  window.location.href = url;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
