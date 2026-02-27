@@ -1,31 +1,81 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
-// ─── STORAGE HELPERS ──────────────────────────────────────────────────────────
-const STORAGE_KEYS = {
-  obras: "mg_obras",
-  usuarios: "mg_usuarios",
-  sesion: "mg_sesion",
-  alertas_enviadas: "mg_alertas_env",
-};
+// ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
+// Reemplazá estos valores con los de tu proyecto en supabase.com
+// Project Settings → API → Project URL y anon public key
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || "";
 
-async function cloudGet(key) {
-  try {
-    const r = await window.storage.get(key, true);
-    return r ? JSON.parse(r.value) : null;
-  } catch { return null; }
+async function sbFetch(path, options = {}) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: {
+      "apikey": SUPABASE_KEY,
+      "Authorization": `Bearer ${SUPABASE_KEY}`,
+      "Content-Type": "application/json",
+      "Prefer": "return=representation",
+      ...options.headers,
+    },
+    ...options,
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : [];
 }
-async function cloudSet(key, val) {
-  try { await window.storage.set(key, JSON.stringify(val), true); } catch {}
+
+// ─── OBRAS ────────────────────────────────────────────────────────────────────
+async function getObras() {
+  return sbFetch("obras?order=fecha.asc");
 }
-async function localGet(key) {
-  try {
-    const r = await window.storage.get(key, false);
-    return r ? JSON.parse(r.value) : null;
-  } catch { return null; }
+async function upsertObra(obra) {
+  return sbFetch("obras", {
+    method: "POST",
+    headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify(obra),
+  });
 }
-async function localSet(key, val) {
-  try { await window.storage.set(key, JSON.stringify(val), false); } catch {}
+async function deleteObra(id) {
+  return sbFetch(`obras?id=eq.${id}`, { method: "DELETE" });
 }
+
+// ─── USUARIOS ─────────────────────────────────────────────────────────────────
+async function getUsuarios() {
+  return sbFetch("usuarios?order=creado_en.asc");
+}
+async function upsertUsuario(usuario) {
+  return sbFetch("usuarios", {
+    method: "POST",
+    headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify(usuario),
+  });
+}
+async function deleteUsuario(id) {
+  return sbFetch(`usuarios?id=eq.${id}`, { method: "DELETE" });
+}
+
+// ─── HISTORIAL ────────────────────────────────────────────────────────────────
+async function getHistorial(obraId = null) {
+  const filter = obraId ? `obra_id=eq.${obraId}&` : "";
+  return sbFetch(`historial?${filter}order=fecha.desc&limit=100`);
+}
+async function agregarHistorial(entrada) {
+  return sbFetch("historial", {
+    method: "POST",
+    body: JSON.stringify(entrada),
+  });
+}
+
+// ─── SESION LOCAL ─────────────────────────────────────────────────────────────
+function getSesion() {
+  try { return JSON.parse(localStorage.getItem("mg_sesion")); } catch { return null; }
+}
+function setSesionLocal(u) {
+  if (u) localStorage.setItem("mg_sesion", JSON.stringify(u));
+  else localStorage.removeItem("mg_sesion");
+}
+
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
 function diasRestantes(fecha) {
@@ -220,22 +270,21 @@ function Login({ onLogin }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [error, setError] = useState("");
-  const [usuarios, setUsuarios] = useState([]);
+  const [cargando, setCargando] = useState(false);
 
-  useEffect(() => {
-    cloudGet(STORAGE_KEYS.usuarios).then(u => {
-      if (!u || u.length === 0) {
-        cloudSet(STORAGE_KEYS.usuarios, DEMO_USERS);
-        setUsuarios(DEMO_USERS);
-      } else setUsuarios(u);
-    });
-  }, []);
-
-  function handleLogin() {
-    const u = usuarios.find(x => x.email.toLowerCase() === email.toLowerCase() && x.password === pass);
-    if (!u) { setError("Email o contraseña incorrectos."); return; }
-    localSet(STORAGE_KEYS.sesion, { id: u.id, nombre: u.nombre, rol: u.rol, email: u.email });
-    onLogin(u);
+  async function handleLogin() {
+    if (!email || !pass) { setError("Completá email y contraseña."); return; }
+    setCargando(true);
+    try {
+      const usuarios = await getUsuarios();
+      const u = usuarios.find(x => x.email.toLowerCase() === email.toLowerCase() && x.password === pass);
+      if (!u) { setError("Email o contraseña incorrectos."); setCargando(false); return; }
+      setSesionLocal({ id: u.id, nombre: u.nombre, rol: u.rol, email: u.email });
+      onLogin(u);
+    } catch {
+      setError("Error de conexión. Verificá tu internet.");
+      setCargando(false);
+    }
   }
 
   return (
@@ -271,16 +320,12 @@ function Login({ onLogin }) {
 
           {error && <div style={{ color:"#e05555", fontSize:13, marginBottom:14, padding:"8px 12px", background:"rgba(224,85,85,0.1)", borderRadius:8 }}>⚠️ {error}</div>}
 
-          <button onClick={handleLogin} style={{ width:"100%", padding:14, background:"linear-gradient(135deg,#c8933a,#e8b55a)", border:"none", borderRadius:12, fontFamily:"'Playfair Display', serif", fontSize:16, fontWeight:700, color:"#1a0e00", cursor:"pointer", marginTop:8 }}>
-            Ingresar →
+          <button onClick={handleLogin} disabled={cargando} style={{ width:"100%", padding:14, background:"linear-gradient(135deg,#c8933a,#e8b55a)", border:"none", borderRadius:12, fontFamily:"'Playfair Display', serif", fontSize:16, fontWeight:700, color:"#1a0e00", cursor: cargando ? "not-allowed" : "pointer", marginTop:8, opacity: cargando ? 0.7 : 1 }}>
+            {cargando ? "Verificando..." : "Ingresar →"}
           </button>
 
-          <div style={{ marginTop:20, padding:"12px 14px", background:"#0f0a04", borderRadius:10, border:"1px solid rgba(200,147,58,0.1)" }}>
-            <div style={{ color:"#6a5a40", fontSize:11, textTransform:"uppercase", letterSpacing:1, marginBottom:8 }}>Usuarios demo</div>
-            <div style={{ color:"#8a7060", fontSize:12, lineHeight:1.8 }}>
-              👑 <b style={{color:"#c8933a"}}>admin@fabrica.com</b> / admin123<br/>
-              🔧 <b style={{color:"#8a9090"}}>carlos@fabrica.com</b> / carlos123
-            </div>
+          <div style={{ marginTop:16, fontSize:12, color:"#4a3a28", textAlign:"center" }}>
+            Usuario inicial: <b style={{color:"#c8933a"}}>admin@fabrica.com</b> / admin123
           </div>
         </div>
       </div>
@@ -538,26 +583,31 @@ function GestionUsuarios({ onClose }) {
   const [usuarios, setUsuarios] = useState([]);
   const [form, setForm] = useState({ nombre:"", email:"", password:"", rol:"operario" });
   const [msg, setMsg] = useState("");
+  const [guardando, setGuardando] = useState(false);
 
-  useEffect(() => { cloudGet(STORAGE_KEYS.usuarios).then(u => u && setUsuarios(u)); }, []);
+  useEffect(() => { getUsuarios().then(u => u && setUsuarios(u)).catch(() => {}); }, []);
 
   async function agregar() {
     if (!form.nombre || !form.email || !form.password) { setMsg("⚠️ Completá todos los campos"); return; }
     if (usuarios.find(u => u.email.toLowerCase() === form.email.toLowerCase())) { setMsg("⚠️ Ya existe ese email"); return; }
-    const nuevo = { ...form, id: uid() };
-    const lista = [...usuarios, nuevo];
-    await cloudSet(STORAGE_KEYS.usuarios, lista);
-    setUsuarios(lista);
-    setForm({ nombre:"", email:"", password:"", rol:"operario" });
-    setMsg("✅ Usuario creado correctamente");
-    setTimeout(() => setMsg(""), 3000);
+    setGuardando(true);
+    try {
+      const nuevo = { ...form, id: uid() };
+      await upsertUsuario(nuevo);
+      setUsuarios(u => [...u, nuevo]);
+      setForm({ nombre:"", email:"", password:"", rol:"operario" });
+      setMsg("✅ Usuario creado correctamente");
+      setTimeout(() => setMsg(""), 3000);
+    } catch { setMsg("⚠️ Error al guardar. Intentá de nuevo."); }
+    setGuardando(false);
   }
 
   async function eliminar(id) {
     if (!confirm("¿Eliminar este usuario?")) return;
-    const lista = usuarios.filter(u => u.id !== id);
-    await cloudSet(STORAGE_KEYS.usuarios, lista);
-    setUsuarios(lista);
+    try {
+      await deleteUsuario(id);
+      setUsuarios(u => u.filter(x => x.id !== id));
+    } catch { alert("Error al eliminar."); }
   }
 
   const si = { width:"100%", padding:"10px 13px", background:"#1a1208", border:"1px solid rgba(200,147,58,0.2)", borderRadius:9, color:"#e8dcc8", fontFamily:"'DM Sans', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" };
@@ -602,8 +652,8 @@ function GestionUsuarios({ onClose }) {
             <option value="admin">Admin</option>
           </select>
           {msg && <div style={{ padding:"8px 12px", borderRadius:8, background: msg.startsWith("✅") ? "rgba(74,154,106,0.15)" : "rgba(224,85,85,0.12)", color: msg.startsWith("✅") ? "#80c090" : "#f08080", fontSize:13, marginBottom:10 }}>{msg}</div>}
-          <button onClick={agregar} style={{ width:"100%", padding:12, background:"linear-gradient(135deg,#c8933a,#e8b55a)", border:"none", borderRadius:10, fontFamily:"'Playfair Display', serif", fontSize:15, fontWeight:700, color:"#1a0e00", cursor:"pointer" }}>
-            Agregar usuario
+          <button onClick={agregar} disabled={guardando} style={{ width:"100%", padding:12, background:"linear-gradient(135deg,#c8933a,#e8b55a)", border:"none", borderRadius:10, fontFamily:"'Playfair Display', serif", fontSize:15, fontWeight:700, color:"#1a0e00", cursor: guardando ? "not-allowed" : "pointer", opacity: guardando ? 0.7 : 1 }}>
+            {guardando ? "Guardando..." : "Agregar usuario"}
           </button>
         </div>
       </div>
@@ -675,55 +725,97 @@ export default function App() {
   const [obras, setObras] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [filter, setFilter] = useState("todas");
-  const [modalObra, setModalObra] = useState(null); // null | "nueva" | obra
+  const [modalObra, setModalObra] = useState(null);
   const [detalle, setDetalle] = useState(null);
   const [showUsuarios, setShowUsuarios] = useState(false);
   const [showWA, setShowWA] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
-  const [waNumero, setWaNumero] = useState("");
+  const [showHistorial, setShowHistorial] = useState(false);
+  const [historial, setHistorial] = useState([]);
+  const [waNumero, setWaNumero] = useState(localStorage.getItem("mg_wa_numero") || "");
 
   // Init
   useEffect(() => {
     (async () => {
-      const s = await localGet(STORAGE_KEYS.sesion);
+      const s = getSesion();
       if (s) setSesion(s);
-      const ob = await cloudGet(STORAGE_KEYS.obras);
-      if (!ob || ob.length === 0) {
-        const demo = makeDemoData();
-        await cloudSet(STORAGE_KEYS.obras, demo);
-        setObras(demo);
-      } else setObras(ob);
-      const n = await localGet("mg_wa_numero");
-      if (n) setWaNumero(n);
+      try {
+        const ob = await getObras();
+        setObras(ob || []);
+      } catch { setObras([]); }
       setCargando(false);
     })();
   }, []);
 
-  async function saveObras(lista) {
-    setObras(lista);
-    await cloudSet(STORAGE_KEYS.obras, lista);
+  async function recargarObras() {
+    try { const ob = await getObras(); setObras(ob || []); } catch {}
   }
 
-  function handleLogin(u) { setSesion(u); }
-  function handleLogout() { localSet(STORAGE_KEYS.sesion, null); setSesion(null); }
+  function handleLogin(u) { setSesion(u); recargarObras(); }
+  function handleLogout() { setSesionLocal(null); setSesion(null); }
 
   async function guardarObra(obra) {
     const existente = obras.find(o => o.id === obra.id);
-    const lista = existente ? obras.map(o => o.id === obra.id ? {...obra, editadoPor: sesion.id, editadoEn: new Date().toISOString()} : o) : [...obras, {...obra, creadoPor: sesion.id}];
-    await saveObras(lista);
+    const obraFinal = existente
+      ? { ...obra, editado_por: sesion.id, editado_en: new Date().toISOString() }
+      : { ...obra, creado_por: sesion.id, creado_en: new Date().toISOString() };
+    try {
+      await upsertObra(obraFinal);
+      await agregarHistorial({
+        obra_id: obraFinal.id,
+        obra_nombre: obraFinal.nombre,
+        usuario_id: sesion.id,
+        usuario_nombre: sesion.nombre,
+        accion: existente ? "editó" : "creó",
+        detalle: existente ? `Obra actualizada` : `Obra creada`,
+      });
+      await recargarObras();
+    } catch (e) { alert("Error al guardar. Verificá tu conexión."); return; }
     setModalObra(null);
     setDetalle(null);
   }
 
   async function eliminarObra(id) {
     if (!confirm("¿Eliminar esta obra?")) return;
-    await saveObras(obras.filter(o => o.id !== id));
+    const obra = obras.find(o => o.id === id);
+    try {
+      await deleteObra(id);
+      await agregarHistorial({
+        obra_id: id,
+        obra_nombre: obra?.nombre || id,
+        usuario_id: sesion.id,
+        usuario_nombre: sesion.nombre,
+        accion: "eliminó",
+        detalle: "Obra eliminada",
+      });
+      await recargarObras();
+    } catch { alert("Error al eliminar."); return; }
     setDetalle(null);
   }
 
   async function marcarEntregada(id) {
-    await saveObras(obras.map(o => o.id === id ? {...o, estado:"terminado"} : o));
+    const obra = obras.find(o => o.id === id);
+    try {
+      await upsertObra({ ...obra, estado:"terminado", editado_por: sesion.id, editado_en: new Date().toISOString() });
+      await agregarHistorial({
+        obra_id: id,
+        obra_nombre: obra?.nombre || id,
+        usuario_id: sesion.id,
+        usuario_nombre: sesion.nombre,
+        accion: "marcó como entregada",
+        detalle: "Estado: Terminado",
+      });
+      await recargarObras();
+    } catch { alert("Error al actualizar."); return; }
     setDetalle(null);
+  }
+
+  async function verHistorial() {
+    try {
+      const h = await getHistorial();
+      setHistorial(h || []);
+    } catch { setHistorial([]); }
+    setShowHistorial(true);
   }
 
   // Stats
@@ -817,6 +909,14 @@ export default function App() {
               </div>
             )}
           </div>
+
+          {/* Historial button (solo admin) */}
+          {isAdmin && (
+            <button onClick={verHistorial} title="Historial de cambios"
+              style={{ background:"#1a1208", border:"1px solid rgba(200,147,58,0.18)", borderRadius:"50%", width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:18 }}>
+              📋
+            </button>
+          )}
 
           {/* User menu */}
           <div style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px", background:"#1a1208", borderRadius:20, border:"1px solid rgba(200,147,58,0.18)", cursor:"pointer" }} onClick={isAdmin ? () => setShowUsuarios(true) : undefined}>
@@ -984,6 +1084,37 @@ export default function App() {
 
       {showUsuarios && isAdmin && <GestionUsuarios onClose={() => setShowUsuarios(false)} />}
       {showWA && <ConfigWhatsApp obras={obras} onClose={() => setShowWA(false)} />}
+
+      {/* HISTORIAL PANEL */}
+      {showHistorial && (
+        <div onClick={e => e.target === e.currentTarget && setShowHistorial(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", backdropFilter:"blur(8px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div style={{ background:"#13100a", border:"1px solid rgba(200,147,58,0.2)", borderRadius:20, padding:"28px 24px", width:"100%", maxWidth:520, maxHeight:"85vh", overflowY:"auto" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}>
+              <div style={{ fontFamily:"'Playfair Display', serif", fontSize:20, color:"#c8933a" }}>📋 Historial de cambios</div>
+              <button onClick={() => setShowHistorial(false)} style={{ background:"none", border:"none", color:"#6a5a40", fontSize:20, cursor:"pointer" }}>✕</button>
+            </div>
+            {historial.length === 0
+              ? <div style={{ color:"#6a5a40", fontSize:13, textAlign:"center", padding:30 }}>Sin cambios registrados aún.</div>
+              : historial.map(h => (
+                <div key={h.id} style={{ display:"flex", gap:12, padding:"12px 0", borderBottom:"1px solid rgba(200,147,58,0.08)" }}>
+                  <div style={{ width:36, height:36, borderRadius:"50%", background:"rgba(200,147,58,0.1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>
+                    {h.accion === "creó" ? "✨" : h.accion === "eliminó" ? "🗑️" : h.accion === "marcó como entregada" ? "✅" : "✏️"}
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13, color:"#e8dcc8" }}>
+                      <b style={{ color:"#c8933a" }}>{h.usuario_nombre}</b> {h.accion} <b style={{ color:"#e8dcc8" }}>{h.obra_nombre}</b>
+                    </div>
+                    {h.detalle && <div style={{ fontSize:12, color:"#6a5a40", marginTop:2 }}>{h.detalle}</div>}
+                    <div style={{ fontSize:11, color:"#4a3a28", marginTop:3 }}>
+                      {new Date(h.fecha).toLocaleDateString("es-AR", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" })}
+                    </div>
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      )}
     </div>
   );
 }
