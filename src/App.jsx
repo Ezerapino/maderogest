@@ -29,7 +29,7 @@ async function sbFetch(path, options = {}) {
 
 // ─── OBRAS ────────────────────────────────────────────────────────────────────
 async function getObras() {
-  return sbFetch("obras?order=fecha.asc");
+  return sbFetch("obras?order=fecha.asc", { method: "GET" });
 }
 async function upsertObra(obra) {
   return sbFetch("obras", {
@@ -44,7 +44,7 @@ async function deleteObra(id) {
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
 async function getUsuarios() {
-  return sbFetch("usuarios?order=creado_en.asc");
+  return sbFetch("usuarios?select=*", { method: "GET" });
 }
 async function upsertUsuario(usuario) {
   return sbFetch("usuarios", {
@@ -60,7 +60,7 @@ async function deleteUsuario(id) {
 // ─── HISTORIAL ────────────────────────────────────────────────────────────────
 async function getHistorial(obraId = null) {
   const filter = obraId ? `obra_id=eq.${obraId}&` : "";
-  return sbFetch(`historial?${filter}order=fecha.desc&limit=100`);
+  return sbFetch(`historial?${filter}order=fecha.desc&limit=100`, { method: "GET" });
 }
 async function agregarHistorial(entrada) {
   return sbFetch("historial", {
