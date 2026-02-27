@@ -3,8 +3,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 // ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
 // Reemplazá estos valores con los de tu proyecto en supabase.com
 // Project Settings → API → Project URL y anon public key
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || "";
+const SUPABASE_URL = "https://rjdxhstozclngeqdzfaq.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqZHhoc3RvemNsbmdlcWR6ZmFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyMTIwODgsImV4cCI6MjA4Nzc4ODA4OH0.1n3bm3CD-UN9Qgl7GLJYLnjBRUZphzLy3hgNadh-DME";
 
 async function sbFetch(path, options = {}) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
