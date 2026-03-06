@@ -1,3 +1,22 @@
+/* ===== Paleta MaderoGest ===== */
+:root {
+  --bg-main: #0F172A;      /* fondo general */
+  --bg-card: #1E293B;      /* tarjetas / paneles */
+  --text-main: #E5E7EB;    /* texto principal */
+  --text-muted: #94A3B8;   /* texto secundario */
+  --accent: #F97316;       /* color acento */
+  --accent-hover: #FB923C;
+  --border: #334155;
+}
+
+/* Reset básico */
+body {
+  margin: 0;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
