@@ -74,7 +74,22 @@ async function agregarHistorial(entrada) {
   });
 }
 
-// ─── SESION LOCAL ─────────────────────────────────────────────────────────────
+// ─── AGREGADOS ────────────────────────────────────────────────────────────────
+async function getAgregados(obraId) {
+  return sbFetch(`agregados?obra_id=eq.${obraId}&order=fecha.desc`, { method: "GET" });
+}
+async function insertAgregado(agregado) {
+  return sbFetch("agregados", {
+    method: "POST",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify(agregado),
+  });
+}
+async function deleteAgregado(id) {
+  return sbFetch(`agregados?id=eq.${id}`, { method: "DELETE" });
+}
+
+
 function getSesion() {
   try { return JSON.parse(localStorage.getItem("mg_sesion")); } catch { return null; }
 }
@@ -507,15 +522,58 @@ function ModalObra({ obra, onClose, onSave }) {
 }
 
 // ─── DETALLE OBRA ─────────────────────────────────────────────────────────────
-function DetalleObra({ obra, onClose, onEdit, onDelete, onEntregada, rol }) {
+function DetalleObra({ obra, onClose, onEdit, onDelete, onEntregada, rol, sesion }) {
   const dias = diasRestantes(obra.fecha);
   const status = getStatus(dias, obra.estado);
   const sm = STATUS_META[status];
   const diasLabel = obra.estado === "terminado" ? "Entregada" : dias < 0 ? `Vencida hace ${Math.abs(dias)} días` : dias === 0 ? "¡Entrega HOY!" : `${dias} días para entrega`;
 
+  const [agregados, setAgregados] = useState([]);
+  const [showAddAgr, setShowAddAgr] = useState(false);
+  const [agrForm, setAgrForm] = useState({ articulo:"", cantidad:"1", unidad:"" });
+  const [guardandoAgr, setGuardandoAgr] = useState(false);
+
+  useEffect(() => {
+    getAgregados(obra.id).then(a => setAgregados(a || [])).catch(() => {});
+  }, [obra.id]);
+
+  async function agregarItem() {
+    if (!agrForm.articulo.trim()) return;
+    setGuardandoAgr(true);
+    try {
+      const nuevo = {
+        id: uid(),
+        obra_id: obra.id,
+        articulo: agrForm.articulo.trim(),
+        cantidad: parseFloat(agrForm.cantidad) || 1,
+        unidad: agrForm.unidad.trim(),
+        agregado_por: sesion.id,
+        agregado_por_nombre: sesion.nombre,
+        fecha: new Date().toISOString(),
+      };
+      await insertAgregado(nuevo);
+      setAgregados(a => [nuevo, ...a]);
+      setAgrForm({ articulo:"", cantidad:"1", unidad:"" });
+      setShowAddAgr(false);
+    } catch { alert("Error al guardar el agregado."); }
+    setGuardandoAgr(false);
+  }
+
+  async function eliminarAgregado(id) {
+    if (!confirm("¿Eliminar este agregado?")) return;
+    try {
+      await deleteAgregado(id);
+      setAgregados(a => a.filter(x => x.id !== id));
+    } catch { alert("Error al eliminar."); }
+  }
+
+  function formatFechaAgr(f) {
+    return new Date(f).toLocaleDateString("es-AR", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" });
+  }
+
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", backdropFilter:"blur(10px)", zIndex:400, display:"flex", alignItems:"flex-end", justifyContent:"center", padding:"0" }}>
-      <div style={{ background:"#ffffff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:"24px 24px 0 0", padding:"28px 24px 40px", width:"100%", maxWidth:600, maxHeight:"85vh", overflowY:"auto" }}>
+      <div style={{ background:"#ffffff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:"24px 24px 0 0", padding:"28px 24px 40px", width:"100%", maxWidth:600, maxHeight:"90vh", overflowY:"auto" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
           <div style={{ fontFamily:"'Playfair Display', serif", fontSize:22, color:"#1e293b", flex:1, lineHeight:1.2 }}>{obra.nombre}</div>
           <button onClick={onClose} style={{ background:"none", border:"none", color:"#94a3b8", fontSize:20, cursor:"pointer", marginLeft:10 }}>✕</button>
@@ -545,6 +603,7 @@ function DetalleObra({ obra, onClose, onEdit, onDelete, onEntregada, rol }) {
           </div>
         )}
 
+        {/* MUEBLES */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
           <div style={{ fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1 }}>Lista de muebles</div>
           {(obra.muebles||[]).length > 0 && (
@@ -554,7 +613,7 @@ function DetalleObra({ obra, onClose, onEdit, onDelete, onEntregada, rol }) {
           )}
         </div>
         {(obra.muebles||[]).length === 0
-          ? <div style={{ color:"#94a3b8", fontSize:13 }}>Sin muebles registrados</div>
+          ? <div style={{ color:"#94a3b8", fontSize:13, marginBottom:20 }}>Sin muebles registrados</div>
           : normalizarMuebles(obra.muebles).map((m, i) => (
             <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:"1px solid rgba(30,64,175,0.08)" }}>
               <div style={{ fontSize:20 }}>{muebleIcon(m.nombre)}</div>
@@ -567,6 +626,71 @@ function DetalleObra({ obra, onClose, onEdit, onDelete, onEntregada, rol }) {
             </div>
           ))
         }
+
+        {/* AGREGADOS */}
+        <div style={{ marginTop:28, paddingTop:20, borderTop:"2px solid #e2e8f0" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+            <div style={{ fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1 }}>📦 Agregados</div>
+            <button onClick={() => setShowAddAgr(!showAddAgr)}
+              style={{ padding:"5px 14px", background:"#1e40af", border:"none", borderRadius:8, color:"#ffffff", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+              + Agregar
+            </button>
+          </div>
+
+          {/* Formulario agregar */}
+          {showAddAgr && (
+            <div style={{ background:"#f8fafc", border:"1px solid rgba(30,64,175,0.15)", borderRadius:12, padding:"14px", marginBottom:14 }}>
+              <div style={{ display:"flex", gap:8, marginBottom:8 }}>
+                <input
+                  placeholder="Artículo / material"
+                  value={agrForm.articulo}
+                  onChange={e => setAgrForm(f => ({...f, articulo: e.target.value}))}
+                  style={{ flex:1, padding:"9px 12px", background:"#ffffff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:8, color:"#1e293b", fontFamily:"'DM Sans', sans-serif", fontSize:13, outline:"none" }}
+                />
+              </div>
+              <div style={{ display:"flex", gap:8 }}>
+                <input
+                  type="number" min="0.1" step="0.1" placeholder="Cantidad"
+                  value={agrForm.cantidad}
+                  onChange={e => setAgrForm(f => ({...f, cantidad: e.target.value}))}
+                  style={{ width:90, padding:"9px 12px", background:"#ffffff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:8, color:"#1e40af", fontFamily:"'DM Sans', sans-serif", fontSize:13, fontWeight:700, outline:"none", textAlign:"center" }}
+                />
+                <input
+                  placeholder="Unidad (kg, m², u...)"
+                  value={agrForm.unidad}
+                  onChange={e => setAgrForm(f => ({...f, unidad: e.target.value}))}
+                  style={{ flex:1, padding:"9px 12px", background:"#ffffff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:8, color:"#1e293b", fontFamily:"'DM Sans', sans-serif", fontSize:13, outline:"none" }}
+                />
+                <button onClick={agregarItem} disabled={guardandoAgr}
+                  style={{ padding:"9px 16px", background:"#1e40af", border:"none", borderRadius:8, color:"#ffffff", fontSize:13, fontWeight:600, cursor: guardandoAgr ? "not-allowed" : "pointer", opacity: guardandoAgr ? 0.7 : 1 }}>
+                  {guardandoAgr ? "..." : "Guardar"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Lista de agregados */}
+          {agregados.length === 0
+            ? <div style={{ color:"#94a3b8", fontSize:13, textAlign:"center", padding:"16px 0" }}>Sin agregados registrados</div>
+            : agregados.map(a => (
+              <div key={a.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 12px", background:"#f8fafc", border:"1px solid rgba(30,64,175,0.08)", borderRadius:10, marginBottom:6 }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:14, color:"#1e293b", fontWeight:500 }}>{a.articulo}</div>
+                  <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>
+                    {a.agregado_por_nombre} · {formatFechaAgr(a.fecha)}
+                  </div>
+                </div>
+                <div style={{ background:"rgba(30,64,175,0.12)", border:"1px solid rgba(30,64,175,0.2)", borderRadius:8, padding:"3px 10px", fontSize:13, fontWeight:700, color:"#1e40af", whiteSpace:"nowrap" }}>
+                  {a.cantidad}{a.unidad ? ` ${a.unidad}` : ""}
+                </div>
+                <button onClick={() => eliminarAgregado(a.id)}
+                  style={{ background:"none", border:"none", color:"#cbd5e1", cursor:"pointer", fontSize:14, padding:"0 2px" }}
+                  onMouseEnter={e => e.currentTarget.style.color="#e05555"}
+                  onMouseLeave={e => e.currentTarget.style.color="#cbd5e1"}>✕</button>
+              </div>
+            ))
+          }
+        </div>
 
         <div style={{ display:"flex", gap:10, marginTop:24, flexWrap:"wrap" }}>
           <button onClick={onEdit} style={{ padding:"9px 18px", background:"#eef2ff", border:"1px solid rgba(30,64,175,0.25)", borderRadius:10, color:"#1e40af", fontFamily:"'DM Sans', sans-serif", fontSize:13, cursor:"pointer" }}>✏️ Editar</button>
@@ -1091,6 +1215,7 @@ export default function App() {
         <DetalleObra
           obra={obras.find(o => o.id === detalle.id) || detalle}
           rol={sesion.rol}
+          sesion={sesion}
           onClose={() => setDetalle(null)}
           onEdit={() => { setModalObra(obras.find(o => o.id === detalle.id)); setDetalle(null); }}
           onDelete={() => eliminarObra(detalle.id)}
