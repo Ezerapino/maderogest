@@ -161,35 +161,43 @@ const DEMO_USERS = [
 ];
 
 // ─── PDF GENERATOR ────────────────────────────────────────────────────────────
-function generarPDF(obra) {
+async function generarPDF(obra) {
   const dias = diasRestantes(obra.fecha);
   const status = getStatus(dias, obra.estado);
   const sm = STATUS_META[status];
 
+  // Traer agregados de Supabase
+  let agregadosList = [];
+  try { agregadosList = await getAgregados(obra.id); } catch {}
+
   const estilos = `
     body { font-family: Georgia, serif; color: #1e293b; margin: 0; padding: 0; }
-    .portada { background: #1e293b; color: #1e293b; padding: 48px 48px 36px; min-height: 160px; }
-    .logo { font-size: 28px; font-weight: bold; letter-spacing: 2px; color: #1e40af; }
-    .logo span { color: #1e293b; }
-    .obra-titulo { font-size: 26px; margin: 20px 0 6px; font-style: italic; }
-    .obra-subtitulo { font-size: 13px; color: #8a7860; letter-spacing: 1px; text-transform: uppercase; }
+    .portada { background: #1e293b; color: #e8dcc8; padding: 48px 48px 36px; min-height: 160px; }
+    .logo { font-size: 28px; font-weight: bold; letter-spacing: 2px; color: #ffffff; }
+    .obra-titulo { font-size: 26px; margin: 20px 0 6px; font-style: italic; color: #e8dcc8; }
+    .obra-subtitulo { font-size: 13px; color: #94a3b8; letter-spacing: 1px; text-transform: uppercase; }
     .cuerpo { padding: 36px 48px; }
     .status-badge { display: inline-block; padding: 5px 16px; border-radius: 20px; font-size: 12px; font-weight: bold; letter-spacing: 1px; background: ${sm.bg}; color: ${sm.color}; border: 1px solid ${sm.color}; margin-bottom: 24px; }
-    .grid-datos { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 32px; border-bottom: 1px solid #e0d4bc; padding-bottom: 28px; }
-    .dato-item .label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8a7860; margin-bottom: 4px; }
+    .grid-datos { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 32px; border-bottom: 1px solid #e2e8f0; padding-bottom: 28px; }
+    .dato-item .label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; margin-bottom: 4px; }
     .dato-item .valor { font-size: 15px; font-weight: bold; color: #1e293b; }
-    .seccion-titulo { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #8a7860; border-bottom: 1px solid #e0d4bc; padding-bottom: 8px; margin-bottom: 16px; }
-    .mueble-row { display: flex; align-items: flex-start; padding: 10px 0; border-bottom: 1px dotted #e8d8c0; }
+    .seccion-titulo { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #94a3b8; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 16px; margin-top: 28px; }
+    .mueble-row { display: flex; align-items: flex-start; padding: 10px 0; border-bottom: 1px dotted #e2e8f0; }
     .mueble-num { width: 30px; font-size: 12px; color: #1e40af; font-weight: bold; }
     .mueble-icon { width: 26px; font-size: 16px; }
     .mueble-nombre { flex: 1; font-size: 14px; }
     .mueble-check { width: 24px; height: 24px; border: 1.5px solid #1e40af; border-radius: 4px; margin-left: 12px; }
-    .notas-box { background: #faf6ef; border-left: 3px solid #1e40af; padding: 14px 18px; border-radius: 0 8px 8px 0; margin-top: 28px; font-size: 13px; line-height: 1.7; color: #3a2e1e; }
-    .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e0d4bc; display: flex; justify-content: space-between; font-size: 11px; color: #8a7860; }
+    .agr-row { display: flex; align-items: center; padding: 9px 12px; border-bottom: 1px dotted #e2e8f0; gap: 12px; }
+    .agr-num { width: 30px; font-size: 12px; color: #1e40af; font-weight: bold; }
+    .agr-articulo { flex: 1; font-size: 14px; }
+    .agr-cantidad { font-size: 14px; font-weight: bold; color: #1e40af; min-width: 60px; text-align: right; }
+    .agr-fecha { font-size: 11px; color: #94a3b8; min-width: 120px; text-align: right; }
+    .notas-box { background: #f8fafc; border-left: 3px solid #1e40af; padding: 14px 18px; border-radius: 0 8px 8px 0; margin-top: 28px; font-size: 13px; line-height: 1.7; color: #1e293b; }
+    .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; }
     .firma-box { margin-top: 48px; display: flex; justify-content: space-between; }
     .firma { text-align: center; }
     .firma-linea { width: 160px; border-bottom: 1px solid #1e293b; margin-bottom: 6px; height: 36px; }
-    .firma-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8a7860; }
+    .firma-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; }
   `;
 
   const diasLabel = obra.estado === "terminado" ? "Entregada" : dias < 0 ? `Vencida hace ${Math.abs(dias)} días` : dias === 0 ? "¡Entrega HOY!" : `${dias} días para entrega`;
@@ -205,12 +213,22 @@ function generarPDF(obra) {
     </div>
   `).join("");
 
+  const agregadosHTML = agregadosList.length === 0 ? '<p style="color:#94a3b8;font-size:13px">Sin agregados registrados.</p>' :
+    agregadosList.map((a, i) => `
+      <div class="agr-row">
+        <div class="agr-num">${String(i+1).padStart(2,"0")}</div>
+        <div class="agr-articulo">${a.articulo}</div>
+        <div class="agr-cantidad">${a.cantidad}${a.unidad ? ` ${a.unidad}` : ""}</div>
+        <div class="agr-fecha">${new Date(a.fecha).toLocaleDateString("es-AR", {day:"2-digit",month:"short",year:"numeric"})}</div>
+      </div>
+    `).join("");
+
   const html = `<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"><title>Orden de Entrega – ${obra.nombre}</title>
 <style>${estilos}</style></head>
 <body>
 <div class="portada">
-  <div class="logo">Obras Grupo Aixa S.A.</span></div>
+  <div class="logo">Obras Grupo Aixa S.A.</div>
   <div class="obra-titulo">${obra.nombre}</div>
   <div class="obra-subtitulo">Orden de entrega · Obras Grupo Aixa S.A.</div>
 </div>
@@ -223,7 +241,10 @@ function generarPDF(obra) {
   </div>
 
   <div class="seccion-titulo">🪵 Lista de muebles a entregar — ${mueblesList.length} tipos · ${totalUnidades} unidades</div>
-  ${mueblesList.length === 0 ? '<p style="color:#8a7860;font-size:13px">Sin muebles registrados.</p>' : mueblesHTML}
+  ${mueblesList.length === 0 ? '<p style="color:#94a3b8;font-size:13px">Sin muebles registrados.</p>' : mueblesHTML}
+
+  <div class="seccion-titulo">📦 Agregados — ${agregadosList.length} ítems</div>
+  ${agregadosHTML}
 
   ${obra.notas ? `<div class="notas-box">📝 <strong>Notas:</strong> ${obra.notas}</div>` : ""}
 
