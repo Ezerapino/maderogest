@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
+// ─── LOGO ─────────────────────────────────────────────────────────────────────
+const LOGO_AIXA = "data:image/png;base64,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";
+
 // ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
 // Reemplazá estos valores con los de tu proyecto en supabase.com
 // Project Settings → API → Project URL y anon public key
@@ -192,9 +195,9 @@ function generarPDF(obra) {
 <style>${estilos}</style></head>
 <body>
 <div class="portada">
-  <div class="logo">Madero<span>Gest</span></div>
+  <div class="logo">Obras Grupo Aixa S.A.</span></div>
   <div class="obra-titulo">${obra.nombre}</div>
-  <div class="obra-subtitulo">Orden de entrega · Fábrica de Muebles</div>
+  <div class="obra-subtitulo">Orden de entrega · Obras Grupo Aixa S.A.</div>
 </div>
 <div class="cuerpo">
   <div class="status-badge">${sm.icon} ${sm.label} — ${diasLabel}</div>
@@ -215,7 +218,7 @@ function generarPDF(obra) {
   </div>
 
   <div class="footer">
-    <span>MaderoGest · Sistema de Gestión de Obras</span>
+    <span>Obras Grupo Aixa S.A.</span>
     <span>Generado: ${new Date().toLocaleDateString("es-AR", {day:"2-digit",month:"long",year:"numeric"})}</span>
   </div>
 </div>
@@ -240,7 +243,7 @@ function enviarWhatsApp(obras, numero) {
     return;
   }
 
-  let msg = `🪵 *MaderoGest – Resumen Diario*\n📅 ${new Date().toLocaleDateString("es-AR",{weekday:"long",day:"2-digit",month:"long"})}\n\n`;
+  let msg = `🪵 *Obras Grupo Aixa – Resumen Diario*\n📅 ${new Date().toLocaleDateString("es-AR",{weekday:"long",day:"2-digit",month:"long"})}\n\n`;
 
   if (urgentes.length > 0) {
     msg += `🚨 *URGENTES (≤7 días):*\n`;
@@ -297,9 +300,7 @@ function Login({ onLogin }) {
       <div style={{ width:"100%", maxWidth:400 }}>
         {/* Logo */}
         <div style={{ textAlign:"center", marginBottom:40 }}>
-          <div style={{ fontFamily:"'Playfair Display', serif", fontSize:36, fontWeight:900, color:"#1e40af" }}>
-            Madero<span style={{ color:"#1e293b" }}>Gest</span>
-          </div>
+          <img src={LOGO_AIXA} alt="Obras Grupo Aixa S.A." style={{ height:56, marginBottom:12 }} />
           <div style={{ color:"#94a3b8", fontSize:13, letterSpacing:3, textTransform:"uppercase", marginTop:6 }}>Gestión de Obras</div>
         </div>
 
@@ -881,10 +882,8 @@ export default function App() {
       `}</style>
 
       {/* HEADER */}
-      <header style={{ position:"sticky", top:0, zIndex:100, background:"#ffffff", borderBottom:"1px solid #e2e8f0", boxShadow:"0 1px 8px rgba(0,0,0,0.08)", padding:"14px 20px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-        <div style={{ fontFamily:"'Playfair Display', serif", fontSize:22, fontWeight:900, color:"#1e40af" }}>
-          Madero<span style={{ color:"#1e293b" }}>Gest</span>
-        </div>
+      <header style={{ position:"sticky", top:0, zIndex:100, background:"#ffffff", borderBottom:"1px solid #e2e8f0", boxShadow:"0 1px 8px rgba(0,0,0,0.08)", padding:"10px 20px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <img src={LOGO_AIXA} alt="Obras Grupo Aixa S.A." style={{ height:40 }} />
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           {/* WhatsApp quick button */}
           <button onClick={() => setShowWA(true)} title="Alertas WhatsApp"
