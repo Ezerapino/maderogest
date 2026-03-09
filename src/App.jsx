@@ -278,29 +278,56 @@ function enviarWhatsApp(obras, numero) {
   const activas = obras.filter(o => o.estado !== "terminado");
   const urgentes = activas.filter(o => diasRestantes(o.fecha) <= 7 && diasRestantes(o.fecha) >= 0);
   const proximas = activas.filter(o => diasRestantes(o.fecha) > 7 && diasRestantes(o.fecha) <= 21);
+  const vencidas = activas.filter(o => diasRestantes(o.fecha) < 0);
 
-  if (urgentes.length === 0 && proximas.length === 0) {
+  if (urgentes.length === 0 && proximas.length === 0 && vencidas.length === 0) {
     alert("No hay obras con fechas próximas para alertar.");
     return;
   }
 
-  let msg = `🪵 *Obras Grupo Aixa – Resumen Diario*\n📅 ${new Date().toLocaleDateString("es-AR",{weekday:"long",day:"2-digit",month:"long"})}\n\n`;
+  const fecha = new Date().toLocaleDateString("es-AR", { weekday:"long", day:"2-digit", month:"long", year:"numeric" });
+  const fechaCap = fecha.charAt(0).toUpperCase() + fecha.slice(1);
+
+  let msg = `*OBRAS GRUPO AIXA S.A.*\n`;
+  msg += `Resumen de entregas — ${fechaCap}\n`;
+  msg += `${"—".repeat(30)}\n\n`;
+
+  if (vencidas.length > 0) {
+    msg += `*VENCIDAS SIN ENTREGAR (${vencidas.length})*\n`;
+    vencidas.sort((a,b) => diasRestantes(a.fecha) - diasRestantes(b.fecha)).forEach(o => {
+      const d = Math.abs(diasRestantes(o.fecha));
+      const total = normalizarMuebles(o.muebles||[]).reduce((a,m) => a+(m.cantidad||1), 0);
+      msg += `- *${o.nombre}*\n`;
+      msg += `  Lugar: ${o.lugar}\n`;
+      msg += `  Fecha pactada: ${formatDate(o.fecha)} (hace ${d} dias)\n`;
+      msg += `  Muebles: ${(o.muebles||[]).length} tipos, ${total} unidades\n\n`;
+    });
+  }
 
   if (urgentes.length > 0) {
-    msg += `🚨 *URGENTES (≤7 días):*\n`;
+    msg += `*ENTREGAS URGENTES — hasta 7 dias (${urgentes.length})*\n`;
     urgentes.sort((a,b) => diasRestantes(a.fecha) - diasRestantes(b.fecha)).forEach(o => {
       const d = diasRestantes(o.fecha);
       const total = normalizarMuebles(o.muebles||[]).reduce((a,m) => a+(m.cantidad||1), 0);
-      msg += `• *${o.nombre}*\n  📍 ${o.lugar}\n  📅 ${formatDate(o.fecha)} – ${d === 0 ? "¡HOY!" : `${d} días`}\n  🪵 ${(o.muebles||[]).length} tipos · ${total} unidades\n\n`;
+      msg += `- *${o.nombre}*\n`;
+      msg += `  Lugar: ${o.lugar}\n`;
+      msg += `  Fecha: ${formatDate(o.fecha)} — ${d === 0 ? "*ENTREGA HOY*" : `en ${d} dias`}\n`;
+      msg += `  Muebles: ${(o.muebles||[]).length} tipos, ${total} unidades\n\n`;
     });
   }
+
   if (proximas.length > 0) {
-    msg += `⏰ *PRÓXIMAS (≤21 días):*\n`;
-    proximas.forEach(o => {
-      msg += `• *${o.nombre}* – ${diasRestantes(o.fecha)} días\n  📍 ${o.lugar}\n\n`;
+    msg += `*PROXIMAS ENTREGAS — hasta 21 dias (${proximas.length})*\n`;
+    proximas.sort((a,b) => diasRestantes(a.fecha) - diasRestantes(b.fecha)).forEach(o => {
+      const d = diasRestantes(o.fecha);
+      msg += `- *${o.nombre}*\n`;
+      msg += `  Lugar: ${o.lugar}\n`;
+      msg += `  Fecha: ${formatDate(o.fecha)} — en ${d} dias\n\n`;
     });
   }
-  msg += `_Total en curso: ${activas.length} obras_`;
+
+  msg += `${"—".repeat(30)}\n`;
+  msg += `_Total obras activas: ${activas.length}_`;
 
   const num = (numero || "").replace(/\D/g, "");
   const url = num
