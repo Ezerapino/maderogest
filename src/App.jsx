@@ -335,44 +335,56 @@ function Login({ onLogin }) {
     }
   }
 
+  const inputStyle = { width:"100%", padding:"11px 14px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:14, outline:"none", boxSizing:"border-box", transition:"border-color 0.15s" };
+
   return (
-    <div style={{ minHeight:"100vh", background:"#f1f5f9", display:"flex", alignItems:"center", justifyContent:"center", padding:20, fontFamily:"'DM Sans', sans-serif" }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500&display=swap');`}</style>
-      <div style={{ width:"100%", maxWidth:400 }}>
-        {/* Logo */}
-        <div style={{ textAlign:"center", marginBottom:40 }}>
-          <img src={LOGO_AIXA} alt="Obras Grupo Aixa S.A." style={{ height:56, marginBottom:12 }} />
-          <div style={{ color:"#94a3b8", fontSize:13, letterSpacing:3, textTransform:"uppercase", marginTop:6 }}>Gestión de Obras</div>
-        </div>
+    <div style={{ minHeight:"100vh", background:"#F4F6F9", display:"flex", fontFamily:"'Inter', sans-serif" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600&display=swap'); * { box-sizing: border-box; } input:focus { border-color: #2563EB !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.08) !important; }`}</style>
 
-        {/* Card */}
-        <div style={{ background:"#ffffff", border:"1px solid #e2e8f0", borderRadius:20, padding:"32px 28px", boxShadow:"0 4px 24px rgba(0,0,0,0.08)" }}>
-          <div style={{ color:"#1e293b", fontFamily:"'Playfair Display', serif", fontSize:20, marginBottom:24 }}>Iniciar sesión</div>
+      {/* Panel izquierdo decorativo */}
+      <div style={{ display:"none", width:"45%", background:"#1A2B4A", padding:"60px 56px", flexDirection:"column", justifyContent:"space-between", '@media (min-width: 768px)': { display:"flex" } }} />
 
-          {[
-            { label:"Email", val:email, set:setEmail, type:"email", ph:"tu@fabrica.com" },
-            { label:"Contraseña", val:pass, set:setPass, type:"password", ph:"••••••••" },
-          ].map(f => (
-            <div key={f.label} style={{ marginBottom:16 }}>
-              <label style={{ display:"block", fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>{f.label}</label>
-              <input
-                type={f.type} value={f.val} placeholder={f.ph}
-                onChange={e => { f.set(e.target.value); setError(""); }}
-                onKeyDown={e => e.key === "Enter" && handleLogin()}
-                style={{ width:"100%", padding:"12px 14px", background:"#eef2ff", border:"1px solid rgba(30,64,175,0.18)", borderRadius:10, color:"#1e293b", fontFamily:"'DM Sans', sans-serif", fontSize:14, outline:"none", boxSizing:"border-box" }}
-              />
-            </div>
-          ))}
-
-          {error && <div style={{ color:"#e05555", fontSize:13, marginBottom:14, padding:"8px 12px", background:"rgba(224,85,85,0.1)", borderRadius:8 }}>⚠️ {error}</div>}
-
-          <button onClick={handleLogin} disabled={cargando} style={{ width:"100%", padding:14, background:"linear-gradient(135deg,#1e40af,#3b82f6)", border:"none", borderRadius:12, fontFamily:"'Playfair Display', serif", fontSize:16, fontWeight:700, color:"#ffffff", cursor: cargando ? "not-allowed" : "pointer", marginTop:8, opacity: cargando ? 0.7 : 1 }}>
-            {cargando ? "Verificando..." : "Ingresar →"}
-          </button>
-
-          <div style={{ marginTop:16, fontSize:12, color:"#94a3b8", textAlign:"center" }}>
-            Usuario inicial: <b style={{color:"#1e40af"}}>admin@fabrica.com</b> / admin123
+      {/* Formulario */}
+      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:"40px 24px" }}>
+        <div style={{ width:"100%", maxWidth:380 }}>
+          <div style={{ marginBottom:36, textAlign:"center" }}>
+            <img src={LOGO_AIXA} alt="Obras Grupo Aixa S.A." style={{ height:48, marginBottom:16 }} />
+            <p style={{ fontSize:13, color:"#94A3B8", margin:0, letterSpacing:0.5 }}>Sistema de gestión de obras</p>
           </div>
+
+          <div style={{ marginBottom:22 }}>
+            <h1 style={{ fontFamily:"'Sora', sans-serif", fontSize:22, fontWeight:700, color:"#1A2B4A", margin:"0 0 4px" }}>Bienvenido</h1>
+            <p style={{ fontSize:13, color:"#64748B", margin:0 }}>Ingresá tus credenciales para continuar</p>
+          </div>
+
+          <div style={{ marginBottom:16 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Email</label>
+            <input type="email" value={email} placeholder="tu@empresa.com"
+              onChange={e => { setEmail(e.target.value); setError(""); }}
+              onKeyDown={e => e.key === "Enter" && handleLogin()}
+              style={inputStyle} />
+          </div>
+
+          <div style={{ marginBottom:24 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Contraseña</label>
+            <input type="password" value={pass} placeholder="••••••••"
+              onChange={e => { setPass(e.target.value); setError(""); }}
+              onKeyDown={e => e.key === "Enter" && handleLogin()}
+              style={inputStyle} />
+          </div>
+
+          {error && (
+            <div style={{ padding:"10px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:13, marginBottom:16 }}>
+              {error}
+            </div>
+          )}
+
+          <button onClick={handleLogin} disabled={cargando}
+            style={{ width:"100%", padding:"12px", background: cargando ? "#94A3B8" : "#1A2B4A", border:"none", borderRadius:8, fontFamily:"'Inter', sans-serif", fontSize:14, fontWeight:600, color:"#ffffff", cursor: cargando ? "not-allowed" : "pointer", letterSpacing:0.3, transition:"background 0.2s" }}
+            onMouseEnter={e => !cargando && (e.currentTarget.style.background="#2563EB")}
+            onMouseLeave={e => !cargando && (e.currentTarget.style.background="#1A2B4A")}>
+            {cargando ? "Verificando..." : "Iniciar sesión"}
+          </button>
         </div>
       </div>
     </div>
@@ -439,109 +451,105 @@ function ModalObra({ obra, onClose, onSave }) {
 
   const inp = (label, key, type="text", ph="") => (
     <div style={{ marginBottom:16 }}>
-      <label style={{ display:"block", fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>{label}</label>
+      <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>{label}</label>
       <input type={type} value={form[key]} placeholder={ph}
         onChange={e => { setForm(f => ({...f, [key]: e.target.value})); setErrors(er => ({...er,[key]:""})); }}
-        style={{ width:"100%", padding:"11px 14px", background:"#f8fafc", border:`1px solid ${errors[key] ? "#e05555" : "rgba(30,64,175,0.2)"}`, borderRadius:10, color:"#1e293b", fontFamily:"'DM Sans', sans-serif", fontSize:14, outline:"none", boxSizing:"border-box" }}
+        style={{ width:"100%", padding:"10px 13px", background:"#F8FAFC", border:`1px solid ${errors[key] ? "#FCA5A5" : "#E2E8F0"}`, borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:14, outline:"none", boxSizing:"border-box" }}
       />
-      {errors[key] && <div style={{ color:"#e05555", fontSize:11, marginTop:3 }}>{errors[key]}</div>}
+      {errors[key] && <div style={{ color:"#DC2626", fontSize:11, marginTop:4 }}>{errors[key]}</div>}
     </div>
   );
 
   const totalMuebles = form.muebles.reduce((acc, m) => acc + (m.cantidad || 1), 0);
+  const modalInp = { padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" };
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", backdropFilter:"blur(8px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:"#ffffff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:20, padding:"28px 24px", width:"100%", maxWidth:540, maxHeight:"90vh", overflowY:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}>
-          <div style={{ fontFamily:"'Playfair Display', serif", fontSize:20, color:"#1e40af" }}>{obra ? "Editar Obra" : "Nueva Obra"}</div>
-          <button onClick={onClose} style={{ background:"none", border:"none", color:"#94a3b8", fontSize:20, cursor:"pointer" }}>✕</button>
-        </div>
-        {inp("Nombre de la obra", "nombre", "text", "Ej: Departamento Ramos Mejía")}
-        {inp("Dirección / Lugar", "lugar", "text", "Calle, número, barrio...")}
-        {inp("Fecha de entrega", "fecha", "date")}
-
-        <div style={{ marginBottom:16 }}>
-          <label style={{ display:"block", fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>Estado</label>
-          <select value={form.estado} onChange={e => setForm(f => ({...f, estado: e.target.value}))}
-            style={{ width:"100%", padding:"11px 14px", background:"#f8fafc", border:"1px solid rgba(30,64,175,0.2)", borderRadius:10, color:"#1e293b", fontFamily:"'DM Sans', sans-serif", fontSize:14, outline:"none" }}>
-            <option value="pendiente">Pendiente</option>
-            <option value="en_proceso">En proceso</option>
-            <option value="terminado">Terminado</option>
-          </select>
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:540, maxHeight:"90vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+        {/* Header */}
+        <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, background:"#ffffff", borderRadius:"14px 14px 0 0", zIndex:1 }}>
+          <div>
+            <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{obra ? "Editar obra" : "Nueva obra"}</h2>
+          </div>
+          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
         </div>
 
-        {/* MUEBLES */}
-        <div style={{ marginBottom:16 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-            <label style={{ fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1 }}>Muebles</label>
+        <div style={{ padding:"24px" }}>
+          {inp("Nombre de la obra", "nombre", "text", "Ej: Departamento Flores")}
+          {inp("Dirección", "lugar", "text", "Calle, número, barrio...")}
+          {inp("Fecha de entrega", "fecha", "date")}
+
+          <div style={{ marginBottom:16 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Estado</label>
+            <select value={form.estado} onChange={e => setForm(f => ({...f, estado: e.target.value}))}
+              style={{ ...modalInp, width:"100%" }}>
+              <option value="pendiente">Pendiente</option>
+              <option value="en_proceso">En proceso</option>
+              <option value="terminado">Terminado</option>
+            </select>
+          </div>
+
+          {/* MUEBLES */}
+          <div style={{ marginBottom:16 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+              <label style={{ fontSize:12, fontWeight:600, color:"#475569" }}>Muebles</label>
+              {form.muebles.length > 0 && (
+                <span style={{ fontSize:11, color:"#94A3B8" }}>{form.muebles.length} tipos · {totalMuebles} unidades</span>
+              )}
+            </div>
+
+            <div style={{ display:"flex", gap:8, marginBottom:8 }}>
+              <input value={muebleInput} placeholder="Nombre del mueble"
+                onChange={e => setMuebleInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addMueble(); }}}
+                style={{ ...modalInp, flex:1 }} />
+              <input value={cantInput} type="number" min="1" max="999" placeholder="Cant."
+                onChange={e => setCantInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addMueble(); }}}
+                style={{ ...modalInp, width:70, textAlign:"center", fontWeight:600, color:"#2563EB" }} />
+              <button onClick={addMueble}
+                style={{ padding:"10px 16px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#ffffff", fontSize:16, cursor:"pointer", fontWeight:600 }}>+</button>
+            </div>
+
             {form.muebles.length > 0 && (
-              <span style={{ fontSize:11, color:"#64748b" }}>{form.muebles.length} tipos · {totalMuebles} unidades</span>
+              <div style={{ border:"1px solid #E2E8F0", borderRadius:10, overflow:"hidden" }}>
+                {form.muebles.map((m, i) => (
+                  <div key={i} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 12px", borderBottom: i < form.muebles.length-1 ? "1px solid #F1F5F9" : "none", background:"#FAFBFC" }}>
+                    <input value={m.nombre} onChange={e => updateNombre(i, e.target.value)}
+                      style={{ flex:1, background:"transparent", border:"none", color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", minWidth:0 }} />
+                    <div style={{ display:"flex", alignItems:"center", gap:4, flexShrink:0 }}>
+                      <button onClick={() => updateCantidad(i, m.cantidad - 1)}
+                        style={{ width:26, height:26, background:"#EFF6FF", border:"1px solid #DBEAFE", borderRadius:6, color:"#2563EB", fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}>−</button>
+                      <input type="number" min="1" max="999" value={m.cantidad} onChange={e => updateCantidad(i, e.target.value)}
+                        style={{ width:46, textAlign:"center", background:"#EFF6FF", border:"1px solid #DBEAFE", borderRadius:6, color:"#2563EB", fontFamily:"'Inter', sans-serif", fontSize:13, fontWeight:700, outline:"none", padding:"3px 4px" }} />
+                      <button onClick={() => updateCantidad(i, m.cantidad + 1)}
+                        style={{ width:26, height:26, background:"#EFF6FF", border:"1px solid #DBEAFE", borderRadius:6, color:"#2563EB", fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}>+</button>
+                    </div>
+                    <button onClick={() => rmMueble(i)}
+                      style={{ background:"none", border:"none", color:"#CBD5E1", cursor:"pointer", fontSize:16, padding:"0 2px", flexShrink:0 }}
+                      onMouseEnter={e => e.currentTarget.style.color="#EF4444"}
+                      onMouseLeave={e => e.currentTarget.style.color="#CBD5E1"}>✕</button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
-          {/* Fila agregar */}
-          <div style={{ display:"flex", gap:8 }}>
-            <input value={muebleInput} placeholder="Nombre del mueble" onChange={e => setMuebleInput(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addMueble(); }}}
-              style={{ flex:1, padding:"11px 14px", background:"#f8fafc", border:"1px solid rgba(30,64,175,0.2)", borderRadius:10, color:"#1e293b", fontFamily:"'DM Sans', sans-serif", fontSize:14, outline:"none" }}
+          <div style={{ marginBottom:24 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Notas</label>
+            <textarea value={form.notas} rows={3} placeholder="Observaciones, detalles de acceso..."
+              onChange={e => setForm(f => ({...f, notas: e.target.value}))}
+              style={{ width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:14, outline:"none", resize:"vertical", boxSizing:"border-box" }}
             />
-            <input value={cantInput} type="number" min="1" max="999" placeholder="Cant."
-              onChange={e => setCantInput(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addMueble(); }}}
-              style={{ width:68, padding:"11px 10px", background:"#f8fafc", border:"1px solid rgba(30,64,175,0.2)", borderRadius:10, color:"#1e40af", fontFamily:"'DM Sans', sans-serif", fontSize:14, outline:"none", textAlign:"center", fontWeight:700 }}
-            />
-            <button onClick={addMueble} style={{ padding:"11px 16px", background:"#eef2ff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:10, color:"#1e40af", fontSize:20, cursor:"pointer" }}>＋</button>
-          </div>
-          <div style={{ display:"flex", gap:4, marginTop:5 }}>
-            <div style={{ flex:1, fontSize:10, color:"#94a3b8", textAlign:"left", paddingLeft:4 }}>Nombre del mueble</div>
-            <div style={{ width:68, fontSize:10, color:"#94a3b8", textAlign:"center" }}>Cantidad</div>
-            <div style={{ width:46 }} />
           </div>
 
-          {/* Lista de muebles editables */}
-          {form.muebles.length > 0 && (
-            <div style={{ marginTop:8, display:"flex", flexDirection:"column", gap:6 }}>
-              {form.muebles.map((m, i) => (
-                <div key={i} style={{ display:"flex", alignItems:"center", gap:8, background:"#f8fafc", border:"1px solid rgba(30,64,175,0.15)", borderRadius:10, padding:"6px 8px 6px 12px" }}>
-                  <span style={{ fontSize:16, flexShrink:0 }}>{muebleIcon(m.nombre)}</span>
-                  <input
-                    value={m.nombre}
-                    onChange={e => updateNombre(i, e.target.value)}
-                    style={{ flex:1, background:"transparent", border:"none", color:"#1e293b", fontFamily:"'DM Sans', sans-serif", fontSize:13, outline:"none", minWidth:0 }}
-                  />
-                  {/* Botones cantidad */}
-                  <div style={{ display:"flex", alignItems:"center", gap:4, flexShrink:0 }}>
-                    <button onClick={() => updateCantidad(i, m.cantidad - 1)}
-                      style={{ width:24, height:24, background:"#eef2ff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:6, color:"#1e40af", fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, padding:0 }}>−</button>
-                    <input
-                      type="number" min="1" max="999" value={m.cantidad}
-                      onChange={e => updateCantidad(i, e.target.value)}
-                      style={{ width:44, textAlign:"center", background:"#eef2ff", border:"1px solid rgba(30,64,175,0.25)", borderRadius:6, color:"#1e40af", fontFamily:"'DM Sans', sans-serif", fontSize:13, fontWeight:700, outline:"none", padding:"3px 4px" }}
-                    />
-                    <button onClick={() => updateCantidad(i, m.cantidad + 1)}
-                      style={{ width:24, height:24, background:"#eef2ff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:6, color:"#1e40af", fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, padding:0 }}>＋</button>
-                  </div>
-                  <button onClick={() => rmMueble(i)} style={{ background:"none", border:"none", color:"#94a3b8", cursor:"pointer", fontSize:14, padding:"0 2px", flexShrink:0 }}
-                    onMouseEnter={e => e.currentTarget.style.color="#e05555"}
-                    onMouseLeave={e => e.currentTarget.style.color="#94a3b8"}>✕</button>
-                </div>
-              ))}
-            </div>
-          )}
+          <button onClick={handleSave}
+            style={{ width:"100%", padding:"12px", background:"#1A2B4A", border:"none", borderRadius:8, fontFamily:"'Inter', sans-serif", fontSize:14, fontWeight:600, color:"#ffffff", cursor:"pointer", letterSpacing:0.3 }}
+            onMouseEnter={e => e.currentTarget.style.background="#2563EB"}
+            onMouseLeave={e => e.currentTarget.style.background="#1A2B4A"}>
+            Guardar obra
+          </button>
         </div>
-
-        <div style={{ marginBottom:20 }}>
-          <label style={{ display:"block", fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>Notas</label>
-          <textarea value={form.notas} rows={3} placeholder="Observaciones, detalles de acceso..."
-            onChange={e => setForm(f => ({...f, notas: e.target.value}))}
-            style={{ width:"100%", padding:"11px 14px", background:"#f8fafc", border:"1px solid rgba(30,64,175,0.2)", borderRadius:10, color:"#1e293b", fontFamily:"'DM Sans', sans-serif", fontSize:14, outline:"none", resize:"vertical", boxSizing:"border-box" }}
-          />
-        </div>
-
-        <button onClick={handleSave} style={{ width:"100%", padding:14, background:"linear-gradient(135deg,#1e40af,#3b82f6)", border:"none", borderRadius:12, fontFamily:"'Playfair Display', serif", fontSize:16, fontWeight:700, color:"#ffffff", cursor:"pointer" }}>
-          💾 Guardar Obra
-        </button>
       </div>
     </div>
   );
@@ -551,8 +559,6 @@ function ModalObra({ obra, onClose, onSave }) {
 function DetalleObra({ obra, onClose, onEdit, onDelete, onEntregada, rol, sesion }) {
   const dias = diasRestantes(obra.fecha);
   const status = getStatus(dias, obra.estado);
-  const sm = STATUS_META[status];
-  const diasLabel = obra.estado === "terminado" ? "Entregada" : dias < 0 ? `Vencida hace ${Math.abs(dias)} días` : dias === 0 ? "¡Entrega HOY!" : `${dias} días para entrega`;
 
   const [agregados, setAgregados] = useState([]);
   const [showAddAgr, setShowAddAgr] = useState(false);
@@ -568,8 +574,7 @@ function DetalleObra({ obra, onClose, onEdit, onDelete, onEntregada, rol, sesion
     setGuardandoAgr(true);
     try {
       const nuevo = {
-        id: uid(),
-        obra_id: obra.id,
+        id: uid(), obra_id: obra.id,
         articulo: agrForm.articulo.trim(),
         cantidad: parseFloat(agrForm.cantidad) || 1,
         unidad: agrForm.unidad.trim(),
@@ -597,138 +602,158 @@ function DetalleObra({ obra, onClose, onEdit, onDelete, onEntregada, rol, sesion
     return new Date(f).toLocaleDateString("es-AR", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" });
   }
 
+  const statusColors = {
+    urgent: { bg:"#FEF2F2", text:"#DC2626", border:"#FECACA", label:"Urgente" },
+    vencida: { bg:"#FEF2F2", text:"#DC2626", border:"#FECACA", label:"Vencida" },
+    warning: { bg:"#FFFBEB", text:"#D97706", border:"#FDE68A", label:"Próxima" },
+    ok:      { bg:"#ECFDF5", text:"#059669", border:"#A7F3D0", label:"A tiempo" },
+    done:    { bg:"#F8FAFC", text:"#64748B", border:"#E2E8F0", label:"Entregada" },
+  };
+  const sc = statusColors[status] || statusColors.ok;
+  const diasLabel = obra.estado === "terminado" ? "Entregada" : dias < 0 ? `Vencida hace ${Math.abs(dias)} días` : dias === 0 ? "Entrega hoy" : `${dias} días para entrega`;
+
+  const agrInp = { padding:"9px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" };
+
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", backdropFilter:"blur(10px)", zIndex:400, display:"flex", alignItems:"flex-end", justifyContent:"center", padding:"0" }}>
-      <div style={{ background:"#ffffff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:"24px 24px 0 0", padding:"28px 24px 40px", width:"100%", maxWidth:600, maxHeight:"90vh", overflowY:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
-          <div style={{ fontFamily:"'Playfair Display', serif", fontSize:22, color:"#1e293b", flex:1, lineHeight:1.2 }}>{obra.nombre}</div>
-          <button onClick={onClose} style={{ background:"none", border:"none", color:"#94a3b8", fontSize:20, cursor:"pointer", marginLeft:10 }}>✕</button>
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.55)", backdropFilter:"blur(4px)", zIndex:400, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+      <div style={{ background:"#ffffff", borderRadius:"16px 16px 0 0", width:"100%", maxWidth:620, maxHeight:"92vh", overflowY:"auto", boxShadow:"0 -8px 40px rgba(15,23,42,0.15)" }}>
+
+        {/* Handle drag indicator */}
+        <div style={{ display:"flex", justifyContent:"center", padding:"12px 0 0" }}>
+          <div style={{ width:36, height:4, background:"#E2E8F0", borderRadius:2 }} />
         </div>
 
-        <div style={{ display:"inline-block", padding:"5px 16px", borderRadius:20, background:sm.bg, color:sm.color, fontSize:12, fontWeight:700, letterSpacing:1, marginBottom:20, border:`1px solid ${sm.color}40` }}>
-          {sm.icon} {sm.label} — {diasLabel}
-        </div>
-
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:24 }}>
-          {[
-            { label:"📍 Lugar", val: obra.lugar },
-            { label:"📅 Fecha", val: formatDate(obra.fecha) },
-            { label:"⚙️ Estado", val: ESTADO_LABELS[obra.estado] },
-            { label:"🪵 Muebles", val: `${(obra.muebles||[]).length} ítems` },
-          ].map(d => (
-            <div key={d.label} style={{ background:"#f8fafc", border:"1px solid rgba(30,64,175,0.12)", borderRadius:10, padding:"12px 14px" }}>
-              <div style={{ fontSize:10, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>{d.label}</div>
-              <div style={{ fontSize:14, color:"#1e293b", fontWeight:500 }}>{d.val}</div>
-            </div>
-          ))}
-        </div>
-
-        {obra.notas && (
-          <div style={{ background:"#f8fafc", borderLeft:"3px solid #1e40af", padding:"12px 16px", borderRadius:"0 10px 10px 0", marginBottom:20, fontSize:13, color:"#475569", lineHeight:1.7 }}>
-            📝 {obra.notas}
+        {/* Header */}
+        <div style={{ padding:"16px 24px 0", display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+          <div style={{ flex:1, paddingRight:12 }}>
+            <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:19, fontWeight:700, color:"#1A2B4A", margin:"0 0 8px" }}>{obra.nombre}</h2>
+            <span style={{ display:"inline-block", padding:"4px 12px", borderRadius:6, background:sc.bg, color:sc.text, fontSize:11, fontWeight:700, border:`1px solid ${sc.border}`, letterSpacing:0.3 }}>
+              {sc.label} — {diasLabel}
+            </span>
           </div>
-        )}
+          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16, flexShrink:0 }}>✕</button>
+        </div>
 
-        {/* MUEBLES */}
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-          <div style={{ fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1 }}>Lista de muebles</div>
-          {(obra.muebles||[]).length > 0 && (
-            <div style={{ fontSize:11, color:"#64748b" }}>
-              {normalizarMuebles(obra.muebles).reduce((a,m) => a + (m.cantidad||1), 0)} unidades totales
+        <div style={{ padding:"20px 24px 36px" }}>
+          {/* Info grid */}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
+            {[
+              { label:"Lugar", val: obra.lugar },
+              { label:"Fecha de entrega", val: formatDate(obra.fecha) },
+              { label:"Estado", val: ESTADO_LABELS[obra.estado] },
+              { label:"Total muebles", val: `${normalizarMuebles(obra.muebles||[]).reduce((a,m)=>a+(m.cantidad||1),0)} unidades` },
+            ].map(d => (
+              <div key={d.label} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:10, padding:"12px 14px" }}>
+                <div style={{ fontSize:11, color:"#94A3B8", fontWeight:600, marginBottom:4 }}>{d.label.toUpperCase()}</div>
+                <div style={{ fontSize:13, color:"#1A2B4A", fontWeight:500 }}>{d.val}</div>
+              </div>
+            ))}
+          </div>
+
+          {obra.notas && (
+            <div style={{ background:"#F8FAFC", borderLeft:"3px solid #2563EB", padding:"12px 16px", borderRadius:"0 8px 8px 0", marginBottom:20, fontSize:13, color:"#475569", lineHeight:1.7 }}>
+              {obra.notas}
             </div>
           )}
-        </div>
-        {(obra.muebles||[]).length === 0
-          ? <div style={{ color:"#94a3b8", fontSize:13, marginBottom:20 }}>Sin muebles registrados</div>
-          : normalizarMuebles(obra.muebles).map((m, i) => (
-            <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:"1px solid rgba(30,64,175,0.08)" }}>
-              <div style={{ fontSize:20 }}>{muebleIcon(m.nombre)}</div>
-              <div style={{ flex:1, color:"#1e293b", fontSize:14 }}>{m.nombre}</div>
-              {m.cantidad > 1 && (
-                <div style={{ background:"rgba(30,64,175,0.15)", border:"1px solid rgba(30,64,175,0.3)", borderRadius:8, padding:"2px 10px", fontSize:13, fontWeight:700, color:"#1e40af" }}>
-                  x{m.cantidad}
-                </div>
-              )}
-            </div>
-          ))
-        }
 
-        {/* AGREGADOS */}
-        <div style={{ marginTop:28, paddingTop:20, borderTop:"2px solid #e2e8f0" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-            <div style={{ fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1 }}>📦 Agregados</div>
-            <button onClick={() => setShowAddAgr(!showAddAgr)}
-              style={{ padding:"5px 14px", background:"#1e40af", border:"none", borderRadius:8, color:"#ffffff", fontSize:12, fontWeight:600, cursor:"pointer" }}>
-              + Agregar
+          {/* MUEBLES */}
+          <div style={{ marginBottom:24 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+              <span style={{ fontSize:12, fontWeight:600, color:"#475569" }}>MUEBLES</span>
+              {(obra.muebles||[]).length > 0 && <span style={{ fontSize:11, color:"#94A3B8" }}>{normalizarMuebles(obra.muebles).reduce((a,m)=>a+(m.cantidad||1),0)} unidades</span>}
+            </div>
+            {(obra.muebles||[]).length === 0
+              ? <div style={{ color:"#94A3B8", fontSize:13 }}>Sin muebles registrados</div>
+              : <div style={{ border:"1px solid #E2E8F0", borderRadius:10, overflow:"hidden" }}>
+                  {normalizarMuebles(obra.muebles).map((m, i) => (
+                    <div key={i} style={{ display:"flex", alignItems:"center", padding:"11px 14px", borderBottom: i < obra.muebles.length-1 ? "1px solid #F1F5F9" : "none" }}>
+                      <span style={{ flex:1, fontSize:14, color:"#1A2B4A" }}>{m.nombre}</span>
+                      <span style={{ fontSize:13, fontWeight:700, color:"#2563EB", background:"#EFF6FF", border:"1px solid #DBEAFE", borderRadius:6, padding:"2px 10px" }}>×{m.cantidad || 1}</span>
+                    </div>
+                  ))}
+                </div>
+            }
+          </div>
+
+          {/* AGREGADOS */}
+          <div style={{ paddingTop:20, borderTop:"1px solid #F1F5F9" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+              <span style={{ fontSize:12, fontWeight:600, color:"#475569" }}>AGREGADOS</span>
+              <button onClick={() => setShowAddAgr(!showAddAgr)}
+                style={{ padding:"5px 14px", background: showAddAgr ? "#F8FAFC" : "#1A2B4A", border:`1px solid ${showAddAgr ? "#E2E8F0" : "#1A2B4A"}`, borderRadius:7, color: showAddAgr ? "#64748B" : "#ffffff", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                {showAddAgr ? "Cancelar" : "+ Agregar"}
+              </button>
+            </div>
+
+            {showAddAgr && (
+              <div style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:10, padding:"14px", marginBottom:12 }}>
+                <div style={{ marginBottom:8 }}>
+                  <input placeholder="Artículo o material" value={agrForm.articulo}
+                    onChange={e => setAgrForm(f => ({...f, articulo: e.target.value}))}
+                    style={{ ...agrInp, width:"100%" }} />
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <input type="number" min="0.1" step="0.1" placeholder="Cantidad" value={agrForm.cantidad}
+                    onChange={e => setAgrForm(f => ({...f, cantidad: e.target.value}))}
+                    style={{ ...agrInp, width:90, textAlign:"center", fontWeight:600, color:"#2563EB" }} />
+                  <input placeholder="Unidad (kg, m², u...)" value={agrForm.unidad}
+                    onChange={e => setAgrForm(f => ({...f, unidad: e.target.value}))}
+                    style={{ ...agrInp, flex:1 }} />
+                  <button onClick={agregarItem} disabled={guardandoAgr}
+                    style={{ padding:"9px 16px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#ffffff", fontSize:13, fontWeight:600, cursor: guardandoAgr ? "not-allowed" : "pointer", opacity: guardandoAgr ? 0.7 : 1 }}>
+                    {guardandoAgr ? "..." : "Guardar"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {agregados.length === 0
+              ? <div style={{ color:"#94A3B8", fontSize:13, textAlign:"center", padding:"16px 0" }}>Sin agregados registrados</div>
+              : <div style={{ border:"1px solid #E2E8F0", borderRadius:10, overflow:"hidden" }}>
+                  {agregados.map((a, i) => (
+                    <div key={a.id} style={{ display:"flex", alignItems:"center", padding:"11px 14px", borderBottom: i < agregados.length-1 ? "1px solid #F1F5F9" : "none" }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:14, color:"#1A2B4A", fontWeight:500 }}>{a.articulo}</div>
+                        <div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>{a.agregado_por_nombre} · {formatFechaAgr(a.fecha)}</div>
+                      </div>
+                      <span style={{ fontSize:13, fontWeight:700, color:"#2563EB", background:"#EFF6FF", border:"1px solid #DBEAFE", borderRadius:6, padding:"2px 10px", whiteSpace:"nowrap" }}>
+                        {a.cantidad}{a.unidad ? ` ${a.unidad}` : ""}
+                      </span>
+                      {rol === "admin" && (
+                        <button onClick={() => eliminarAgregado(a.id)}
+                          style={{ background:"none", border:"none", color:"#CBD5E1", cursor:"pointer", fontSize:15, padding:"0 0 0 10px", flexShrink:0 }}
+                          onMouseEnter={e => e.currentTarget.style.color="#EF4444"}
+                          onMouseLeave={e => e.currentTarget.style.color="#CBD5E1"}>✕</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+            }
+          </div>
+
+          {/* Acciones */}
+          <div style={{ display:"flex", gap:8, marginTop:24, flexWrap:"wrap" }}>
+            <button onClick={onEdit}
+              style={{ padding:"9px 18px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontFamily:"'Inter', sans-serif", fontSize:13, fontWeight:500, cursor:"pointer" }}>
+              Editar
             </button>
+            <button onClick={() => generarPDF(obra)}
+              style={{ padding:"9px 18px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontFamily:"'Inter', sans-serif", fontSize:13, fontWeight:500, cursor:"pointer" }}>
+              Imprimir PDF
+            </button>
+            {obra.estado !== "terminado" && (
+              <button onClick={onEntregada}
+                style={{ padding:"9px 18px", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:8, color:"#059669", fontFamily:"'Inter', sans-serif", fontSize:13, fontWeight:600, cursor:"pointer" }}>
+                Marcar entregada
+              </button>
+            )}
+            {rol === "admin" && (
+              <button onClick={onDelete}
+                style={{ padding:"9px 18px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontFamily:"'Inter', sans-serif", fontSize:13, fontWeight:500, cursor:"pointer" }}>
+                Eliminar
+              </button>
+            )}
           </div>
-
-          {/* Formulario agregar */}
-          {showAddAgr && (
-            <div style={{ background:"#f8fafc", border:"1px solid rgba(30,64,175,0.15)", borderRadius:12, padding:"14px", marginBottom:14 }}>
-              <div style={{ display:"flex", gap:8, marginBottom:8 }}>
-                <input
-                  placeholder="Artículo / material"
-                  value={agrForm.articulo}
-                  onChange={e => setAgrForm(f => ({...f, articulo: e.target.value}))}
-                  style={{ flex:1, padding:"9px 12px", background:"#ffffff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:8, color:"#1e293b", fontFamily:"'DM Sans', sans-serif", fontSize:13, outline:"none" }}
-                />
-              </div>
-              <div style={{ display:"flex", gap:8 }}>
-                <input
-                  type="number" min="0.1" step="0.1" placeholder="Cantidad"
-                  value={agrForm.cantidad}
-                  onChange={e => setAgrForm(f => ({...f, cantidad: e.target.value}))}
-                  style={{ width:90, padding:"9px 12px", background:"#ffffff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:8, color:"#1e40af", fontFamily:"'DM Sans', sans-serif", fontSize:13, fontWeight:700, outline:"none", textAlign:"center" }}
-                />
-                <input
-                  placeholder="Unidad (kg, m², u...)"
-                  value={agrForm.unidad}
-                  onChange={e => setAgrForm(f => ({...f, unidad: e.target.value}))}
-                  style={{ flex:1, padding:"9px 12px", background:"#ffffff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:8, color:"#1e293b", fontFamily:"'DM Sans', sans-serif", fontSize:13, outline:"none" }}
-                />
-                <button onClick={agregarItem} disabled={guardandoAgr}
-                  style={{ padding:"9px 16px", background:"#1e40af", border:"none", borderRadius:8, color:"#ffffff", fontSize:13, fontWeight:600, cursor: guardandoAgr ? "not-allowed" : "pointer", opacity: guardandoAgr ? 0.7 : 1 }}>
-                  {guardandoAgr ? "..." : "Guardar"}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Lista de agregados */}
-          {agregados.length === 0
-            ? <div style={{ color:"#94a3b8", fontSize:13, textAlign:"center", padding:"16px 0" }}>Sin agregados registrados</div>
-            : agregados.map(a => (
-              <div key={a.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 12px", background:"#f8fafc", border:"1px solid rgba(30,64,175,0.08)", borderRadius:10, marginBottom:6 }}>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:14, color:"#1e293b", fontWeight:500 }}>{a.articulo}</div>
-                  <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>
-                    {a.agregado_por_nombre} · {formatFechaAgr(a.fecha)}
-                  </div>
-                </div>
-                <div style={{ background:"rgba(30,64,175,0.12)", border:"1px solid rgba(30,64,175,0.2)", borderRadius:8, padding:"3px 10px", fontSize:13, fontWeight:700, color:"#1e40af", whiteSpace:"nowrap" }}>
-                  {a.cantidad}{a.unidad ? ` ${a.unidad}` : ""}
-                </div>
-                {rol === "admin" && (
-                  <button onClick={() => eliminarAgregado(a.id)}
-                    style={{ background:"none", border:"none", color:"#cbd5e1", cursor:"pointer", fontSize:14, padding:"0 2px" }}
-                    onMouseEnter={e => e.currentTarget.style.color="#e05555"}
-                    onMouseLeave={e => e.currentTarget.style.color="#cbd5e1"}>✕</button>
-                )}
-              </div>
-            ))
-          }
-        </div>
-
-        <div style={{ display:"flex", gap:10, marginTop:24, flexWrap:"wrap" }}>
-          <button onClick={onEdit} style={{ padding:"9px 18px", background:"#eef2ff", border:"1px solid rgba(30,64,175,0.25)", borderRadius:10, color:"#1e40af", fontFamily:"'DM Sans', sans-serif", fontSize:13, cursor:"pointer" }}>✏️ Editar</button>
-          <button onClick={() => { generarPDF(obra); }} style={{ padding:"9px 18px", background:"#eef2ff", border:"1px solid rgba(30,64,175,0.25)", borderRadius:10, color:"#2563eb", fontFamily:"'DM Sans', sans-serif", fontSize:13, cursor:"pointer" }}>🖨️ Imprimir PDF</button>
-          {obra.estado !== "terminado" && (
-            <button onClick={onEntregada} style={{ padding:"9px 18px", background:"rgba(74,154,106,0.15)", border:"1px solid rgba(74,154,106,0.3)", borderRadius:10, color:"#80c090", fontFamily:"'DM Sans', sans-serif", fontSize:13, cursor:"pointer" }}>✅ Entregada</button>
-          )}
-          {rol === "admin" && (
-            <button onClick={onDelete} style={{ padding:"9px 18px", background:"rgba(224,85,85,0.12)", border:"1px solid rgba(224,85,85,0.25)", borderRadius:10, color:"#f08080", fontFamily:"'DM Sans', sans-serif", fontSize:13, cursor:"pointer" }}>🗑️ Eliminar</button>
-          )}
         </div>
       </div>
     </div>
@@ -767,51 +792,67 @@ function GestionUsuarios({ onClose }) {
     } catch { alert("Error al eliminar."); }
   }
 
-  const si = { width:"100%", padding:"10px 13px", background:"#f8fafc", border:"1px solid rgba(30,64,175,0.2)", borderRadius:9, color:"#1e293b", fontFamily:"'DM Sans', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" };
+  const si = { width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" };
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", backdropFilter:"blur(8px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:"#ffffff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:20, padding:"28px 24px", width:"100%", maxWidth:480, maxHeight:"88vh", overflowY:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}>
-          <div style={{ fontFamily:"'Playfair Display', serif", fontSize:20, color:"#1e40af" }}>👥 Equipo</div>
-          <button onClick={onClose} style={{ background:"none", border:"none", color:"#94a3b8", fontSize:20, cursor:"pointer" }}>✕</button>
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:480, maxHeight:"88vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+        <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>Equipo</h2>
+          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
         </div>
 
-        {usuarios.map(u => (
-          <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", background:"#f8fafc", border:"1px solid rgba(30,64,175,0.12)", borderRadius:12, marginBottom:8 }}>
-            <div style={{ width:36, height:36, borderRadius:"50%", background: u.rol==="admin" ? "rgba(30,64,175,0.25)" : "rgba(74,154,106,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>
-              {u.rol === "admin" ? "👑" : "🔧"}
-            </div>
-            <div style={{ flex:1 }}>
-              <div style={{ color:"#1e293b", fontSize:14, fontWeight:500 }}>{u.nombre}</div>
-              <div style={{ color:"#94a3b8", fontSize:12 }}>{u.email} · {u.rol === "admin" ? "Admin" : "Operario"}</div>
-            </div>
-            {u.id !== "admin" && (
-              <button onClick={() => eliminar(u.id)} style={{ background:"none", border:"none", color:"#94a3b8", cursor:"pointer", fontSize:16 }}>🗑️</button>
-            )}
-          </div>
-        ))}
-
-        <div style={{ marginTop:24, paddingTop:20, borderTop:"1px solid rgba(30,64,175,0.1)" }}>
-          <div style={{ fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Agregar usuario</div>
-          {[
-            { label:"Nombre", key:"nombre", ph:"Nombre completo" },
-            { label:"Email", key:"email", ph:"email@fabrica.com" },
-            { label:"Contraseña", key:"password", ph:"Contraseña" },
-          ].map(f => (
-            <div key={f.key} style={{ marginBottom:10 }}>
-              <input style={si} placeholder={f.ph} value={form[f.key]}
-                onChange={e => setForm(x => ({...x, [f.key]: e.target.value}))} />
+        <div style={{ padding:"16px 24px" }}>
+          {usuarios.map(u => (
+            <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:10, marginBottom:8 }}>
+              <div style={{ width:36, height:36, borderRadius:8, background: u.rol==="admin" ? "#1A2B4A" : "#0F766E", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ color:"#1A2B4A", fontSize:14, fontWeight:600 }}>{u.nombre}</div>
+                <div style={{ color:"#94A3B8", fontSize:12 }}>{u.email}</div>
+              </div>
+              <span style={{ fontSize:10, fontWeight:700, color: u.rol==="admin" ? "#1A2B4A" : "#0F766E", background: u.rol==="admin" ? "#EFF6FF" : "#F0FDF4", border:`1px solid ${u.rol==="admin" ? "#DBEAFE" : "#BBF7D0"}`, borderRadius:4, padding:"2px 8px" }}>
+                {u.rol === "admin" ? "ADMIN" : "OPERARIO"}
+              </span>
+              {u.id !== "admin" && (
+                <button onClick={() => eliminar(u.id)} style={{ background:"none", border:"none", color:"#CBD5E1", cursor:"pointer", fontSize:15, padding:0 }}
+                  onMouseEnter={e => e.currentTarget.style.color="#EF4444"}
+                  onMouseLeave={e => e.currentTarget.style.color="#CBD5E1"}>✕</button>
+              )}
             </div>
           ))}
-          <select value={form.rol} onChange={e => setForm(x => ({...x, rol: e.target.value}))} style={{...si, marginBottom:12}}>
-            <option value="operario">Operario</option>
-            <option value="admin">Admin</option>
-          </select>
-          {msg && <div style={{ padding:"8px 12px", borderRadius:8, background: msg.startsWith("✅") ? "rgba(74,154,106,0.15)" : "rgba(224,85,85,0.12)", color: msg.startsWith("✅") ? "#80c090" : "#f08080", fontSize:13, marginBottom:10 }}>{msg}</div>}
-          <button onClick={agregar} disabled={guardando} style={{ width:"100%", padding:12, background:"linear-gradient(135deg,#1e40af,#3b82f6)", border:"none", borderRadius:10, fontFamily:"'Playfair Display', serif", fontSize:15, fontWeight:700, color:"#ffffff", cursor: guardando ? "not-allowed" : "pointer", opacity: guardando ? 0.7 : 1 }}>
-            {guardando ? "Guardando..." : "Agregar usuario"}
-          </button>
+
+          <div style={{ marginTop:20, paddingTop:20, borderTop:"1px solid #F1F5F9" }}>
+            <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:14, fontWeight:700, color:"#1A2B4A", margin:"0 0 14px" }}>Agregar usuario</h3>
+            {[
+              { label:"Nombre completo", key:"nombre", ph:"Nombre completo" },
+              { label:"Email", key:"email", ph:"email@empresa.com" },
+              { label:"Contraseña", key:"password", ph:"Contraseña" },
+            ].map(f => (
+              <div key={f.key} style={{ marginBottom:10 }}>
+                <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:5 }}>{f.label}</label>
+                <input style={si} placeholder={f.ph} value={form[f.key]}
+                  onChange={e => setForm(x => ({...x, [f.key]: e.target.value}))} />
+              </div>
+            ))}
+            <div style={{ marginBottom:14 }}>
+              <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:5 }}>Rol</label>
+              <select value={form.rol} onChange={e => setForm(x => ({...x, rol: e.target.value}))} style={si}>
+                <option value="operario">Operario</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            {msg && (
+              <div style={{ padding:"9px 13px", borderRadius:8, background: msg.startsWith("✅") ? "#ECFDF5" : "#FEF2F2", border:`1px solid ${msg.startsWith("✅") ? "#A7F3D0" : "#FECACA"}`, color: msg.startsWith("✅") ? "#059669" : "#DC2626", fontSize:13, marginBottom:12 }}>
+                {msg}
+              </div>
+            )}
+            <button onClick={agregar} disabled={guardando}
+              style={{ width:"100%", padding:"11px", background: guardando ? "#94A3B8" : "#1A2B4A", border:"none", borderRadius:8, fontFamily:"'Inter', sans-serif", fontSize:14, fontWeight:600, color:"#ffffff", cursor: guardando ? "not-allowed" : "pointer" }}>
+              {guardando ? "Guardando..." : "Agregar usuario"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -837,37 +878,45 @@ function ConfigWhatsApp({ obras, onClose }) {
   const proximas = obras.filter(o => o.estado !== "terminado" && diasRestantes(o.fecha) > 7 && diasRestantes(o.fecha) <= 21).length;
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", backdropFilter:"blur(8px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:"#ffffff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:20, padding:"28px 24px", width:"100%", maxWidth:440 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}>
-          <div style={{ fontFamily:"'Playfair Display', serif", fontSize:20, color:"#1e40af" }}>💬 Alertas WhatsApp</div>
-          <button onClick={onClose} style={{ background:"none", border:"none", color:"#94a3b8", fontSize:20, cursor:"pointer" }}>✕</button>
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:440, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+        <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>Alertas WhatsApp</h2>
+          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
         </div>
 
-        <div style={{ background:"#f8fafc", borderRadius:12, padding:"14px 16px", marginBottom:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-          <div style={{ textAlign:"center" }}>
-            <div style={{ fontFamily:"'Playfair Display', serif", fontSize:28, fontWeight:900, color:"#e05555" }}>{urgentes}</div>
-            <div style={{ fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1 }}>Urgentes</div>
+        <div style={{ padding:"20px 24px" }}>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
+            <div style={{ background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:10, padding:"14px", textAlign:"center" }}>
+              <div style={{ fontFamily:"'Sora', sans-serif", fontSize:28, fontWeight:800, color:"#DC2626" }}>{urgentes}</div>
+              <div style={{ fontSize:11, color:"#EF4444", fontWeight:600, marginTop:4 }}>URGENTES</div>
+            </div>
+            <div style={{ background:"#FFFBEB", border:"1px solid #FDE68A", borderRadius:10, padding:"14px", textAlign:"center" }}>
+              <div style={{ fontFamily:"'Sora', sans-serif", fontSize:28, fontWeight:800, color:"#D97706" }}>{proximas}</div>
+              <div style={{ fontSize:11, color:"#F59E0B", fontWeight:600, marginTop:4 }}>PRÓXIMAS</div>
+            </div>
           </div>
-          <div style={{ textAlign:"center" }}>
-            <div style={{ fontFamily:"'Playfair Display', serif", fontSize:28, fontWeight:900, color:"#d4783a" }}>{proximas}</div>
-            <div style={{ fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1 }}>Próximas</div>
+
+          <div style={{ marginBottom:16 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Número de WhatsApp</label>
+            <input value={numero} onChange={e => setNumero(e.target.value)} placeholder="5491112345678"
+              style={{ width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:14, outline:"none", boxSizing:"border-box" }} />
+            <div style={{ fontSize:11, color:"#94A3B8", marginTop:5 }}>Código país + área + número, sin espacios ni +</div>
           </div>
+
+          <button onClick={guardar}
+            style={{ width:"100%", padding:"10px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color: saved ? "#059669" : "#475569", fontFamily:"'Inter', sans-serif", fontSize:13, fontWeight:600, cursor:"pointer", marginBottom:10 }}>
+            {saved ? "Número guardado" : "Guardar número"}
+          </button>
+
+          <button onClick={() => { enviarWhatsApp(obras, numero); onClose(); }}
+            style={{ width:"100%", padding:"12px", background:"#25D366", border:"none", borderRadius:8, fontFamily:"'Inter', sans-serif", fontSize:14, fontWeight:700, color:"#fff", cursor:"pointer" }}>
+            Enviar resumen ahora
+          </button>
         </div>
-
-        <label style={{ display:"block", fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>Tu número de WhatsApp</label>
-        <input value={numero} onChange={e => setNumero(e.target.value)} placeholder="5491112345678 (sin + ni espacios)"
-          style={{ width:"100%", padding:"11px 14px", background:"#f8fafc", border:"1px solid rgba(30,64,175,0.2)", borderRadius:10, color:"#1e293b", fontFamily:"'DM Sans', sans-serif", fontSize:14, outline:"none", boxSizing:"border-box", marginBottom:10 }}
-        />
-        <div style={{ fontSize:12, color:"#94a3b8", marginBottom:16 }}>Formato: código país + área + número. Ej: 5491112345678</div>
-
-        <button onClick={guardar} style={{ width:"100%", padding:12, background:"#eef2ff", border:"1px solid rgba(30,64,175,0.25)", borderRadius:10, color: saved ? "#80c090" : "#1e40af", fontFamily:"'DM Sans', sans-serif", fontSize:14, cursor:"pointer", marginBottom:10 }}>
-          {saved ? "✅ Número guardado" : "💾 Guardar número"}
-        </button>
-
-        <button onClick={() => { enviarWhatsApp(obras, numero); onClose(); }} style={{ width:"100%", padding:13, background:"linear-gradient(135deg,#25d366,#128c7e)", border:"none", borderRadius:10, fontFamily:"'Playfair Display', serif", fontSize:16, fontWeight:700, color:"#fff", cursor:"pointer" }}>
-          📤 Enviar resumen ahora
-        </button>
+      </div>
+    </div>
+  );
 
         <div style={{ marginTop:14, padding:"10px 14px", background:"rgba(30,64,175,0.06)", borderRadius:8, border:"1px solid rgba(30,64,175,0.12)", fontSize:12, color:"#94a3b8", lineHeight:1.7 }}>
           💡 El mensaje se abre en WhatsApp listo para enviar. Guardá el número para acceso rápido desde el botón de alertas en el header.
@@ -1012,8 +1061,10 @@ export default function App() {
   });
 
   if (cargando) return (
-    <div style={{ minHeight:"100vh", background:"#ffffff", display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <div style={{ fontFamily:"'Playfair Display', serif", color:"#1e40af", fontSize:20 }}>Cargando...</div>
+    <div style={{ minHeight:"100vh", background:"#F4F6F9", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:12 }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Sora:wght@700&family=Inter:wght@400;500&display=swap'); * { box-sizing: border-box; }`}</style>
+      <img src={LOGO_AIXA} alt="Obras Grupo Aixa S.A." style={{ height:40, marginBottom:8, opacity:0.7 }} />
+      <div style={{ fontFamily:"'Inter', sans-serif", color:"#94A3B8", fontSize:13 }}>Cargando...</div>
     </div>
   );
   if (!sesion) return <Login onLogin={handleLogin} />;
@@ -1021,54 +1072,60 @@ export default function App() {
   const isAdmin = sesion.rol === "admin";
 
   return (
-    <div style={{ minHeight:"100vh", background:"#f1f5f9", fontFamily:"'DM Sans', sans-serif", color:"#1e293b" }}>
+    <div style={{ minHeight:"100vh", background:"#F4F6F9", fontFamily:"'Inter', sans-serif", color:"#1A2B4A" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap');
         * { box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::webkit-scrollbar-track { background: #f1f5f9; }
-        ::-webkit-scrollbar-thumb { background: rgba(30,64,175,0.25); border-radius: 3px; }
-        input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6) sepia(1) hue-rotate(10deg); }
-        @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
-        @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: #F4F6F9; }
+        ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
+        input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.5; cursor: pointer; }
+        @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes slideIn { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:translateX(0); } }
+        .obra-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(26,43,74,0.10) !important; border-color: #93C5FD !important; }
+        .obra-card { transition: all 0.18s ease; }
+        .btn-icon:hover { background: #EFF6FF !important; }
+        .filter-btn:hover { background: #EFF6FF !important; }
       `}</style>
 
       {/* HEADER */}
-      <header style={{ position:"sticky", top:0, zIndex:100, background:"#ffffff", borderBottom:"1px solid #e2e8f0", boxShadow:"0 1px 8px rgba(0,0,0,0.08)", padding:"10px 20px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-        <img src={LOGO_AIXA} alt="Obras Grupo Aixa S.A." style={{ height:40 }} />
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          {/* WhatsApp quick button */}
-          <button onClick={() => setShowWA(true)} title="Alertas WhatsApp"
-            style={{ position:"relative", background:"#f8fafc", border:"1px solid rgba(30,64,175,0.18)", borderRadius:"50%", width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:18 }}>
-            💬
-            {alertCount > 0 && <div style={{ position:"absolute", top:2, right:2, background:"#25d366", borderRadius:"50%", width:10, height:10 }} />}
+      <header style={{ position:"sticky", top:0, zIndex:100, background:"#ffffff", borderBottom:"1px solid #E8ECF0", padding:"0 24px", height:60, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <img src={LOGO_AIXA} alt="Obras Grupo Aixa S.A." style={{ height:36 }} />
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+
+          {/* WhatsApp */}
+          <button onClick={() => setShowWA(true)} className="btn-icon" title="Enviar alerta WhatsApp"
+            style={{ position:"relative", background:"transparent", border:"1px solid #E8ECF0", borderRadius:8, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#25D366" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            {alertCount > 0 && <div style={{ position:"absolute", top:6, right:6, background:"#22C55E", borderRadius:"50%", width:7, height:7 }} />}
           </button>
 
-          {/* Notif bell */}
+          {/* Notificaciones */}
           <div style={{ position:"relative" }}>
-            <button onClick={() => setShowNotif(!showNotif)}
-              style={{ position:"relative", background:"#f8fafc", border:"1px solid rgba(30,64,175,0.18)", borderRadius:"50%", width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:18 }}>
-              🔔
+            <button onClick={() => setShowNotif(!showNotif)} className="btn-icon"
+              style={{ position:"relative", background:"transparent", border:"1px solid #E8ECF0", borderRadius:8, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
               {alertCount > 0 && (
-                <div style={{ position:"absolute", top:2, right:2, background:"#e05555", color:"#fff", fontSize:9, fontWeight:700, borderRadius:"50%", width:16, height:16, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <div style={{ position:"absolute", top:5, right:5, background:"#EF4444", color:"#fff", fontSize:8, fontWeight:700, borderRadius:"50%", width:15, height:15, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Inter', sans-serif" }}>
                   {alertCount}
                 </div>
               )}
             </button>
-
             {showNotif && (
-              <div onClick={e => e.stopPropagation()} style={{ position:"absolute", top:48, right:0, background:"#ffffff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:14, padding:16, width:290, maxHeight:360, overflowY:"auto", boxShadow:"0 8px 40px rgba(0,0,0,0.7)", zIndex:200 }}>
-                <div style={{ fontSize:10, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1, marginBottom:12 }}>Obras con alerta</div>
+              <div onClick={e => e.stopPropagation()} style={{ position:"absolute", top:46, right:0, background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:12, padding:"16px", width:300, maxHeight:380, overflowY:"auto", boxShadow:"0 12px 40px rgba(26,43,74,0.15)", zIndex:200 }}>
+                <div style={{ fontSize:11, color:"#94A3B8", textTransform:"uppercase", letterSpacing:1, marginBottom:12, fontFamily:"'Inter', sans-serif", fontWeight:600 }}>Alertas activas</div>
                 {alertCount === 0
-                  ? <div style={{ color:"#94a3b8", fontSize:13 }}>Todo bajo control 👌</div>
+                  ? <div style={{ color:"#94A3B8", fontSize:13, textAlign:"center", padding:"12px 0" }}>Sin alertas pendientes</div>
                   : [...urgentes, ...proximas].sort((a,b) => diasRestantes(a.fecha) - diasRestantes(b.fecha)).map(o => {
                     const d = diasRestantes(o.fecha);
+                    const isUrg = d <= 7;
                     return (
-                      <div key={o.id} onClick={() => { setDetalle(o); setShowNotif(false); }} style={{ display:"flex", gap:10, alignItems:"center", padding:"10px 12px", background:"#f8fafc", borderRadius:10, marginBottom:8, cursor:"pointer", border:"1px solid rgba(30,64,175,0.1)" }}>
-                        <span style={{ fontSize:18 }}>{d <= 7 ? "🚨" : "⏰"}</span>
-                        <div>
-                          <div style={{ fontSize:13, color:"#1e293b", fontWeight:500 }}>{o.nombre}</div>
-                          <div style={{ fontSize:11, color: d <= 7 ? "#e05555" : "#d4783a" }}>{d === 0 ? "¡Entrega HOY!" : `${d} días`}</div>
+                      <div key={o.id} onClick={() => { setDetalle(o); setShowNotif(false); }}
+                        style={{ display:"flex", gap:10, alignItems:"center", padding:"10px 12px", background: isUrg ? "#FEF2F2" : "#FFFBEB", borderRadius:8, marginBottom:6, cursor:"pointer", border:`1px solid ${isUrg ? "#FECACA" : "#FDE68A"}` }}>
+                        <div style={{ width:8, height:8, borderRadius:"50%", background: isUrg ? "#EF4444" : "#F59E0B", flexShrink:0 }} />
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:13, color:"#1A2B4A", fontWeight:500 }}>{o.nombre}</div>
+                          <div style={{ fontSize:11, color: isUrg ? "#EF4444" : "#F59E0B", fontWeight:600 }}>{d === 0 ? "Entrega hoy" : `${d} días`}</div>
                         </div>
                       </div>
                     );
@@ -1078,66 +1135,77 @@ export default function App() {
             )}
           </div>
 
-          {/* Historial button (solo admin) */}
+          {/* Historial */}
           {isAdmin && (
-            <button onClick={verHistorial} title="Historial de cambios"
-              style={{ background:"#f8fafc", border:"1px solid rgba(30,64,175,0.18)", borderRadius:"50%", width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:18 }}>
-              📋
+            <button onClick={verHistorial} className="btn-icon" title="Historial de cambios"
+              style={{ background:"transparent", border:"1px solid #E8ECF0", borderRadius:8, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
             </button>
           )}
 
-          {/* User menu */}
-          <div style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px", background:"#f8fafc", borderRadius:20, border:"1px solid rgba(30,64,175,0.18)", cursor:"pointer" }} onClick={isAdmin ? () => setShowUsuarios(true) : undefined}>
-            <div style={{ width:24, height:24, borderRadius:"50%", background: isAdmin ? "rgba(30,64,175,0.25)" : "rgba(74,154,106,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12 }}>
-              {isAdmin ? "👑" : "🔧"}
+          {/* Divider */}
+          <div style={{ width:1, height:24, background:"#E8ECF0", margin:"0 4px" }} />
+
+          {/* Usuario */}
+          <div onClick={isAdmin ? () => setShowUsuarios(true) : undefined}
+            style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px 6px 8px", background:"#F8FAFC", border:"1px solid #E8ECF0", borderRadius:8, cursor: isAdmin ? "pointer" : "default" }}>
+            <div style={{ width:26, height:26, borderRadius:6, background: isAdmin ? "#1A2B4A" : "#0F766E", display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </div>
-            <span style={{ fontSize:12, color:"#475569", maxWidth:90, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{sesion.nombre.split(" ")[0]}</span>
+            <span style={{ fontSize:13, color:"#1A2B4A", fontWeight:500, maxWidth:90, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{sesion.nombre.split(" ")[0]}</span>
+            {isAdmin && <span style={{ fontSize:10, color:"#94A3B8", background:"#EFF6FF", border:"1px solid #DBEAFE", borderRadius:4, padding:"1px 6px", fontWeight:600 }}>ADMIN</span>}
           </div>
 
-          <button onClick={handleLogout} title="Cerrar sesión"
-            style={{ background:"none", border:"1px solid rgba(30,64,175,0.15)", borderRadius:8, padding:"6px 10px", color:"#94a3b8", fontSize:12, cursor:"pointer" }}>
+          <button onClick={handleLogout}
+            style={{ background:"transparent", border:"1px solid #E8ECF0", borderRadius:8, padding:"7px 14px", color:"#64748B", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
             Salir
           </button>
         </div>
       </header>
 
-      {/* Click outside notif */}
       {showNotif && <div onClick={() => setShowNotif(false)} style={{ position:"fixed", inset:0, zIndex:99 }} />}
 
-      <main style={{ maxWidth:1100, margin:"0 auto", padding:"24px 16px 80px" }}>
+      <main style={{ maxWidth:1200, margin:"0 auto", padding:"28px 24px 100px" }}>
 
         {/* STATS */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:28 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:32 }}>
           {[
-            { num: activas.length, label:"En curso", color:"#1e40af" },
-            { num: urgentes.length, label:"Urgentes", color:"#e05555" },
-            { num: proximas.length, label:"Próximas", color:"#d4783a" },
-            { num: terminadas.length, label:"Entregadas", color:"#4a9a6a" },
+            { num: activas.length, label:"Obras en curso", color:"#2563EB", bg:"#EFF6FF", border:"#DBEAFE" },
+            { num: urgentes.length, label:"Urgentes", color:"#DC2626", bg:"#FEF2F2", border:"#FECACA" },
+            { num: proximas.length, label:"Próximas", color:"#D97706", bg:"#FFFBEB", border:"#FDE68A" },
+            { num: terminadas.length, label:"Entregadas", color:"#059669", bg:"#ECFDF5", border:"#A7F3D0" },
           ].map((s, i) => (
-            <div key={i} style={{ background:"#ffffff", border:"1px solid #e2e8f0", borderRadius:14, boxShadow:"0 1px 4px rgba(0,0,0,0.05)", padding:"16px 12px", textAlign:"center", animation:`fadeUp 0.4s ease ${i*0.07}s both` }}>
-              <div style={{ fontFamily:"'Playfair Display', serif", fontSize:"clamp(22px,4vw,32px)", fontWeight:900, color:s.color, lineHeight:1 }}>{s.num}</div>
-              <div style={{ fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1, marginTop:4 }}>{s.label}</div>
+            <div key={i} style={{ background:"#ffffff", border:`1px solid ${s.border}`, borderRadius:12, padding:"20px 20px 18px", animation:`fadeUp 0.35s ease ${i*0.06}s both` }}>
+              <div style={{ fontFamily:"'Sora', sans-serif", fontSize:32, fontWeight:800, color:s.color, lineHeight:1 }}>{s.num}</div>
+              <div style={{ fontSize:12, color:"#64748B", fontWeight:500, marginTop:6, letterSpacing:0.2 }}>{s.label}</div>
             </div>
           ))}
         </div>
 
-        {/* ALERT BANNER */}
+        {/* ALERTAS */}
         {(urgentes.length > 0 || proximas.length > 0) && (
-          <div style={{ marginBottom:24 }}>
-            <div style={{ fontSize:11, color:"#94a3b8", textTransform:"uppercase", letterSpacing:2, marginBottom:10 }}>⚠️ Alertas activas</div>
-            {[...urgentes, ...proximas].sort((a,b) => diasRestantes(a.fecha)-diasRestantes(b.fecha)).map(o => {
+          <div style={{ marginBottom:28, background:"#ffffff", border:"1px solid #FECACA", borderRadius:12, overflow:"hidden" }}>
+            <div style={{ padding:"12px 20px", background:"#FEF2F2", borderBottom:"1px solid #FECACA", display:"flex", alignItems:"center", gap:8 }}>
+              <div style={{ width:8, height:8, borderRadius:"50%", background:"#EF4444" }} />
+              <span style={{ fontSize:12, fontWeight:600, color:"#DC2626", letterSpacing:0.5 }}>ENTREGAS PRÓXIMAS</span>
+            </div>
+            {[...urgentes, ...proximas].sort((a,b) => diasRestantes(a.fecha)-diasRestantes(b.fecha)).map((o, i) => {
               const d = diasRestantes(o.fecha);
-              const urgent = d <= 7;
+              const isUrg = d <= 7;
               return (
                 <div key={o.id} onClick={() => setDetalle(o)}
-                  style={{ display:"flex", alignItems:"center", gap:14, padding:"12px 16px", borderRadius:12, marginBottom:8, background: urgent ? "rgba(224,85,85,0.1)" : "rgba(212,120,58,0.1)", borderLeft:`3px solid ${urgent ? "#e05555" : "#d4783a"}`, cursor:"pointer" }}>
-                  <span style={{ fontSize:22 }}>{urgent ? "🚨" : "⏰"}</span>
+                  style={{ display:"flex", alignItems:"center", gap:16, padding:"14px 20px", borderBottom: i < urgentes.length + proximas.length - 1 ? "1px solid #F1F5F9" : "none", cursor:"pointer", transition:"background 0.15s" }}
+                  onMouseEnter={e => e.currentTarget.style.background="#FAFBFC"}
+                  onMouseLeave={e => e.currentTarget.style.background="transparent"}>
                   <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:600, color:"#1e293b", fontSize:14 }}>{o.nombre}</div>
-                    <div style={{ color:"#94a3b8", fontSize:12 }}>{o.lugar}</div>
+                    <div style={{ fontSize:14, fontWeight:600, color:"#1A2B4A" }}>{o.nombre}</div>
+                    <div style={{ fontSize:12, color:"#64748B", marginTop:2 }}>{o.lugar}</div>
                   </div>
-                  <div style={{ fontFamily:"'Playfair Display', serif", fontSize:22, fontWeight:900, color: urgent ? "#e05555" : "#d4783a" }}>
-                    {d === 0 ? "¡HOY!" : `${d}d`}
+                  <div style={{ textAlign:"right" }}>
+                    <div style={{ fontSize:13, fontWeight:700, color: isUrg ? "#DC2626" : "#D97706" }}>
+                      {d === 0 ? "HOY" : `${d} días`}
+                    </div>
+                    <div style={{ fontSize:11, color:"#94A3B8" }}>{formatDate(o.fecha)}</div>
                   </div>
                 </div>
               );
@@ -1145,19 +1213,19 @@ export default function App() {
           </div>
         )}
 
-        {/* FILTROS */}
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
-          <div style={{ fontFamily:"'Playfair Display', serif", fontSize:17, color:"#1e40af" }}>🪵 Obras</div>
-          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+        {/* FILTROS + TÍTULO */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:12 }}>
+          <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Obras</h2>
+          <div style={{ display:"flex", gap:4, background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:10, padding:4 }}>
             {[
               { key:"todas", label:"Todas" },
-              { key:"urgent", label:"🔴 Urgentes" },
-              { key:"warning", label:"🟠 Próximas" },
-              { key:"ok", label:"🟢 A tiempo" },
-              { key:"done", label:"📦 Entregadas" },
+              { key:"urgent", label:"Urgentes" },
+              { key:"warning", label:"Próximas" },
+              { key:"ok", label:"A tiempo" },
+              { key:"done", label:"Entregadas" },
             ].map(f => (
-              <button key={f.key} onClick={() => setFilter(f.key)}
-                style={{ padding:"6px 14px", borderRadius:20, border: filter===f.key ? "1px solid #1e40af" : "1px solid rgba(30,64,175,0.18)", background: filter===f.key ? "#1e40af" : "#f8fafc", color: filter===f.key ? "#1a0e00" : "#64748b", fontFamily:"'DM Sans', sans-serif", fontSize:12, fontWeight: filter===f.key ? 700 : 400, cursor:"pointer" }}>
+              <button key={f.key} onClick={() => setFilter(f.key)} className="filter-btn"
+                style={{ padding:"6px 14px", borderRadius:7, border:"none", background: filter===f.key ? "#1A2B4A" : "transparent", color: filter===f.key ? "#ffffff" : "#64748B", fontFamily:"'Inter', sans-serif", fontSize:12, fontWeight: filter===f.key ? 600 : 400, cursor:"pointer", transition:"all 0.15s" }}>
                 {f.label}
               </button>
             ))}
@@ -1167,52 +1235,83 @@ export default function App() {
         {/* GRID OBRAS */}
         {obrasFiltradas.length === 0
           ? (
-            <div style={{ textAlign:"center", padding:"60px 20px", color:"#94a3b8" }}>
-              <div style={{ fontSize:48, marginBottom:14, opacity:0.4 }}>🪵</div>
-              <div style={{ fontFamily:"'Playfair Display', serif", fontSize:20, color:"#64748b", marginBottom:6 }}>No hay obras aquí</div>
-              <div style={{ fontSize:13 }}>Usá el botón + para agregar una nueva.</div>
+            <div style={{ textAlign:"center", padding:"80px 20px", background:"#ffffff", borderRadius:16, border:"1px solid #E8ECF0" }}>
+              <div style={{ fontSize:13, color:"#94A3B8", marginBottom:6 }}>No hay obras en esta categoría</div>
+              <div style={{ fontSize:12, color:"#CBD5E1" }}>Usá el botón + para agregar una nueva</div>
             </div>
           )
           : (
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:18 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))", gap:16 }}>
               {obrasFiltradas.map((o, idx) => {
                 const d = diasRestantes(o.fecha);
                 const status = getStatus(d, o.estado);
                 const sm = STATUS_META[status];
-                const diasLabel = o.estado === "terminado" ? "Entregada" : d < 0 ? `+${Math.abs(d)}d` : d === 0 ? "¡HOY!" : `${d}d`;
+                const statusColors = {
+                  urgent: { bg:"#FEF2F2", text:"#DC2626", border:"#FECACA" },
+                  vencida: { bg:"#FEF2F2", text:"#DC2626", border:"#FECACA" },
+                  warning: { bg:"#FFFBEB", text:"#D97706", border:"#FDE68A" },
+                  ok: { bg:"#ECFDF5", text:"#059669", border:"#A7F3D0" },
+                  done: { bg:"#F8FAFC", text:"#64748B", border:"#E2E8F0" },
+                };
+                const sc = statusColors[status] || statusColors.ok;
+                const diasLabel = o.estado === "terminado" ? "Entregada" : d < 0 ? `Vencida` : d === 0 ? "Hoy" : `${d} días`;
                 return (
-                  <div key={o.id} onClick={() => setDetalle(o)}
-                    style={{ background:"#f8fafc", border:"1px solid rgba(30,64,175,0.12)", borderRadius:16, padding:"20px 18px", cursor:"pointer", position:"relative", overflow:"hidden", animation:`fadeUp 0.4s ease ${idx*0.05}s both`, transition:"transform 0.2s, box-shadow 0.2s, border-color 0.2s" }}
-                    onMouseEnter={e => { e.currentTarget.style.transform="translateY(-3px)"; e.currentTarget.style.borderColor="rgba(30,64,175,0.3)"; e.currentTarget.style.boxShadow="0 8px 40px rgba(0,0,0,0.6)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.borderColor="rgba(30,64,175,0.12)"; e.currentTarget.style.boxShadow="none"; }}>
+                  <div key={o.id} className="obra-card" onClick={() => setDetalle(o)}
+                    style={{ background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:14, overflow:"hidden", cursor:"pointer", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
 
-                    {/* top accent bar */}
-                    <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:sm.color, borderRadius:"16px 16px 0 0" }} />
+                    {/* Barra de estado */}
+                    <div style={{ height:4, background:sm.color }} />
 
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
-                      <div style={{ fontFamily:"'Playfair Display', serif", fontSize:16, color:"#1e293b", flex:1, lineHeight:1.3 }}>{o.nombre}</div>
-                      <div style={{ padding:"3px 10px", borderRadius:20, background:sm.bg, color:sm.color, fontSize:11, fontWeight:700, marginLeft:8, whiteSpace:"nowrap", border:`1px solid ${sm.color}40` }}>
-                        {diasLabel}
-                      </div>
-                    </div>
-
-                    <div style={{ color:"#94a3b8", fontSize:12, marginBottom:6, display:"flex", alignItems:"center", gap:4 }}>📍 {o.lugar}</div>
-                    <div style={{ color:"#475569", fontSize:12, marginBottom:12, display:"flex", alignItems:"center", gap:4 }}>📅 {formatDate(o.fecha)}</div>
-
-                    <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:14 }}>
-                      {normalizarMuebles(o.muebles||[]).slice(0,4).map((m,i) => (
-                        <div key={i} style={{ background:"#eef2ff", border:"1px solid rgba(30,64,175,0.12)", borderRadius:6, padding:"2px 8px", fontSize:11, color:"#475569" }}>
-                          {m.nombre}{m.cantidad > 1 ? <span style={{ color:"#1e40af", fontWeight:700 }}> ×{m.cantidad}</span> : ""}
+                    <div style={{ padding:"18px 18px 16px" }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
+                        <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", flex:1, lineHeight:1.35, paddingRight:10 }}>{o.nombre}</div>
+                        <div style={{ padding:"3px 10px", borderRadius:6, background:sc.bg, color:sc.text, fontSize:11, fontWeight:700, border:`1px solid ${sc.border}`, whiteSpace:"nowrap", flexShrink:0, fontFamily:"'Inter', sans-serif" }}>
+                          {diasLabel}
                         </div>
-                      ))}
-                      {(o.muebles||[]).length > 4 && <div style={{ background:"#eef2ff", border:"1px solid rgba(30,64,175,0.12)", borderRadius:6, padding:"2px 8px", fontSize:11, color:"#94a3b8" }}>+{(o.muebles||[]).length - 4}</div>}
-                    </div>
+                      </div>
 
-                    <div onClick={e => e.stopPropagation()} style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                      <button onClick={() => setModalObra(o)} style={{ padding:"5px 12px", background:"#eef2ff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:8, color:"#1e40af", fontSize:12, cursor:"pointer", fontFamily:"'DM Sans', sans-serif" }}>✏️ Editar</button>
-                      <button onClick={() => generarPDF(o)} style={{ padding:"5px 12px", background:"#eef2ff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:8, color:"#2563eb", fontSize:12, cursor:"pointer", fontFamily:"'DM Sans', sans-serif" }}>🖨️ PDF</button>
-                      {o.estado !== "terminado" && <button onClick={() => marcarEntregada(o.id)} style={{ padding:"5px 12px", background:"rgba(74,154,106,0.12)", border:"1px solid rgba(74,154,106,0.25)", borderRadius:8, color:"#80c090", fontSize:12, cursor:"pointer", fontFamily:"'DM Sans', sans-serif" }}>✅</button>}
-                      {isAdmin && <button onClick={() => eliminarObra(o.id)} style={{ padding:"5px 12px", background:"rgba(224,85,85,0.1)", border:"1px solid rgba(224,85,85,0.2)", borderRadius:8, color:"#f08080", fontSize:12, cursor:"pointer", fontFamily:"'DM Sans', sans-serif" }}>🗑️</button>}
+                      <div style={{ fontSize:12, color:"#64748B", marginBottom:4, display:"flex", alignItems:"center", gap:6 }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        {o.lugar}
+                      </div>
+                      <div style={{ fontSize:12, color:"#64748B", marginBottom:14, display:"flex", alignItems:"center", gap:6 }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        {formatDate(o.fecha)}
+                      </div>
+
+                      {(o.muebles||[]).length > 0 && (
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:14 }}>
+                          {normalizarMuebles(o.muebles||[]).slice(0,3).map((m,i) => (
+                            <div key={i} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:4, padding:"2px 8px", fontSize:11, color:"#475569" }}>
+                              {m.nombre}{m.cantidad > 1 ? ` ×${m.cantidad}` : ""}
+                            </div>
+                          ))}
+                          {(o.muebles||[]).length > 3 && <div style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:4, padding:"2px 8px", fontSize:11, color:"#94A3B8" }}>+{(o.muebles||[]).length - 3}</div>}
+                        </div>
+                      )}
+
+                      <div onClick={e => e.stopPropagation()} style={{ display:"flex", gap:6, paddingTop:12, borderTop:"1px solid #F1F5F9" }}>
+                        <button onClick={() => setModalObra(o)}
+                          style={{ flex:1, padding:"7px 0", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
+                          Editar
+                        </button>
+                        <button onClick={() => generarPDF(o)}
+                          style={{ flex:1, padding:"7px 0", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
+                          PDF
+                        </button>
+                        {o.estado !== "terminado" && (
+                          <button onClick={() => marcarEntregada(o.id)}
+                            style={{ flex:1, padding:"7px 0", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:8, color:"#059669", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
+                            Entregar
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button onClick={() => eliminarObra(o.id)}
+                            style={{ padding:"7px 10px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:12, cursor:"pointer" }}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -1224,10 +1323,11 @@ export default function App() {
 
       {/* FAB */}
       <button onClick={() => setModalObra("nueva")}
-        style={{ position:"fixed", bottom:28, right:24, width:56, height:56, borderRadius:"50%", background:"linear-gradient(135deg,#1e40af,#3b82f6)", border:"none", fontSize:26, color:"#ffffff", boxShadow:"0 6px 30px rgba(30,64,175,0.3)", cursor:"pointer", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", transition:"transform 0.2s, box-shadow 0.2s" }}
-        onMouseEnter={e => { e.currentTarget.style.transform="scale(1.1) rotate(15deg)"; e.currentTarget.style.boxShadow="0 10px 40px rgba(30,64,175,0.5)"; }}
-        onMouseLeave={e => { e.currentTarget.style.transform="scale(1) rotate(0)"; e.currentTarget.style.boxShadow="0 6px 30px rgba(30,64,175,0.3)"; }}>
-        ＋
+        style={{ position:"fixed", bottom:28, right:24, height:48, padding:"0 22px", borderRadius:12, background:"#1A2B4A", border:"none", fontSize:13, fontWeight:600, color:"#ffffff", boxShadow:"0 4px 20px rgba(26,43,74,0.35)", cursor:"pointer", zIndex:200, display:"flex", alignItems:"center", gap:8, fontFamily:"'Inter', sans-serif", letterSpacing:0.2, transition:"all 0.18s" }}
+        onMouseEnter={e => { e.currentTarget.style.background="#2563EB"; e.currentTarget.style.boxShadow="0 6px 24px rgba(37,99,235,0.4)"; }}
+        onMouseLeave={e => { e.currentTarget.style.background="#1A2B4A"; e.currentTarget.style.boxShadow="0 4px 20px rgba(26,43,74,0.35)"; }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nueva obra
       </button>
 
       {/* MODALES */}
@@ -1256,31 +1356,33 @@ export default function App() {
 
       {/* HISTORIAL PANEL */}
       {showHistorial && (
-        <div onClick={e => e.target === e.currentTarget && setShowHistorial(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", backdropFilter:"blur(8px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-          <div style={{ background:"#ffffff", border:"1px solid rgba(30,64,175,0.2)", borderRadius:20, padding:"28px 24px", width:"100%", maxWidth:520, maxHeight:"85vh", overflowY:"auto" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}>
-              <div style={{ fontFamily:"'Playfair Display', serif", fontSize:20, color:"#1e40af" }}>📋 Historial de cambios</div>
-              <button onClick={() => setShowHistorial(false)} style={{ background:"none", border:"none", color:"#94a3b8", fontSize:20, cursor:"pointer" }}>✕</button>
+        <div onClick={e => e.target === e.currentTarget && setShowHistorial(false)} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:520, maxHeight:"85vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+            <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, background:"#ffffff", borderRadius:"14px 14px 0 0" }}>
+              <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>Historial de cambios</h2>
+              <button onClick={() => setShowHistorial(false)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
             </div>
-            {historial.length === 0
-              ? <div style={{ color:"#94a3b8", fontSize:13, textAlign:"center", padding:30 }}>Sin cambios registrados aún.</div>
-              : historial.map(h => (
-                <div key={h.id} style={{ display:"flex", gap:12, padding:"12px 0", borderBottom:"1px solid rgba(30,64,175,0.08)" }}>
-                  <div style={{ width:36, height:36, borderRadius:"50%", background:"rgba(30,64,175,0.1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>
-                    {h.accion === "creó" ? "✨" : h.accion === "eliminó" ? "🗑️" : h.accion === "marcó como entregada" ? "✅" : "✏️"}
-                  </div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:13, color:"#1e293b" }}>
-                      <b style={{ color:"#1e40af" }}>{h.usuario_nombre}</b> {h.accion} <b style={{ color:"#1e293b" }}>{h.obra_nombre}</b>
+            <div style={{ padding:"8px 24px 24px" }}>
+              {historial.length === 0
+                ? <div style={{ color:"#94A3B8", fontSize:13, textAlign:"center", padding:"40px 0" }}>Sin cambios registrados aún</div>
+                : historial.map(h => (
+                  <div key={h.id} style={{ display:"flex", gap:14, padding:"14px 0", borderBottom:"1px solid #F8FAFC" }}>
+                    <div style={{ width:8, height:8, borderRadius:"50%", background: h.accion==="eliminó" ? "#EF4444" : h.accion==="creó" ? "#059669" : "#2563EB", flexShrink:0, marginTop:5 }} />
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:13, color:"#1A2B4A", lineHeight:1.5 }}>
+                        <span style={{ fontWeight:600 }}>{h.usuario_nombre}</span>
+                        <span style={{ color:"#64748B" }}> {h.accion} </span>
+                        <span style={{ fontWeight:600 }}>{h.obra_nombre}</span>
+                      </div>
+                      {h.detalle && <div style={{ fontSize:12, color:"#94A3B8", marginTop:2 }}>{h.detalle}</div>}
+                      <div style={{ fontSize:11, color:"#CBD5E1", marginTop:4 }}>
+                        {new Date(h.fecha).toLocaleDateString("es-AR", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" })}
+                      </div>
                     </div>
-                    {h.detalle && <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>{h.detalle}</div>}
-                    <div style={{ fontSize:11, color:"#94a3b8", marginTop:3 }}>
-                      {new Date(h.fecha).toLocaleDateString("es-AR", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" })}
-                    </div>
                   </div>
-                </div>
-              ))
-            }
+                ))
+              }
+            </div>
           </div>
         </div>
       )}
