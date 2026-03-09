@@ -917,13 +917,6 @@ function ConfigWhatsApp({ obras, onClose }) {
       </div>
     </div>
   );
-
-        <div style={{ marginTop:14, padding:"10px 14px", background:"rgba(30,64,175,0.06)", borderRadius:8, border:"1px solid rgba(30,64,175,0.12)", fontSize:12, color:"#94a3b8", lineHeight:1.7 }}>
-          💡 El mensaje se abre en WhatsApp listo para enviar. Guardá el número para acceso rápido desde el botón de alertas en el header.
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
