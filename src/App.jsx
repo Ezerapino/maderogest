@@ -182,16 +182,17 @@ async function generarPDF(obra) {
     .dato-item .label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; margin-bottom: 4px; }
     .dato-item .valor { font-size: 15px; font-weight: bold; color: #1e293b; }
     .seccion-titulo { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #94a3b8; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 16px; margin-top: 28px; }
-    .mueble-row { display: flex; align-items: flex-start; padding: 10px 0; border-bottom: 1px dotted #e2e8f0; }
-    .mueble-num { width: 30px; font-size: 12px; color: #1e40af; font-weight: bold; }
-    .mueble-icon { width: 26px; font-size: 16px; }
-    .mueble-nombre { flex: 1; font-size: 14px; }
-    .mueble-check { width: 24px; height: 24px; border: 1.5px solid #1e40af; border-radius: 4px; margin-left: 12px; }
-    .agr-row { display: flex; align-items: center; padding: 9px 12px; border-bottom: 1px dotted #e2e8f0; gap: 12px; }
-    .agr-num { width: 30px; font-size: 12px; color: #1e40af; font-weight: bold; }
-    .agr-articulo { flex: 1; font-size: 14px; }
-    .agr-cantidad { font-size: 14px; font-weight: bold; color: #1e40af; min-width: 60px; text-align: right; }
-    .agr-fecha { font-size: 11px; color: #94a3b8; min-width: 120px; text-align: right; }
+    .tabla-header { display: flex; padding: 6px 12px; background: #f1f5f9; border-radius: 6px; margin-bottom: 4px; }
+    .tabla-header-nombre { flex: 1; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; font-weight: bold; }
+    .tabla-header-cant { width: 90px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; font-weight: bold; text-align: center; }
+    .mueble-row { display: flex; align-items: center; padding: 10px 12px; border-bottom: 1px solid #f1f5f9; }
+    .mueble-nombre { flex: 1; font-size: 14px; color: #1e293b; }
+    .mueble-cantidad { width: 90px; font-size: 14px; font-weight: bold; color: #1e40af; text-align: center; }
+    .mueble-check { width: 24px; height: 24px; border: 1.5px solid #1e40af; border-radius: 4px; margin-left: 12px; flex-shrink: 0; }
+    .agr-row { display: flex; align-items: center; padding: 9px 12px; border-bottom: 1px solid #f1f5f9; }
+    .agr-articulo { flex: 1; font-size: 14px; color: #1e293b; }
+    .agr-cantidad { width: 90px; font-size: 14px; font-weight: bold; color: #1e40af; text-align: center; }
+    .agr-fecha { font-size: 11px; color: #94a3b8; width: 130px; text-align: right; }
     .notas-box { background: #f8fafc; border-left: 3px solid #1e40af; padding: 14px 18px; border-radius: 0 8px 8px 0; margin-top: 28px; font-size: 13px; line-height: 1.7; color: #1e293b; }
     .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; }
     .firma-box { margin-top: 48px; display: flex; justify-content: space-between; }
@@ -204,19 +205,17 @@ async function generarPDF(obra) {
 
   const mueblesList = normalizarMuebles(obra.muebles || []);
   const totalUnidades = mueblesList.reduce((a, m) => a + (m.cantidad||1), 0);
-  const mueblesHTML = mueblesList.map((m, i) => `
+  const mueblesHTML = mueblesList.map((m) => `
     <div class="mueble-row">
-      <div class="mueble-num">${String(i+1).padStart(2,"0")}</div>
-      <div class="mueble-icon">${muebleIcon(m.nombre)}</div>
-      <div class="mueble-nombre">${m.nombre}${m.cantidad > 1 ? ` <span style="color:#1e40af;font-weight:bold">×${m.cantidad}</span>` : ""}</div>
+      <div class="mueble-nombre">${m.nombre}</div>
+      <div class="mueble-cantidad">${m.cantidad > 1 ? m.cantidad : "1"}</div>
       <div class="mueble-check"></div>
     </div>
   `).join("");
 
   const agregadosHTML = agregadosList.length === 0 ? '<p style="color:#94a3b8;font-size:13px">Sin agregados registrados.</p>' :
-    agregadosList.map((a, i) => `
+    agregadosList.map((a) => `
       <div class="agr-row">
-        <div class="agr-num">${String(i+1).padStart(2,"0")}</div>
         <div class="agr-articulo">${a.articulo}</div>
         <div class="agr-cantidad">${a.cantidad}${a.unidad ? ` ${a.unidad}` : ""}</div>
         <div class="agr-fecha">${new Date(a.fecha).toLocaleDateString("es-AR", {day:"2-digit",month:"short",year:"numeric"})}</div>
@@ -241,10 +240,16 @@ async function generarPDF(obra) {
   </div>
 
   <div class="seccion-titulo">🪵 Lista de muebles a entregar — ${mueblesList.length} tipos · ${totalUnidades} unidades</div>
-  ${mueblesList.length === 0 ? '<p style="color:#94a3b8;font-size:13px">Sin muebles registrados.</p>' : mueblesHTML}
+  ${mueblesList.length === 0 ? '<p style="color:#94a3b8;font-size:13px">Sin muebles registrados.</p>' : `
+    <div class="tabla-header"><div class="tabla-header-nombre">Descripción</div><div class="tabla-header-cant">Cantidad</div><div style="width:36px"></div></div>
+    ${mueblesHTML}
+  `}
 
   <div class="seccion-titulo">📦 Agregados — ${agregadosList.length} ítems</div>
-  ${agregadosHTML}
+  ${agregadosList.length === 0 ? '<p style="color:#94a3b8;font-size:13px">Sin agregados registrados.</p>' : `
+    <div class="tabla-header"><div class="tabla-header-nombre">Artículo</div><div class="tabla-header-cant">Cantidad</div><div style="width:130px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;font-weight:bold;text-align:right">Fecha</div></div>
+    ${agregadosHTML}
+  `}
 
   ${obra.notas ? `<div class="notas-box">📝 <strong>Notas:</strong> ${obra.notas}</div>` : ""}
 
@@ -704,10 +709,12 @@ function DetalleObra({ obra, onClose, onEdit, onDelete, onEntregada, rol, sesion
                 <div style={{ background:"rgba(30,64,175,0.12)", border:"1px solid rgba(30,64,175,0.2)", borderRadius:8, padding:"3px 10px", fontSize:13, fontWeight:700, color:"#1e40af", whiteSpace:"nowrap" }}>
                   {a.cantidad}{a.unidad ? ` ${a.unidad}` : ""}
                 </div>
-                <button onClick={() => eliminarAgregado(a.id)}
-                  style={{ background:"none", border:"none", color:"#cbd5e1", cursor:"pointer", fontSize:14, padding:"0 2px" }}
-                  onMouseEnter={e => e.currentTarget.style.color="#e05555"}
-                  onMouseLeave={e => e.currentTarget.style.color="#cbd5e1"}>✕</button>
+                {rol === "admin" && (
+                  <button onClick={() => eliminarAgregado(a.id)}
+                    style={{ background:"none", border:"none", color:"#cbd5e1", cursor:"pointer", fontSize:14, padding:"0 2px" }}
+                    onMouseEnter={e => e.currentTarget.style.color="#e05555"}
+                    onMouseLeave={e => e.currentTarget.style.color="#cbd5e1"}>✕</button>
+                )}
               </div>
             ))
           }
