@@ -48,11 +48,11 @@ async function getAixaUsers() { return getUsuarios(); }
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ─── OBRAS API ────────────────────────────────────────────────────────────────
-async function getObras() { return sbFetch("obras?order=fecha.asc", { method: "GET" }); }
+async function getObras() { return sbFetch("pedidos?order=fecha.asc", { method: "GET" }); }
 async function upsertObra(obra) {
-  return sbFetch("obras", { method: "POST", headers: { "Prefer": "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(obra) });
+  return sbFetch("pedidos", { method: "POST", headers: { "Prefer": "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(obra) });
 }
-async function deleteObra(id) { return sbFetch(`obras?id=eq.${id}`, { method: "DELETE" }); }
+async function deleteObra(id) { return sbFetch(`pedidos?id=eq.${id}`, { method: "DELETE" }); }
 
 async function getUsuarios() { return sbFetch("usuarios?select=*", { method: "GET" }); }
 async function upsertUsuario(usuario) {
@@ -318,6 +318,8 @@ function Login({ onLogin }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function EntregasModule({ sesion, obras, setObras, recargarObras }) {
   const [filter, setFilter] = useState("todas");
+  const [search, setSearch] = useState("");
+  const [mesFilter, setMesFilter] = useState("");
   const [modalObra, setModalObra] = useState(null);
   const [detalle, setDetalle] = useState(null);
 
@@ -328,6 +330,18 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
   const terminadas = obras.filter(o => o.estado === "terminado");
 
   const obrasFiltradas = obras.filter(o => {
+    // Search filter
+    if (search) {
+      const q = search.toLowerCase();
+      if (!o.nombre.toLowerCase().includes(q) && !(o.lugar||"").toLowerCase().includes(q) && !(o.notas||"").toLowerCase().includes(q)) return false;
+    }
+    // Month filter
+    if (mesFilter) {
+      const fechaEntrega = o.fecha || "";
+      const fechaInicio = o.fecha_inicio || "";
+      if (!fechaEntrega.startsWith(mesFilter) && !fechaInicio.startsWith(mesFilter)) return false;
+    }
+    // Status filter
     if (filter === "todas") return true;
     const d = diasRestantes(o.fecha);
     const s = getStatus(d, o.estado);
@@ -345,7 +359,7 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
   async function guardarObra(obra) {
     const existente = obras.find(o => o.id === obra.id);
     const obraFinal = {
-      id: obra.id, nombre: obra.nombre, lugar: obra.lugar, fecha: obra.fecha, estado: obra.estado,
+      id: obra.id, nombre: obra.nombre, lugar: obra.lugar, fecha: obra.fecha, fecha_inicio: obra.fecha_inicio || null, estado: obra.estado,
       muebles: obra.muebles, notas: obra.notas,
       creado_por: existente ? obra.creado_por : sesion.id,
       creado_en: existente ? obra.creado_en : new Date().toISOString(),
@@ -392,8 +406,8 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
         ))}
       </div>
 
-      {/* FILTROS */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:12 }}>
+      {/* FILTROS + BÚSQUEDA */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, flexWrap:"wrap", gap:12 }}>
         <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Obras — Entregas</h2>
         <div style={{ display:"flex", gap:4, background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:10, padding:4 }}>
           {[
@@ -405,6 +419,18 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
             </button>
           ))}
         </div>
+      </div>
+      <div style={{ display:"flex", gap:10, marginBottom:20, flexWrap:"wrap", alignItems:"center" }}>
+        <div style={{ position:"relative", flex:"1 1 200px", maxWidth:320 }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)" }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar obra, dirección, notas..."
+            style={{ width:"100%", padding:"9px 12px 9px 36px", background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" }} />
+          {search && <button onClick={() => setSearch("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"#94A3B8", cursor:"pointer", fontSize:14, padding:2 }}>✕</button>}
+        </div>
+        <input type="month" value={mesFilter} onChange={e => setMesFilter(e.target.value)}
+          style={{ padding:"9px 12px", background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" }} />
+        {mesFilter && <button onClick={() => setMesFilter("")} style={{ padding:"6px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#64748B", fontSize:12, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Limpiar mes</button>}
+        {(search || mesFilter) && <span style={{ fontSize:12, color:"#94A3B8" }}>{obrasFiltradas.length} resultado{obrasFiltradas.length !== 1 ? "s" : ""}</span>}
       </div>
 
       {/* GRID */}
@@ -430,7 +456,10 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
                     <div style={{ padding:"3px 10px", borderRadius:6, background:sc.bg, color:sc.text, fontSize:11, fontWeight:700, border:`1px solid ${sc.border}`, whiteSpace:"nowrap", flexShrink:0 }}>{diasLabel}</div>
                   </div>
                   <div style={{ fontSize:12, color:"#64748B", marginBottom:4 }}>📍 {o.lugar}</div>
-                  <div style={{ fontSize:12, color:"#64748B", marginBottom:14 }}>📅 {formatDate(o.fecha)}</div>
+                  <div style={{ fontSize:12, color:"#64748B", marginBottom:4, display:"flex", gap:12 }}>
+                    {o.fecha_inicio && <span>🔨 Inicio: {formatDate(o.fecha_inicio)}</span>}
+                    <span>📅 Entrega: {formatDate(o.fecha)}</span>
+                  </div>
                   {(o.muebles||[]).length > 0 && (
                     <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:14 }}>
                       {normalizarMuebles(o.muebles).slice(0,3).map((m,i) => (
@@ -480,7 +509,7 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
 // ─── MODAL OBRA (Entregas) ────────────────────────────────────────────────────
 function ModalObraEntrega({ obra, onClose, onSave }) {
   const [form, setForm] = useState({
-    nombre: obra?.nombre || "", lugar: obra?.lugar || "", fecha: obra?.fecha || "",
+    nombre: obra?.nombre || "", lugar: obra?.lugar || "", fecha_inicio: obra?.fecha_inicio || "", fecha: obra?.fecha || "",
     estado: obra?.estado || "pendiente", muebles: normalizarMuebles(obra?.muebles), notas: obra?.notas || "",
   });
   const [muebleInput, setMuebleInput] = useState("");
@@ -522,7 +551,10 @@ function ModalObraEntrega({ obra, onClose, onSave }) {
         <div style={{ padding:"24px" }}>
           {inp("Nombre de la obra", "nombre", "text", "Ej: Departamento Flores")}
           {inp("Dirección", "lugar", "text", "Calle, número, barrio...")}
-          {inp("Fecha de entrega", "fecha", "date")}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            {inp("Fecha de inicio / pedido", "fecha_inicio", "date")}
+            {inp("Fecha de entrega", "fecha", "date")}
+          </div>
           <div style={{ marginBottom:16 }}>
             <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Estado</label>
             <select value={form.estado} onChange={e => setForm(f => ({...f, estado: e.target.value}))} style={{ ...modalInp, width:"100%" }}>
@@ -607,7 +639,7 @@ function DetalleObraEntrega({ obra, onClose, onEdit, onDelete, onEntregada, rol,
         </div>
         <div style={{ padding:"20px 24px 36px" }}>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
-            {[{ label:"Lugar", val: obra.lugar }, { label:"Fecha", val: formatDate(obra.fecha) }, { label:"Estado", val: ESTADO_LABELS[obra.estado] }, { label:"Muebles", val: `${normalizarMuebles(obra.muebles||[]).reduce((a,m)=>a+(m.cantidad||1),0)} unidades` }].map(d => (
+            {[{ label:"Lugar", val: obra.lugar }, { label:"Inicio", val: obra.fecha_inicio ? formatDate(obra.fecha_inicio) : "—" }, { label:"Entrega", val: formatDate(obra.fecha) }, { label:"Estado", val: ESTADO_LABELS[obra.estado] }, { label:"Muebles", val: `${normalizarMuebles(obra.muebles||[]).reduce((a,m)=>a+(m.cantidad||1),0)} unidades` }].map(d => (
               <div key={d.label} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:10, padding:"12px 14px" }}>
                 <div style={{ fontSize:11, color:"#94A3B8", fontWeight:600, marginBottom:4 }}>{d.label.toUpperCase()}</div>
                 <div style={{ fontSize:13, color:"#1A2B4A", fontWeight:500 }}>{d.val}</div>
@@ -694,6 +726,7 @@ function AvanceModule({ sesion }) {
   const [editingStation, setEditingStation] = useState(null);
   const [showClarifModal, setShowClarifModal] = useState(false);
   const [editingClarif, setEditingClarif] = useState(null);
+  const [newStationName, setNewStationName] = useState("");
 
   const isAdmin = sesion.rol === "admin";
 
@@ -773,6 +806,31 @@ function AvanceModule({ sesion }) {
         }
       }, 400);
     }
+  }
+
+  async function addStation(name) {
+    if (!obra || !name.trim()) return;
+    const stations = JSON.parse(JSON.stringify(obra.stations || []));
+    stations.push({ id: stations.length, name: name.trim(), status: 'pending', start_date: null, end_date: null, note: '' });
+    const hist = JSON.parse(JSON.stringify(obra.history || []));
+    hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Nueva estación agregada: "${name.trim()}"`, time: new Date().toISOString() });
+    setLoading(true);
+    try { await updateAixaObra(selectedObra, { stations, history: hist }); await recargar(); setNewStationName(""); } catch { alert("Error"); }
+    setLoading(false);
+  }
+
+  async function deleteStation(idx) {
+    if (!obra) return;
+    const stations = JSON.parse(JSON.stringify(obra.stations || []));
+    const removed = stations.splice(idx, 1);
+    if (!confirm(`¿Eliminar la estación "${removed[0]?.name}"?`)) return;
+    // Re-index ids
+    stations.forEach((s, i) => s.id = i);
+    const hist = JSON.parse(JSON.stringify(obra.history || []));
+    hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Estación eliminada: "${removed[0]?.name}"`, time: new Date().toISOString() });
+    setLoading(true);
+    try { await updateAixaObra(selectedObra, { stations, history: hist }); await recargar(); } catch { alert("Error"); }
+    setLoading(false);
   }
 
   async function saveClarif(title, station, responsible, detail) {
@@ -889,27 +947,47 @@ function AvanceModule({ sesion }) {
 
         {/* STATIONS */}
         {section === "stations" && (
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(260px, 1fr))", gap:14 }}>
-            {st.map((s, i) => {
-              const labels = { pending:"Pendiente", active:"En progreso", done:"Completado", blocked:"Bloqueado" };
-              const colors = { done:{bg:"#ECFDF5",text:"#059669",border:"#A7F3D0"}, active:{bg:"#FFFBEB",text:"#D97706",border:"#FDE68A"}, blocked:{bg:"#FEF2F2",text:"#DC2626",border:"#FECACA"}, pending:{bg:"#F8FAFC",text:"#94A3B8",border:"#E2E8F0"} };
-              const c = colors[s.status] || colors.pending;
-              let days = "";
-              if (s.start_date && s.end_date) { const d = Math.max(0, Math.floor((new Date(s.end_date)-new Date(s.start_date))/86400000)); days = `${d} días en esta etapa`; }
-              else if (s.start_date) { const d = Math.max(0, Math.floor((new Date()-new Date(s.start_date))/86400000)); days = `${d} días transcurridos`; }
-              return (
-                <div key={i} onClick={() => { setEditingStation(i); setShowStationModal(true); }}
-                  style={{ background:"#ffffff", border:`1.5px solid ${c.border}`, borderRadius:12, padding:"16px", cursor:"pointer", transition:"all 0.18s", position:"relative" }}>
-                  <div style={{ position:"absolute", right:14, top:10, fontFamily:"'Sora', sans-serif", fontSize:28, fontWeight:800, color:"#E8ECF0" }}>{i+1}</div>
-                  <div style={{ fontFamily:"'Sora', sans-serif", fontSize:14, fontWeight:700, color:"#1A2B4A", textTransform:"uppercase", marginBottom:6 }}>{s.name}</div>
-                  <span style={{ display:"inline-block", padding:"3px 10px", borderRadius:99, background:c.bg, color:c.text, border:`1px solid ${c.border}`, fontSize:11, fontWeight:600 }}>{labels[s.status]}</span>
-                  {days && <div style={{ fontSize:12, color:"#94A3B8", marginTop:8 }}>{days}</div>}
-                  {s.note && <div style={{ fontSize:12, color:"#94A3B8", marginTop:6, borderTop:"1px solid #F1F5F9", paddingTop:6 }}>{s.note}</div>}
-                  {s.start_date && <div style={{ fontSize:11, color:"#CBD5E1", marginTop:4 }}>Inicio: {fmtDateAixa(s.start_date)}</div>}
-                  {s.end_date && <div style={{ fontSize:11, color:"#CBD5E1" }}>Fin: {fmtDateAixa(s.end_date)}</div>}
-                </div>
-              );
-            })}
+          <div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(260px, 1fr))", gap:14, marginBottom:20 }}>
+              {st.map((s, i) => {
+                const labels = { pending:"Pendiente", active:"En progreso", done:"Completado", blocked:"Bloqueado" };
+                const colors = { done:{bg:"#ECFDF5",text:"#059669",border:"#A7F3D0"}, active:{bg:"#FFFBEB",text:"#D97706",border:"#FDE68A"}, blocked:{bg:"#FEF2F2",text:"#DC2626",border:"#FECACA"}, pending:{bg:"#F8FAFC",text:"#94A3B8",border:"#E2E8F0"} };
+                const c = colors[s.status] || colors.pending;
+                let days = "";
+                if (s.start_date && s.end_date) { const d = Math.max(0, Math.floor((new Date(s.end_date)-new Date(s.start_date))/86400000)); days = `${d} días en esta etapa`; }
+                else if (s.start_date) { const d = Math.max(0, Math.floor((new Date()-new Date(s.start_date))/86400000)); days = `${d} días transcurridos`; }
+                return (
+                  <div key={i} onClick={() => { setEditingStation(i); setShowStationModal(true); }}
+                    style={{ background:"#ffffff", border:`1.5px solid ${c.border}`, borderRadius:12, padding:"16px", cursor:"pointer", transition:"all 0.18s", position:"relative" }}>
+                    <div style={{ position:"absolute", right:14, top:10, fontFamily:"'Sora', sans-serif", fontSize:28, fontWeight:800, color:"#E8ECF0" }}>{i+1}</div>
+                    {isAdmin && (
+                      <button onClick={(e) => { e.stopPropagation(); deleteStation(i); }} title="Eliminar estación"
+                        style={{ position:"absolute", right:12, bottom:12, padding:"3px 7px", fontSize:11, border:"1px solid #FECACA", borderRadius:5, background:"#FEF2F2", color:"#DC2626", cursor:"pointer", opacity:0.6, transition:"opacity 0.15s" }}
+                        onMouseEnter={e => e.currentTarget.style.opacity="1"} onMouseLeave={e => e.currentTarget.style.opacity="0.6"}>✕</button>
+                    )}
+                    <div style={{ fontFamily:"'Sora', sans-serif", fontSize:14, fontWeight:700, color:"#1A2B4A", textTransform:"uppercase", marginBottom:6 }}>{s.name}</div>
+                    <span style={{ display:"inline-block", padding:"3px 10px", borderRadius:99, background:c.bg, color:c.text, border:`1px solid ${c.border}`, fontSize:11, fontWeight:600 }}>{labels[s.status]}</span>
+                    {days && <div style={{ fontSize:12, color:"#94A3B8", marginTop:8 }}>{days}</div>}
+                    {s.note && <div style={{ fontSize:12, color:"#94A3B8", marginTop:6, borderTop:"1px solid #F1F5F9", paddingTop:6 }}>{s.note}</div>}
+                    {s.start_date && <div style={{ fontSize:11, color:"#CBD5E1", marginTop:4 }}>Inicio: {fmtDateAixa(s.start_date)}</div>}
+                    {s.end_date && <div style={{ fontSize:11, color:"#CBD5E1" }}>Fin: {fmtDateAixa(s.end_date)}</div>}
+                  </div>
+                );
+              })}
+            </div>
+            {/* ADD STATION */}
+            {isAdmin && (
+              <div style={{ background:"#ffffff", border:"1.5px dashed #CBD5E1", borderRadius:12, padding:"16px 20px", display:"flex", gap:10, alignItems:"center" }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <input value={newStationName} onChange={e => setNewStationName(e.target.value)} placeholder="Nombre de la nueva estación..."
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addStation(newStationName); }}}
+                  style={{ flex:1, padding:"9px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" }} />
+                <button onClick={() => addStation(newStationName)} disabled={!newStationName.trim()}
+                  style={{ padding:"9px 20px", background: newStationName.trim() ? "#1A2B4A" : "#CBD5E1", border:"none", borderRadius:8, color:"#ffffff", fontSize:13, fontWeight:600, cursor: newStationName.trim() ? "pointer" : "not-allowed", fontFamily:"'Inter', sans-serif", whiteSpace:"nowrap" }}>
+                  Agregar estación
+                </button>
+              </div>
+            )}
           </div>
         )}
 
