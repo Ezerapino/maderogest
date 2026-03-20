@@ -48,11 +48,11 @@ async function getAixaUsers() { return getUsuarios(); }
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ─── OBRAS API ────────────────────────────────────────────────────────────────
-async function getObras() { return sbFetch("pedidos?order=fecha.asc", { method: "GET" }); }
+async function getObras() { return sbFetch("obras?order=fecha.asc", { method: "GET" }); }
 async function upsertObra(obra) {
-  return sbFetch("pedidos", { method: "POST", headers: { "Prefer": "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(obra) });
+  return sbFetch("obras", { method: "POST", headers: { "Prefer": "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(obra) });
 }
-async function deleteObra(id) { return sbFetch(`pedidos?id=eq.${id}`, { method: "DELETE" }); }
+async function deleteObra(id) { return sbFetch(`obras?id=eq.${id}`, { method: "DELETE" }); }
 
 async function getUsuarios() { return sbFetch("usuarios?select=*", { method: "GET" }); }
 async function upsertUsuario(usuario) {
