@@ -1676,6 +1676,8 @@ ${lista.notas?'.nota{background:#fffbeb;border-left:4px solid #d97706;padding:12
     <div class="cover-item"><div class="lbl">Recibidos</div><div class="val">${recibidos}</div></div>
     <div class="cover-item"><div class="lbl">Pendientes</div><div class="val">${totalItems-recibidos}</div></div>
     <div class="cover-item"><div class="lbl">Fecha</div><div class="val" style="font-size:14px">${ahora}</div></div>
+    ${lista.orden_pedido?`<div class="cover-item"><div class="lbl">N° Orden de pedido</div><div class="val" style="font-size:15px">${lista.orden_pedido}</div></div>`:''}
+    ${lista.numero_remito?`<div class="cover-item"><div class="lbl">N° Remito</div><div class="val" style="font-size:15px">${lista.numero_remito}</div></div>`:''}
   </div>
 </div>
 <div class="body">
@@ -1707,6 +1709,8 @@ function MaterialesModule({ sesion }) {
   const [savingNueva, setSavingNueva] = useState(false);
   const [showNotasModal, setShowNotasModal] = useState(false);
   const [notasEdit, setNotasEdit] = useState("");
+  const [showPedidoModal, setShowPedidoModal] = useState(false);
+  const [pedidoEdit, setPedidoEdit] = useState({ orden_pedido:"", numero_remito:"" });
 
   useEffect(() => { recargar(); }, []);
 
@@ -1885,19 +1889,38 @@ function MaterialesModule({ sesion }) {
             style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
             <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:860, maxHeight:"92vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)", display:"flex", flexDirection:"column" }}>
               {/* Header */}
-              <div style={{ padding:"18px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, background:"#fff", zIndex:10 }}>
-                <div>
-                  <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{selected.obra_nombre}</h2>
-                  {selected.obra_lugar && <div style={{ fontSize:12, color:"#94A3B8", marginTop:2 }}>📍 {selected.obra_lugar}</div>}
+              <div style={{ padding:"18px 24px", borderBottom:"1px solid #F1F5F9", position:"sticky", top:0, background:"#fff", zIndex:10 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                  <div>
+                    <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{selected.obra_nombre}</h2>
+                    {selected.obra_lugar && <div style={{ fontSize:12, color:"#94A3B8", marginTop:2 }}>📍 {selected.obra_lugar}</div>}
+                  </div>
+                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                    <button onClick={() => { setNotasEdit(selected.notas||""); setShowNotasModal(true); }}
+                      style={{ padding:"7px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#64748B", fontSize:12, cursor:"pointer" }}>📝 Notas</button>
+                    <button onClick={() => generarPDFMateriales(selected)}
+                      style={{ padding:"7px 14px", background:"#0F766E", border:"none", borderRadius:8, color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>⬇ PDF</button>
+                    <button onClick={() => abrirItemModal()}
+                      style={{ padding:"7px 14px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>+ Agregar</button>
+                    <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
+                  </div>
                 </div>
-                <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                  <button onClick={() => { setNotasEdit(selected.notas||""); setShowNotasModal(true); }}
-                    style={{ padding:"7px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#64748B", fontSize:12, cursor:"pointer" }}>📝 Notas</button>
-                  <button onClick={() => generarPDFMateriales(selected)}
-                    style={{ padding:"7px 14px", background:"#0F766E", border:"none", borderRadius:8, color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>⬇ PDF</button>
-                  <button onClick={() => abrirItemModal()}
-                    style={{ padding:"7px 14px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>+ Agregar</button>
-                  <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
+                {/* Orden de pedido y remito */}
+                <div style={{ display:"flex", gap:12, marginTop:12, flexWrap:"wrap" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, flex:1, minWidth:200 }}>
+                    <span style={{ fontSize:11, fontWeight:600, color:"#64748B", whiteSpace:"nowrap" }}>📋 N° Orden de pedido:</span>
+                    <span style={{ fontSize:13, fontWeight:700, color: selected.orden_pedido?"#1A2B4A":"#CBD5E1", flex:1 }}>{selected.orden_pedido||"—"}</span>
+                    <button onClick={() => { setPedidoEdit({ orden_pedido: selected.orden_pedido||"", numero_remito: selected.numero_remito||"" }); setShowPedidoModal(true); }}
+                      style={{ background:"none", border:"none", color:"#94A3B8", cursor:"pointer", fontSize:12, padding:"0 2px", flexShrink:0 }}
+                      onMouseEnter={e=>e.currentTarget.style.color="#2563EB"} onMouseLeave={e=>e.currentTarget.style.color="#94A3B8"}>✏️</button>
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, flex:1, minWidth:200 }}>
+                    <span style={{ fontSize:11, fontWeight:600, color:"#64748B", whiteSpace:"nowrap" }}>🧾 N° Remito:</span>
+                    <span style={{ fontSize:13, fontWeight:700, color: selected.numero_remito?"#1A2B4A":"#CBD5E1", flex:1 }}>{selected.numero_remito||"—"}</span>
+                    <button onClick={() => { setPedidoEdit({ orden_pedido: selected.orden_pedido||"", numero_remito: selected.numero_remito||"" }); setShowPedidoModal(true); }}
+                      style={{ background:"none", border:"none", color:"#94A3B8", cursor:"pointer", fontSize:12, padding:"0 2px", flexShrink:0 }}
+                      onMouseEnter={e=>e.currentTarget.style.color="#2563EB"} onMouseLeave={e=>e.currentTarget.style.color="#94A3B8"}>✏️</button>
+                  </div>
                 </div>
               </div>
 
@@ -2009,6 +2032,29 @@ function MaterialesModule({ sesion }) {
             <div style={{ display:"flex", gap:10, marginTop:16 }}>
               <button onClick={() => setShowNotasModal(false)} style={{ flex:1, padding:"10px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>Cancelar</button>
               <button onClick={async () => { await guardarLista(selected.id, { notas: notasEdit }); setShowNotasModal(false); }} disabled={saving}
+                style={{ flex:1, padding:"10px", border:"none", borderRadius:8, background:"#1A2B4A", color:"#fff", cursor:"pointer", fontSize:13, fontWeight:600 }}>Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ORDEN DE PEDIDO Y REMITO */}
+      {showPedidoModal && (
+        <div onClick={e => e.target===e.currentTarget&&setShowPedidoModal(false)}
+          style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:310, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:400, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+            <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 18px" }}>Rastreo del pedido</h3>
+            <div style={{ marginBottom:14 }}>
+              <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>N° Orden de pedido</label>
+              <input type="text" value={pedidoEdit.orden_pedido} onChange={e=>setPedidoEdit(d=>({...d,orden_pedido:e.target.value}))} style={si} placeholder="Ej: OP-2024-0051" autoFocus />
+            </div>
+            <div style={{ marginBottom:4 }}>
+              <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>N° Remito</label>
+              <input type="text" value={pedidoEdit.numero_remito} onChange={e=>setPedidoEdit(d=>({...d,numero_remito:e.target.value}))} style={si} placeholder="Ej: R-0001234" />
+            </div>
+            <div style={{ display:"flex", gap:10, marginTop:20 }}>
+              <button onClick={()=>setShowPedidoModal(false)} style={{ flex:1, padding:"10px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>Cancelar</button>
+              <button onClick={async()=>{ await guardarLista(selected.id,{ orden_pedido: pedidoEdit.orden_pedido, numero_remito: pedidoEdit.numero_remito }); setShowPedidoModal(false); }} disabled={saving}
                 style={{ flex:1, padding:"10px", border:"none", borderRadius:8, background:"#1A2B4A", color:"#fff", cursor:"pointer", fontSize:13, fontWeight:600 }}>Guardar</button>
             </div>
           </div>
