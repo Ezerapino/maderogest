@@ -85,6 +85,7 @@ async function getCobros() { return sbFetch("cobros?select=*&order=created_at.de
 async function insertCobro(cobro) { return sbFetch("cobros", { method: "POST", body: JSON.stringify(cobro) }); }
 async function updateCobro(id, data) { return sbFetch(`cobros?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
 async function deleteCobroByObraId(obraId) { return sbFetch(`cobros?obra_id=eq.${obraId}`, { method: "DELETE" }); }
+async function deleteCobro(id) { return sbFetch(`cobros?id=eq.${id}`, { method: "DELETE" }); }
 
 // ─── MATERIALES API ───────────────────────────────────────────────────────────
 // You need to create the table "materiales" in your Supabase with:
@@ -95,6 +96,7 @@ async function getMateriales() { return sbFetch("materiales?select=*&order=creat
 async function insertMaterial(m) { return sbFetch("materiales", { method: "POST", body: JSON.stringify(m) }); }
 async function updateMaterial(id, data) { return sbFetch(`materiales?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
 async function deleteMaterialByObraId(obraId) { return sbFetch(`materiales?obra_id=eq.${obraId}`, { method: "DELETE" }); }
+async function deleteMaterialById(id) { return sbFetch(`materiales?id=eq.${id}`, { method: "DELETE" }); }
 
 // Old separate API functions removed — now using unified functions above
 
@@ -1320,6 +1322,15 @@ function CobrosModule({ sesion }) {
     await guardar(cobroId, { adicionales: adics });
   }
 
+  async function eliminarCobro(id) {
+    if (!confirm("¿Eliminar esta obra de Cobros? Esta acción no se puede deshacer.")) return;
+    try {
+      await deleteCobro(id);
+      setSelected(null);
+      await recargar();
+    } catch { alert("Error al eliminar."); }
+  }
+
   async function crearObraCobro() {
     if (!nuevaObraData.nombre.trim()) { alert("Ingresá el nombre de la obra."); return; }
     setSavingNueva(true);
@@ -1420,7 +1431,14 @@ function CobrosModule({ sesion }) {
                 <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>{selected.obra_nombre}</h2>
                 {selected.obra_lugar && <div style={{ fontSize:12, color:"#94A3B8", marginTop:3 }}>📍 {selected.obra_lugar}</div>}
               </div>
-              <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16, flexShrink:0 }}>✕</button>
+              <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                <button onClick={() => eliminarCobro(selected.id)}
+                  style={{ background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, padding:"6px 12px", color:"#DC2626", fontSize:12, fontWeight:600, cursor:"pointer" }}
+                  onMouseEnter={e=>e.currentTarget.style.background="#FEE2E2"} onMouseLeave={e=>e.currentTarget.style.background="#FEF2F2"}>
+                  🗑 Eliminar
+                </button>
+                <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16, flexShrink:0 }}>✕</button>
+              </div>
             </div>
             <div style={{ padding:"20px 24px" }}>
               {/* MONTO TOTAL */}
@@ -1774,6 +1792,15 @@ function MaterialesModule({ sesion }) {
     await guardarLista(selected.id, { items });
   }
 
+  async function eliminarMaterial(id) {
+    if (!confirm("¿Eliminar esta obra de Materiales? Esta acción no se puede deshacer.")) return;
+    try {
+      await deleteMaterialById(id);
+      setSelected(null);
+      await recargar();
+    } catch { alert("Error al eliminar."); }
+  }
+
   async function crearObraMateriales() {
     if (!nuevaObraData.nombre.trim()) { alert("Ingresá el nombre de la obra."); return; }
     setSavingNueva(true);
@@ -1902,6 +1929,11 @@ function MaterialesModule({ sesion }) {
                       style={{ padding:"7px 14px", background:"#0F766E", border:"none", borderRadius:8, color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>⬇ PDF</button>
                     <button onClick={() => abrirItemModal()}
                       style={{ padding:"7px 14px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>+ Agregar</button>
+                    <button onClick={() => eliminarMaterial(selected.id)}
+                      style={{ padding:"7px 12px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:12, fontWeight:600, cursor:"pointer" }}
+                      onMouseEnter={e=>e.currentTarget.style.background="#FEE2E2"} onMouseLeave={e=>e.currentTarget.style.background="#FEF2F2"}>
+                      🗑 Eliminar
+                    </button>
                     <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
                   </div>
                 </div>
