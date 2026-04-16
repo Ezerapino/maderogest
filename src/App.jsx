@@ -1662,18 +1662,14 @@ export default function App() {
 
           {/* TABS */}
           <div style={{ display:"flex", gap:2, background:"#F1F5F9", borderRadius:10, padding:3 }}>
-            {!isFinanzas && (
-              <button onClick={() => setActiveTab("entregas")}
-                style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="entregas" ? "#1A2B4A" : "transparent", color: activeTab==="entregas" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="entregas" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
-                📦 Entregas
-              </button>
-            )}
-            {!isFinanzas && (
-              <button onClick={() => setActiveTab("avance")}
-                style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="avance" ? "#1A2B4A" : "transparent", color: activeTab==="avance" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="avance" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
-                🏗 Avance de Obra
-              </button>
-            )}
+            <button onClick={() => setActiveTab("entregas")}
+              style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="entregas" ? "#1A2B4A" : "transparent", color: activeTab==="entregas" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="entregas" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
+              📦 Entregas
+            </button>
+            <button onClick={() => setActiveTab("avance")}
+              style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="avance" ? "#1A2B4A" : "transparent", color: activeTab==="avance" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="avance" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
+              🏗 Avance de Obra
+            </button>
             {canSeeCobros && (
               <button onClick={() => setActiveTab("cobros")}
                 style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="cobros" ? "#7C3AED" : "transparent", color: activeTab==="cobros" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="cobros" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
@@ -1713,8 +1709,8 @@ export default function App() {
 
       {/* MAIN CONTENT */}
       <main style={{ maxWidth:1200, margin:"0 auto", padding:"28px 24px 100px" }}>
-        {activeTab === "entregas" && !isFinanzas && <EntregasModule sesion={sesion} obras={obras} setObras={setObras} recargarObras={recargarObras} />}
-        {activeTab === "avance" && !isFinanzas && <AvanceModule sesion={sesion} />}
+        {activeTab === "entregas" && <EntregasModule sesion={sesion} obras={obras} setObras={setObras} recargarObras={recargarObras} />}
+        {activeTab === "avance" && <AvanceModule sesion={sesion} />}
         {activeTab === "cobros" && canSeeCobros && <CobrosModule sesion={sesion} />}
       </main>
 
