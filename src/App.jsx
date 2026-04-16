@@ -86,6 +86,16 @@ async function insertCobro(cobro) { return sbFetch("cobros", { method: "POST", b
 async function updateCobro(id, data) { return sbFetch(`cobros?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
 async function deleteCobroByObraId(obraId) { return sbFetch(`cobros?obra_id=eq.${obraId}`, { method: "DELETE" }); }
 
+// ─── MATERIALES API ───────────────────────────────────────────────────────────
+// You need to create the table "materiales" in your Supabase with:
+// id (uuid, default gen_random_uuid()), obra_id (text not null), obra_nombre (text),
+// obra_lugar (text), items (jsonb default '[]'::jsonb), notas (text),
+// created_at (timestamptz default now()), updated_at (timestamptz default now())
+async function getMateriales() { return sbFetch("materiales?select=*&order=created_at.desc"); }
+async function insertMaterial(m) { return sbFetch("materiales", { method: "POST", body: JSON.stringify(m) }); }
+async function updateMaterial(id, data) { return sbFetch(`materiales?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
+async function deleteMaterialByObraId(obraId) { return sbFetch(`materiales?obra_id=eq.${obraId}`, { method: "DELETE" }); }
+
 // Old separate API functions removed — now using unified functions above
 
 // ─── SESSION ──────────────────────────────────────────────────────────────────
@@ -386,6 +396,7 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
       if (!existente) {
         try { await insertCobro({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, monto_total: 0, adelanto_cobrado: false, adelanto_monto: 0, adelanto_porcentaje: 0, total_cobrado: false, total_fecha: null, plazo_pago: "", adicionales: [] }); } catch {}
         try { await insertAixaObra({ name: obraFinal.nombre, client: obraFinal.lugar, start_date: null, due_date: obraFinal.fecha || null, description: obraFinal.notas || "", stations: mkStations(), history: [], clarifications: [] }); } catch {}
+        try { await insertMaterial({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, items: [], notas: "" }); } catch {}
       } else {
         try { await updateCobro(obraFinal.id, { obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, updated_at: new Date().toISOString() }); } catch {}
       }
@@ -1615,6 +1626,422 @@ function CobrosModule({ sesion }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // APP PRINCIPAL — UNIFIED
 // ═══════════════════════════════════════════════════════════════════════════════
+// MATERIALES MODULE
+// ═══════════════════════════════════════════════════════════════════════════════
+const TIPOS_MATERIAL = ["MDF","Melamina","Madera maciza","Terciado / Multilaminado","Vidrio","Espejo","Herraje","Bisagra","Corredera","Manija / Tirador","Tapacanto","Moldura / Perfil","Chapa","Pintura / Laca","Tela / Cuero","Otro"];
+const UNIDADES = ["Unidades","m²","ml","Planchas","Tablas","Pares","Sets","kg","Litros","Metros"];
+const TERMINACIONES = ["Mate","Brillante","Texturado","Natural","Pintado","Barnizado","Laqueado","Cromo","Negro mate","Blanco mate","Otro"];
+const ESTADOS_MAT = { pendiente:"Pendiente", pedido:"Pedido", recibido:"Recibido" };
+const ESTADO_MAT_COLORS = { pendiente:{bg:"#FFF7ED",text:"#D97706",border:"#FDE68A"}, pedido:{bg:"#EFF6FF",text:"#2563EB",border:"#BFDBFE"}, recibido:{bg:"#ECFDF5",text:"#059669",border:"#A7F3D0"} };
+
+function generarPDFMateriales(lista) {
+  const ahora = new Date().toLocaleDateString("es-AR",{day:"2-digit",month:"long",year:"numeric"});
+  const totalItems = lista.items?.length || 0;
+  const recibidos = (lista.items||[]).filter(i => i.estado === "recibido").length;
+  const rowsHTML = (lista.items||[]).map((it,i) => {
+    const ec = ESTADO_MAT_COLORS[it.estado] || ESTADO_MAT_COLORS.pendiente;
+    const medidas = [it.largo&&`L:${it.largo}`, it.ancho&&`An:${it.ancho}`, it.espesor&&`Esp:${it.espesor}`].filter(Boolean).join(" × ");
+    return `<tr style="background:${i%2===0?'#f8fafc':'#ffffff'}">
+      <td style="padding:9px 12px;font-size:13px;color:#1e293b;font-weight:500;border-bottom:1px solid #e2e8f0">${it.nombre||'—'}</td>
+      <td style="padding:9px 12px;font-size:12px;color:#475569;border-bottom:1px solid #e2e8f0">${it.tipo||'—'}</td>
+      <td style="padding:9px 12px;font-size:13px;color:#1e293b;font-weight:600;text-align:center;border-bottom:1px solid #e2e8f0">${it.cantidad||'—'} ${it.unidad||''}</td>
+      <td style="padding:9px 12px;font-size:12px;color:#475569;border-bottom:1px solid #e2e8f0">${medidas||'—'}</td>
+      <td style="padding:9px 12px;font-size:12px;color:#475569;border-bottom:1px solid #e2e8f0">${it.color||'—'}</td>
+      <td style="padding:9px 12px;font-size:12px;color:#475569;border-bottom:1px solid #e2e8f0">${it.terminacion||'—'}</td>
+      <td style="padding:9px 12px;font-size:12px;color:#475569;border-bottom:1px solid #e2e8f0">${it.marca||'—'}</td>
+      <td style="padding:9px 12px;font-size:11px;border-bottom:1px solid #e2e8f0"><span style="background:${ec.bg};color:${ec.text};border:1px solid ${ec.border};border-radius:4px;padding:2px 8px;font-weight:600">${ESTADOS_MAT[it.estado]||'Pendiente'}</span></td>
+      <td style="padding:9px 12px;font-size:11px;color:#94a3b8;border-bottom:1px solid #e2e8f0">${it.notas||''}</td>
+    </tr>`;
+  }).join("");
+
+  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Materiales – ${lista.obra_nombre}</title>
+<style>@page{margin:15mm 12mm}body{font-family:'Segoe UI',system-ui,sans-serif;color:#1e293b;margin:0;font-size:13px}
+.cover{background:linear-gradient(135deg,#1A2B4A 0%,#0F766E 100%);color:#fff;padding:36px 48px}
+.cover h1{font-size:26px;margin:0 0 6px;font-weight:800}.cover .sub{font-size:13px;opacity:.75;margin-bottom:20px}
+.cover-grid{display:flex;gap:20px}.cover-item{background:rgba(255,255,255,.13);border-radius:8px;padding:12px 18px}
+.cover-item .lbl{font-size:10px;text-transform:uppercase;letter-spacing:1px;opacity:.7;margin-bottom:3px}
+.cover-item .val{font-size:20px;font-weight:800}
+.body{padding:24px 36px}
+table{width:100%;border-collapse:collapse;margin-top:8px}
+th{background:#1A2B4A;color:#fff;padding:10px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;text-align:left;font-weight:700}
+.footer{margin-top:32px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:11px;color:#94a3b8}
+${lista.notas?'.nota{background:#fffbeb;border-left:4px solid #d97706;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:20px;font-size:13px}':''}
+</style></head><body>
+<div class="cover">
+  <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:.6;margin-bottom:12px">Obras Grupo Aixa S.A.</div>
+  <h1>Lista de Materiales</h1>
+  <div class="sub">${lista.obra_nombre}${lista.obra_lugar?` — ${lista.obra_lugar}`:''}</div>
+  <div class="cover-grid">
+    <div class="cover-item"><div class="lbl">Total ítems</div><div class="val">${totalItems}</div></div>
+    <div class="cover-item"><div class="lbl">Recibidos</div><div class="val">${recibidos}</div></div>
+    <div class="cover-item"><div class="lbl">Pendientes</div><div class="val">${totalItems-recibidos}</div></div>
+    <div class="cover-item"><div class="lbl">Fecha</div><div class="val" style="font-size:14px">${ahora}</div></div>
+  </div>
+</div>
+<div class="body">
+  ${lista.notas?`<div class="nota">📝 <strong>Notas:</strong> ${lista.notas}</div>`:''}
+  ${totalItems===0?'<p style="color:#94a3b8;text-align:center;padding:40px 0">Sin materiales cargados.</p>':`
+  <table>
+    <thead><tr>
+      <th>Descripción</th><th>Tipo</th><th>Cantidad</th><th>Medidas</th>
+      <th>Color</th><th>Terminación</th><th>Marca</th><th>Estado</th><th>Notas</th>
+    </tr></thead>
+    <tbody>${rowsHTML}</tbody>
+  </table>`}
+  <div class="footer"><span>Obras Grupo Aixa S.A. — Lista de materiales</span><span>Generado: ${ahora}</span></div>
+</div></body></html>`;
+  const win = window.open("","_blank");
+  if (win) { win.document.write(html); win.document.close(); setTimeout(()=>win.print(),600); }
+}
+
+function MaterialesModule({ sesion }) {
+  const [listas, setListas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [showItemModal, setShowItemModal] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [itemData, setItemData] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [showNuevaObra, setShowNuevaObra] = useState(false);
+  const [nuevaObraData, setNuevaObraData] = useState({ nombre:"", lugar:"" });
+  const [savingNueva, setSavingNueva] = useState(false);
+  const [showNotasModal, setShowNotasModal] = useState(false);
+  const [notasEdit, setNotasEdit] = useState("");
+
+  useEffect(() => { recargar(); }, []);
+
+  async function recargar() {
+    setCargando(true);
+    try {
+      const d = await getMateriales();
+      const lista = d || [];
+      setListas(lista);
+      if (selected) {
+        const upd = lista.find(x => x.id === selected.id);
+        if (upd) setSelected(upd);
+      }
+    } catch {}
+    setCargando(false);
+  }
+
+  async function guardarLista(id, datos) {
+    setSaving(true);
+    try {
+      await updateMaterial(id, { ...datos, updated_at: new Date().toISOString() });
+      const d = await getMateriales();
+      const lista = d || [];
+      setListas(lista);
+      const upd = lista.find(x => x.id === id);
+      if (upd) setSelected(upd);
+    } catch { alert("Error al guardar."); }
+    setSaving(false);
+  }
+
+  function abrirItemModal(item = null) {
+    setEditingItem(item ? item.id : null);
+    setItemData(item ? { ...item } : { nombre:"", tipo:"", cantidad:"", unidad:"Unidades", largo:"", ancho:"", espesor:"", color:"", terminacion:"", marca:"", proveedor:"", notas:"", estado:"pendiente" });
+    setShowItemModal(true);
+  }
+
+  async function guardarItem() {
+    if (!itemData.nombre?.trim()) { alert("Ingresá una descripción."); return; }
+    setSaving(true);
+    const items = JSON.parse(JSON.stringify(selected.items || []));
+    if (editingItem) {
+      const idx = items.findIndex(i => i.id === editingItem);
+      if (idx >= 0) items[idx] = { ...items[idx], ...itemData };
+    } else {
+      items.push({ id: uid(), ...itemData });
+    }
+    await guardarLista(selected.id, { items });
+    setShowItemModal(false);
+    setEditingItem(null);
+    setSaving(false);
+  }
+
+  async function eliminarItem(itemId) {
+    if (!confirm("¿Eliminar este material?")) return;
+    const items = (selected.items || []).filter(i => i.id !== itemId);
+    await guardarLista(selected.id, { items });
+  }
+
+  async function cambiarEstadoItem(itemId, nuevoEstado) {
+    const items = (selected.items || []).map(i => i.id === itemId ? { ...i, estado: nuevoEstado } : i);
+    await guardarLista(selected.id, { items });
+  }
+
+  async function crearObraMateriales() {
+    if (!nuevaObraData.nombre.trim()) { alert("Ingresá el nombre de la obra."); return; }
+    setSavingNueva(true);
+    try {
+      await insertMaterial({ obra_id: uid(), obra_nombre: nuevaObraData.nombre.trim(), obra_lugar: nuevaObraData.lugar.trim(), items: [], notas: "" });
+      await recargar();
+      setShowNuevaObra(false);
+      setNuevaObraData({ nombre:"", lugar:"" });
+    } catch { alert("Error al crear."); }
+    setSavingNueva(false);
+  }
+
+  const totalItems = listas.reduce((s, l) => s + (l.items||[]).length, 0);
+  const totalRecibidos = listas.reduce((s, l) => s + (l.items||[]).filter(i=>i.estado==="recibido").length, 0);
+  const totalPedidos = listas.reduce((s, l) => s + (l.items||[]).filter(i=>i.estado==="pedido").length, 0);
+
+  const si = { width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" };
+  const siSm = { ...si, padding:"8px 10px", fontSize:12 };
+
+  const CAMPOS_ITEM = [
+    { key:"nombre",      label:"Descripción *",       type:"text",   ph:"Ej: Panel lateral izquierdo", full:true },
+    { key:"tipo",        label:"Tipo de material",     type:"select", opts:TIPOS_MATERIAL },
+    { key:"cantidad",    label:"Cantidad",             type:"number", ph:"1" },
+    { key:"unidad",      label:"Unidad",               type:"select", opts:UNIDADES },
+    { key:"largo",       label:"Largo (mm/cm)",        type:"text",   ph:"Ej: 2400" },
+    { key:"ancho",       label:"Ancho (mm/cm)",        type:"text",   ph:"Ej: 600" },
+    { key:"espesor",     label:"Espesor (mm)",         type:"text",   ph:"Ej: 18" },
+    { key:"color",       label:"Color / Tono",         type:"text",   ph:"Ej: Blanco roto, Roble natural" },
+    { key:"terminacion", label:"Terminación",          type:"select", opts:TERMINACIONES },
+    { key:"marca",       label:"Marca",                type:"text",   ph:"Ej: Masisa, Arauco" },
+    { key:"proveedor",   label:"Proveedor",            type:"text",   ph:"Ej: Maderería Centro" },
+    { key:"estado",      label:"Estado",               type:"select", opts:Object.entries(ESTADOS_MAT).map(([v,l])=>({v,l})), isObj:true },
+    { key:"notas",       label:"Notas adicionales",    type:"text",   ph:"Observaciones...", full:true },
+  ];
+
+  return (
+    <div>
+      {/* STATS */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:32 }}>
+        {[
+          { num:listas.length,    label:"Total obras",  color:"#0F766E", border:"#99F6E4" },
+          { num:totalItems,       label:"Total ítems",  color:"#2563EB", border:"#DBEAFE" },
+          { num:totalPedidos,     label:"Pedidos",      color:"#D97706", border:"#FDE68A" },
+          { num:totalRecibidos,   label:"Recibidos",    color:"#059669", border:"#A7F3D0" },
+        ].map((s,i) => (
+          <div key={i} style={{ background:"#ffffff", border:`1px solid ${s.border}`, borderRadius:12, padding:"20px 20px 18px", animation:`fadeUp 0.35s ease ${i*0.06}s both` }}>
+            <div style={{ fontFamily:"'Sora', sans-serif", fontSize:32, fontWeight:800, color:s.color, lineHeight:1 }}>{s.num}</div>
+            <div style={{ fontSize:12, color:"#64748B", fontWeight:500, marginTop:6 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+        <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Materiales por obra</h2>
+        <button onClick={() => { setNuevaObraData({ nombre:"", lugar:"" }); setShowNuevaObra(true); }}
+          style={{ padding:"9px 18px", background:"#0F766E", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer" }}>
+          + Nueva obra
+        </button>
+      </div>
+
+      {cargando ? (
+        <div style={{ textAlign:"center", padding:60, color:"#94A3B8", fontSize:13 }}>Cargando...</div>
+      ) : listas.length === 0 ? (
+        <div style={{ textAlign:"center", padding:"80px 20px", background:"#ffffff", borderRadius:16, border:"1px solid #E8ECF0" }}>
+          <div style={{ fontSize:32, marginBottom:12 }}>🪵</div>
+          <div style={{ fontSize:13, color:"#94A3B8" }}>Sin obras. Se crean automáticamente al crear obras en Entregas.</div>
+        </div>
+      ) : (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:16 }}>
+          {listas.map((l, idx) => {
+            const items = l.items || [];
+            const rec = items.filter(i=>i.estado==="recibido").length;
+            const ped = items.filter(i=>i.estado==="pedido").length;
+            const pend = items.filter(i=>i.estado==="pendiente"||!i.estado).length;
+            const pct = items.length ? Math.round(rec/items.length*100) : 0;
+            return (
+              <div key={l.id} onClick={() => setSelected(l)}
+                style={{ background:"#ffffff", border:`1px solid ${pct===100&&items.length>0?"#A7F3D0":"#E8ECF0"}`, borderRadius:14, overflow:"hidden", cursor:"pointer", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
+                <div style={{ height:4, background: pct===100&&items.length>0?"#059669":pct>0?"#D97706":"#CBD5E1" }} />
+                <div style={{ padding:"18px 18px 16px" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+                    <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", flex:1, lineHeight:1.35, paddingRight:8 }}>{l.obra_nombre}</div>
+                    <div style={{ fontSize:11, fontWeight:700, padding:"3px 9px", borderRadius:6, background:"#F0FDF4", color:"#059669", border:"1px solid #A7F3D0", whiteSpace:"nowrap" }}>{items.length} ítem{items.length!==1?"s":""}</div>
+                  </div>
+                  {l.obra_lugar && <div style={{ fontSize:12, color:"#64748B", marginBottom:10 }}>📍 {l.obra_lugar}</div>}
+                  {items.length > 0 && (
+                    <>
+                      <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:8 }}>
+                        {pend>0&&<div style={{ fontSize:11, padding:"2px 8px", borderRadius:5, background:"#FFF7ED", color:"#D97706", border:"1px solid #FDE68A" }}>{pend} pendiente{pend!==1?"s":""}</div>}
+                        {ped>0&&<div style={{ fontSize:11, padding:"2px 8px", borderRadius:5, background:"#EFF6FF", color:"#2563EB", border:"1px solid #BFDBFE" }}>{ped} pedido{ped!==1?"s":""}</div>}
+                        {rec>0&&<div style={{ fontSize:11, padding:"2px 8px", borderRadius:5, background:"#ECFDF5", color:"#059669", border:"1px solid #A7F3D0" }}>{rec} recibido{rec!==1?"s":""}</div>}
+                      </div>
+                      <div style={{ height:6, background:"#F1F5F9", borderRadius:99, overflow:"hidden" }}>
+                        <div style={{ height:"100%", width:`${pct}%`, background: pct===100?"#059669":"#0F766E", borderRadius:99, transition:"width 0.4s" }} />
+                      </div>
+                      <div style={{ fontSize:11, color:"#94A3B8", marginTop:4, textAlign:"right" }}>{pct}% recibido</div>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* DETALLE */}
+      {selected && (() => {
+        const items = selected.items || [];
+        const rec = items.filter(i=>i.estado==="recibido").length;
+        const pct = items.length ? Math.round(rec/items.length*100) : 0;
+        return (
+          <div onClick={e => e.target===e.currentTarget&&setSelected(null)}
+            style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+            <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:860, maxHeight:"92vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)", display:"flex", flexDirection:"column" }}>
+              {/* Header */}
+              <div style={{ padding:"18px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, background:"#fff", zIndex:10 }}>
+                <div>
+                  <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{selected.obra_nombre}</h2>
+                  {selected.obra_lugar && <div style={{ fontSize:12, color:"#94A3B8", marginTop:2 }}>📍 {selected.obra_lugar}</div>}
+                </div>
+                <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                  <button onClick={() => { setNotasEdit(selected.notas||""); setShowNotasModal(true); }}
+                    style={{ padding:"7px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#64748B", fontSize:12, cursor:"pointer" }}>📝 Notas</button>
+                  <button onClick={() => generarPDFMateriales(selected)}
+                    style={{ padding:"7px 14px", background:"#0F766E", border:"none", borderRadius:8, color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>⬇ PDF</button>
+                  <button onClick={() => abrirItemModal()}
+                    style={{ padding:"7px 14px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>+ Agregar</button>
+                  <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              {items.length > 0 && (
+                <div style={{ padding:"10px 24px 0", background:"#fff" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"#94A3B8", marginBottom:4 }}>
+                    <span>{items.length} ítem{items.length!==1?"s":""} cargados</span>
+                    <span>{pct}% recibido</span>
+                  </div>
+                  <div style={{ height:6, background:"#F1F5F9", borderRadius:99, overflow:"hidden", marginBottom:12 }}>
+                    <div style={{ height:"100%", width:`${pct}%`, background: pct===100?"#059669":"#0F766E", borderRadius:99, transition:"width 0.4s" }} />
+                  </div>
+                </div>
+              )}
+
+              {/* Items list */}
+              <div style={{ padding:"12px 24px 24px", flex:1 }}>
+                {items.length === 0 ? (
+                  <div style={{ textAlign:"center", padding:"48px 20px", color:"#94A3B8", fontSize:13 }}>
+                    <div style={{ fontSize:28, marginBottom:10 }}>🪵</div>
+                    Sin materiales cargados. Hacé clic en "+ Agregar" para empezar.
+                  </div>
+                ) : (
+                  <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                    {items.map(it => {
+                      const ec = ESTADO_MAT_COLORS[it.estado] || ESTADO_MAT_COLORS.pendiente;
+                      const medidas = [it.largo&&`L: ${it.largo}`, it.ancho&&`An: ${it.ancho}`, it.espesor&&`Esp: ${it.espesor}`].filter(Boolean).join("  ·  ");
+                      return (
+                        <div key={it.id} style={{ background: it.estado==="recibido"?"#F0FDF4":"#F8FAFC", border:`1px solid ${it.estado==="recibido"?"#A7F3D0":"#E2E8F0"}`, borderRadius:10, padding:"14px 16px" }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
+                            <div style={{ flex:1 }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                                <div style={{ fontFamily:"'Sora', sans-serif", fontSize:14, fontWeight:700, color:"#1A2B4A" }}>{it.nombre}</div>
+                                {it.tipo && <div style={{ fontSize:11, padding:"2px 8px", borderRadius:5, background:"#F1F5F9", color:"#475569", border:"1px solid #E2E8F0" }}>{it.tipo}</div>}
+                              </div>
+                              <div style={{ display:"flex", flexWrap:"wrap", gap:12, fontSize:12, color:"#64748B" }}>
+                                {(it.cantidad||it.unidad) && <span>📦 {it.cantidad} {it.unidad}</span>}
+                                {medidas && <span>📐 {medidas}</span>}
+                                {it.color && <span>🎨 {it.color}</span>}
+                                {it.terminacion && <span>✨ {it.terminacion}</span>}
+                                {it.marca && <span>🏷 {it.marca}</span>}
+                                {it.proveedor && <span>🏪 {it.proveedor}</span>}
+                              </div>
+                              {it.notas && <div style={{ marginTop:6, fontSize:12, color:"#94A3B8", fontStyle:"italic" }}>"{it.notas}"</div>}
+                            </div>
+                            <div style={{ display:"flex", flexDirection:"column", gap:6, alignItems:"flex-end", flexShrink:0 }}>
+                              <select value={it.estado||"pendiente"} onChange={e => cambiarEstadoItem(it.id, e.target.value)}
+                                style={{ padding:"4px 8px", borderRadius:6, border:`1px solid ${ec.border}`, background:ec.bg, color:ec.text, fontSize:11, fontWeight:700, cursor:"pointer", outline:"none" }}>
+                                {Object.entries(ESTADOS_MAT).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                              </select>
+                              <div style={{ display:"flex", gap:6 }}>
+                                <button onClick={() => abrirItemModal(it)}
+                                  style={{ padding:"4px 10px", background:"#fff", border:"1px solid #E2E8F0", borderRadius:6, color:"#64748B", fontSize:11, cursor:"pointer" }}>Editar</button>
+                                <button onClick={() => eliminarItem(it.id)}
+                                  style={{ padding:"4px 8px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:6, color:"#DC2626", fontSize:11, cursor:"pointer" }}>✕</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL: AGREGAR / EDITAR ITEM */}
+      {showItemModal && (
+        <div onClick={e => e.target===e.currentTarget&&setShowItemModal(false)}
+          style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:560, maxHeight:"90vh", overflowY:"auto", padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+            <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 18px" }}>{editingItem ? "Editar material" : "Agregar material"}</h3>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              {CAMPOS_ITEM.map(f => (
+                <div key={f.key} style={{ gridColumn: f.full ? "1 / -1" : "auto" }}>
+                  <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:5 }}>{f.label}</label>
+                  {f.type === "select" ? (
+                    <select value={itemData[f.key]||""} onChange={e => setItemData(d=>({...d,[f.key]:e.target.value}))} style={siSm}>
+                      <option value="">— Seleccionar —</option>
+                      {f.isObj ? f.opts.map(o=><option key={o.v} value={o.v}>{o.l}</option>) : f.opts.map(o=><option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : (
+                    <input type={f.type} value={itemData[f.key]||""} onChange={e => setItemData(d=>({...d,[f.key]:e.target.value}))} style={siSm} placeholder={f.ph||""} />
+                  )}
+                </div>
+              ))}
+            </div>
+            <div style={{ display:"flex", gap:10, marginTop:20 }}>
+              <button onClick={() => { setShowItemModal(false); setEditingItem(null); }} style={{ flex:1, padding:"10px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>Cancelar</button>
+              <button onClick={guardarItem} disabled={saving}
+                style={{ flex:1, padding:"10px", border:"none", borderRadius:8, background: saving?"#94A3B8":"#1A2B4A", color:"#fff", cursor: saving?"not-allowed":"pointer", fontSize:13, fontWeight:600 }}>{saving?"Guardando...":editingItem?"Actualizar":"Agregar"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: NOTAS */}
+      {showNotasModal && (
+        <div onClick={e => e.target===e.currentTarget&&setShowNotasModal(false)}
+          style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:400, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+            <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 14px" }}>Notas de la obra</h3>
+            <textarea value={notasEdit} onChange={e=>setNotasEdit(e.target.value)} rows={5}
+              style={{ ...si, resize:"vertical", lineHeight:1.5 }} placeholder="Aclaraciones generales sobre los materiales..." />
+            <div style={{ display:"flex", gap:10, marginTop:16 }}>
+              <button onClick={() => setShowNotasModal(false)} style={{ flex:1, padding:"10px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>Cancelar</button>
+              <button onClick={async () => { await guardarLista(selected.id, { notas: notasEdit }); setShowNotasModal(false); }} disabled={saving}
+                style={{ flex:1, padding:"10px", border:"none", borderRadius:8, background:"#1A2B4A", color:"#fff", cursor:"pointer", fontSize:13, fontWeight:600 }}>Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: NUEVA OBRA */}
+      {showNuevaObra && (
+        <div onClick={e => e.target===e.currentTarget&&setShowNuevaObra(false)}
+          style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:400, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+            <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 18px" }}>Nueva obra en Materiales</h3>
+            <div style={{ marginBottom:14 }}>
+              <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Nombre de la obra *</label>
+              <input type="text" value={nuevaObraData.nombre} onChange={e=>setNuevaObraData(d=>({...d,nombre:e.target.value}))} style={si} placeholder="Ej: Dormitorio principal" autoFocus onKeyDown={e=>e.key==="Enter"&&crearObraMateriales()} />
+            </div>
+            <div style={{ marginBottom:4 }}>
+              <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Lugar / Cliente</label>
+              <input type="text" value={nuevaObraData.lugar} onChange={e=>setNuevaObraData(d=>({...d,lugar:e.target.value}))} style={si} placeholder="Ej: Av. Rivadavia 800" onKeyDown={e=>e.key==="Enter"&&crearObraMateriales()} />
+            </div>
+            <div style={{ display:"flex", gap:10, marginTop:20 }}>
+              <button onClick={()=>setShowNuevaObra(false)} style={{ flex:1, padding:"10px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>Cancelar</button>
+              <button onClick={crearObraMateriales} disabled={savingNueva}
+                style={{ flex:1, padding:"10px", border:"none", borderRadius:8, background:savingNueva?"#94A3B8":"#0F766E", color:"#fff", cursor:savingNueva?"not-allowed":"pointer", fontSize:13, fontWeight:600 }}>{savingNueva?"Creando...":"Crear obra"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 export default function App() {
   const [sesion, setSesion] = useState(null);
   const [obras, setObras] = useState([]);
@@ -1676,6 +2103,10 @@ export default function App() {
                 💰 Cobros
               </button>
             )}
+            <button onClick={() => setActiveTab("materiales")}
+              style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="materiales" ? "#0F766E" : "transparent", color: activeTab==="materiales" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="materiales" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
+              🪵 Materiales
+            </button>
           </div>
         </div>
 
@@ -1712,6 +2143,7 @@ export default function App() {
         {activeTab === "entregas" && <EntregasModule sesion={sesion} obras={obras} setObras={setObras} recargarObras={recargarObras} />}
         {activeTab === "avance" && <AvanceModule sesion={sesion} />}
         {activeTab === "cobros" && canSeeCobros && <CobrosModule sesion={sesion} />}
+        {activeTab === "materiales" && <MaterialesModule sesion={sesion} />}
       </main>
 
       {/* MODALES GLOBALES */}
