@@ -385,6 +385,7 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
       await agregarHistorial({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, usuario_id: sesion.id, usuario_nombre: sesion.nombre, accion: existente ? "editó" : "creó", detalle: existente ? "Obra actualizada" : "Obra creada" });
       if (!existente) {
         try { await insertCobro({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, monto_total: 0, adelanto_cobrado: false, adelanto_monto: 0, adelanto_porcentaje: 0, total_cobrado: false, total_fecha: null, plazo_pago: "", adicionales: [] }); } catch {}
+        try { await insertAixaObra({ name: obraFinal.nombre, client: obraFinal.lugar, start_date: null, due_date: obraFinal.fecha || null, description: obraFinal.notas || "", stations: mkStations(), history: [], clarifications: [] }); } catch {}
       } else {
         try { await updateCobro(obraFinal.id, { obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, updated_at: new Date().toISOString() }); } catch {}
       }
@@ -748,6 +749,7 @@ function AvanceModule({ sesion }) {
   const [newStationName, setNewStationName] = useState("");
 
   const isAdmin = sesion.rol === "admin";
+  const canManageStations = isAdmin || sesion.rol === "operario";
 
   useEffect(() => {
     (async () => {
@@ -979,7 +981,7 @@ function AvanceModule({ sesion }) {
                   <div key={i} onClick={() => { setEditingStation(i); setShowStationModal(true); }}
                     style={{ background:"#ffffff", border:`1.5px solid ${c.border}`, borderRadius:12, padding:"16px", cursor:"pointer", transition:"all 0.18s", position:"relative" }}>
                     <div style={{ position:"absolute", right:14, top:10, fontFamily:"'Sora', sans-serif", fontSize:28, fontWeight:800, color:"#E8ECF0" }}>{i+1}</div>
-                    {isAdmin && (
+                    {canManageStations && (
                       <button onClick={(e) => { e.stopPropagation(); deleteStation(i); }} title="Eliminar estación"
                         style={{ position:"absolute", right:12, bottom:12, padding:"3px 7px", fontSize:11, border:"1px solid #FECACA", borderRadius:5, background:"#FEF2F2", color:"#DC2626", cursor:"pointer", opacity:0.6, transition:"opacity 0.15s" }}
                         onMouseEnter={e => e.currentTarget.style.opacity="1"} onMouseLeave={e => e.currentTarget.style.opacity="0.6"}>✕</button>
@@ -995,7 +997,7 @@ function AvanceModule({ sesion }) {
               })}
             </div>
             {/* ADD STATION */}
-            {isAdmin && (
+            {canManageStations && (
               <div style={{ background:"#ffffff", border:"1.5px dashed #CBD5E1", borderRadius:12, padding:"16px 20px", display:"flex", gap:10, alignItems:"center" }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 <input value={newStationName} onChange={e => setNewStationName(e.target.value)} placeholder="Nombre de la nueva estación..."
@@ -1246,6 +1248,9 @@ function CobrosModule({ sesion }) {
   const [editData, setEditData] = useState({});
   const [editingAdicionalId, setEditingAdicionalId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [showNuevaObra, setShowNuevaObra] = useState(false);
+  const [nuevaObraData, setNuevaObraData] = useState({ nombre: "", lugar: "" });
+  const [savingNueva, setSavingNueva] = useState(false);
 
   useEffect(() => { recargar(); }, []);
 
@@ -1304,6 +1309,18 @@ function CobrosModule({ sesion }) {
     await guardar(cobroId, { adicionales: adics });
   }
 
+  async function crearObraCobro() {
+    if (!nuevaObraData.nombre.trim()) { alert("Ingresá el nombre de la obra."); return; }
+    setSavingNueva(true);
+    try {
+      await insertCobro({ obra_id: uid(), obra_nombre: nuevaObraData.nombre.trim(), obra_lugar: nuevaObraData.lugar.trim(), monto_total: 0, adelanto_cobrado: false, adelanto_monto: 0, adelanto_porcentaje: 0, total_cobrado: false, total_fecha: null, plazo_pago: "", adicionales: [] });
+      await recargar();
+      setShowNuevaObra(false);
+      setNuevaObraData({ nombre: "", lugar: "" });
+    } catch { alert("Error al crear la obra."); }
+    setSavingNueva(false);
+  }
+
   const fmtMonto = (n) => (n != null && n !== "" && Number(n) !== 0) ? `$${Number(n).toLocaleString("es-AR")}` : "—";
 
   const totalObras = cobros.length;
@@ -1330,7 +1347,13 @@ function CobrosModule({ sesion }) {
         ))}
       </div>
 
-      <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:"0 0 20px" }}>Cobros por obra</h2>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+        <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Cobros por obra</h2>
+        <button onClick={() => { setNuevaObraData({ nombre:"", lugar:"" }); setShowNuevaObra(true); }}
+          style={{ padding:"9px 18px", background:"#7C3AED", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
+          + Nueva obra
+        </button>
+      </div>
 
       {cargando ? (
         <div style={{ textAlign:"center", padding:60, color:"#94A3B8", fontSize:13 }}>Cargando...</div>
@@ -1557,6 +1580,30 @@ function CobrosModule({ sesion }) {
               <button onClick={() => { setShowModal(null); setEditingAdicionalId(null); }} style={{ flex:1, padding:"10px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>Cancelar</button>
               <button onClick={agregarAdicional} disabled={saving}
                 style={{ flex:1, padding:"10px", border:"none", borderRadius:8, background: saving ? "#94A3B8" : "#1A2B4A", color:"#fff", cursor: saving ? "not-allowed" : "pointer", fontSize:13, fontWeight:600 }}>{saving ? "Guardando..." : editingAdicionalId ? "Actualizar" : "Agregar"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: NUEVA OBRA */}
+      {showNuevaObra && (
+        <div onClick={e => e.target === e.currentTarget && setShowNuevaObra(false)} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:400, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+            <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 18px" }}>Nueva obra en Cobros</h3>
+            <div style={{ marginBottom:14 }}>
+              <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Nombre de la obra *</label>
+              <input type="text" value={nuevaObraData.nombre} onChange={e => setNuevaObraData(d => ({ ...d, nombre: e.target.value }))} style={si} placeholder="Ej: Remodelación Cocina" autoFocus
+                onKeyDown={e => e.key === "Enter" && crearObraCobro()} />
+            </div>
+            <div style={{ marginBottom:4 }}>
+              <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Lugar / Cliente</label>
+              <input type="text" value={nuevaObraData.lugar} onChange={e => setNuevaObraData(d => ({ ...d, lugar: e.target.value }))} style={si} placeholder="Ej: Av. Corrientes 1234"
+                onKeyDown={e => e.key === "Enter" && crearObraCobro()} />
+            </div>
+            <div style={{ display:"flex", gap:10, marginTop:20 }}>
+              <button onClick={() => setShowNuevaObra(false)} style={{ flex:1, padding:"10px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>Cancelar</button>
+              <button onClick={crearObraCobro} disabled={savingNueva}
+                style={{ flex:1, padding:"10px", border:"none", borderRadius:8, background: savingNueva ? "#94A3B8" : "#7C3AED", color:"#fff", cursor: savingNueva ? "not-allowed" : "pointer", fontSize:13, fontWeight:600 }}>{savingNueva ? "Creando..." : "Crear obra"}</button>
             </div>
           </div>
         </div>
