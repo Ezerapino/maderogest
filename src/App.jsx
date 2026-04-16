@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
 // ─── LOGO ─────────────────────────────────────────────────────────────────────
-const LOGO_AIXA = "data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCABFAEsDASIAAhEBAxEB/8QAGwABAAMBAQEBAAAAAAAAAAAAAAEGBwgFAgT/xAA2EAABAgUBBQUGBQUAAAAAAAABAgMABAUGEQcIEiExUTdBYXWzExQiUnThFSM2cbEyQmKBo//EABkBAQADAQEAAAAAAAAAAAAAAAABBAYFAv/EACYRAAICAQMDAwUAAAAAAAAAAAABAhEDBAUSITFSFHKxIlFhcYH/2gAMAwEAAhEDEQA/AOM8nrDJ6xEI9gnJ6wyesRCAJyesMnrEQgCcnrDJ6xEIA1DZs/XM75Yv1Wo8LU+bYa1ArSF0yUfUJk5WtToUeA+VYH2j3dmv8AXM75Yv1Woir6r9otb+pP8COalesl+kcaEVLcpp+KKvCEI6R2RCNR1g0crOnVkWZck+VrTX5MrmmynHukwfjS0eHAlpSOB47yXO4CPz29p3T6ls+3LqS5UJpE7SKoxJNSqUp9k4lwt5UTzyN88ukAZtCNkquijtZp9iVjTiZm6zTrrUJNz3hKd+Qnk5LrbhSMBISFKCsckKPLEUvWKg2za1/1C3LVq01V5OnKEu9OPBIDr6eDm4E/2A/COecE8sQsFPhGpay6O1jTi0LPr0+pS/xuTKpxs4zKTOSsNHp+Upvn3pX3YjLYA1PZlZefvueQw046oUxwkISVHHtWukeDqnMNy2abseoMOrA1F5wlIS3IJ5Bxlz7RZdkztFqHlDnrMxT9ae1S4fqz/Ai7lV6KPuM9jipbzkT8F8oqO74w3fGEIpGhG74w3fGEIAbvjDd8YQgBu+MN3xhCANf2TRjUWoeUOeszFZ1im2GtTrgQumSjyhNqytanQo8B8qwPtCEXcqvRR9xn8cVLeMl+C+Uf/Z";
+const LOGO_AIXA = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgNDgiIHdpZHRoPSIxMjAiIGhlaWdodD0iNDgiPgogIDxyZWN0IHdpZHRoPSIxMjAiIGhlaWdodD0iNDgiIHJ4PSI2IiBmaWxsPSIjMUEyQjRBIi8+CiAgPGxpbmUgeDE9IjgiIHkxPSI0OCIgeDI9IjE2IiB5Mj0iMCIgc3Ryb2tlPSIjMDU5NjY5IiBzdHJva2Utd2lkdGg9IjMuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgPGxpbmUgeDE9IjE0IiB5MT0iNDgiIHgyPSIyMiIgeTI9IjAiIHN0cm9rZT0iI0YwQzA0MCIgc3Ryb2tlLXdpZHRoPSIzLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDxsaW5lIHgxPSIyMCIgeTE9IjQ4IiB4Mj0iMjgiIHkyPSIwIiBzdHJva2U9IiMyNTYzRUIiIHN0cm9rZS13aWR0aD0iMy41IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICA8dGV4dCB4PSI2OCIgeT0iMzIiIGZvbnQtZmFtaWx5PSInU2Vnb2UgVUknLCdIZWx2ZXRpY2EgTmV1ZScsQXJpYWwsc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMiIgZm9udC13ZWlnaHQ9IjgwMCIgZmlsbD0iI0ZGRkZGRiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgbGV0dGVyLXNwYWNpbmc9IjMiPkFJWEE8L3RleHQ+Cjwvc3ZnPg==";
 
 // ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
 // MaderoGest Supabase (Entregas)
@@ -332,6 +332,8 @@ function Login({ onLogin }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function EntregasModule({ sesion, obras, setObras, recargarObras }) {
   const [filter, setFilter] = useState("todas");
+  const [search, setSearch] = useState("");
+  const [mesFilter, setMesFilter] = useState("");
   const [modalObra, setModalObra] = useState(null);
   const [detalle, setDetalle] = useState(null);
 
@@ -342,6 +344,18 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
   const terminadas = obras.filter(o => o.estado === "terminado");
 
   const obrasFiltradas = obras.filter(o => {
+    // Search filter
+    if (search) {
+      const q = search.toLowerCase();
+      if (!o.nombre.toLowerCase().includes(q) && !(o.lugar||"").toLowerCase().includes(q) && !(o.notas||"").toLowerCase().includes(q)) return false;
+    }
+    // Month filter
+    if (mesFilter) {
+      const fechaEntrega = o.fecha || "";
+      const fechaInicio = o.fecha_inicio || "";
+      if (!fechaEntrega.startsWith(mesFilter) && !fechaInicio.startsWith(mesFilter)) return false;
+    }
+    // Status filter
     if (filter === "todas") return true;
     const d = diasRestantes(o.fecha);
     const s = getStatus(d, o.estado);
@@ -359,7 +373,7 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
   async function guardarObra(obra) {
     const existente = obras.find(o => o.id === obra.id);
     const obraFinal = {
-      id: obra.id, nombre: obra.nombre, lugar: obra.lugar, fecha: obra.fecha, estado: obra.estado,
+      id: obra.id, nombre: obra.nombre, lugar: obra.lugar, fecha: obra.fecha, fecha_inicio: obra.fecha_inicio || null, estado: obra.estado,
       muebles: obra.muebles, notas: obra.notas,
       creado_por: existente ? obra.creado_por : sesion.id,
       creado_en: existente ? obra.creado_en : new Date().toISOString(),
@@ -411,8 +425,8 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
         ))}
       </div>
 
-      {/* FILTROS */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:12 }}>
+      {/* FILTROS + BÚSQUEDA */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, flexWrap:"wrap", gap:12 }}>
         <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Obras — Entregas</h2>
         <div style={{ display:"flex", gap:4, background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:10, padding:4 }}>
           {[
@@ -424,6 +438,18 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
             </button>
           ))}
         </div>
+      </div>
+      <div style={{ display:"flex", gap:10, marginBottom:20, flexWrap:"wrap", alignItems:"center" }}>
+        <div style={{ position:"relative", flex:"1 1 200px", maxWidth:320 }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)" }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar obra, dirección, notas..."
+            style={{ width:"100%", padding:"9px 12px 9px 36px", background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" }} />
+          {search && <button onClick={() => setSearch("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"#94A3B8", cursor:"pointer", fontSize:14, padding:2 }}>✕</button>}
+        </div>
+        <input type="month" value={mesFilter} onChange={e => setMesFilter(e.target.value)}
+          style={{ padding:"9px 12px", background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" }} />
+        {mesFilter && <button onClick={() => setMesFilter("")} style={{ padding:"6px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#64748B", fontSize:12, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Limpiar mes</button>}
+        {(search || mesFilter) && <span style={{ fontSize:12, color:"#94A3B8" }}>{obrasFiltradas.length} resultado{obrasFiltradas.length !== 1 ? "s" : ""}</span>}
       </div>
 
       {/* GRID */}
@@ -449,7 +475,10 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
                     <div style={{ padding:"3px 10px", borderRadius:6, background:sc.bg, color:sc.text, fontSize:11, fontWeight:700, border:`1px solid ${sc.border}`, whiteSpace:"nowrap", flexShrink:0 }}>{diasLabel}</div>
                   </div>
                   <div style={{ fontSize:12, color:"#64748B", marginBottom:4 }}>📍 {o.lugar}</div>
-                  <div style={{ fontSize:12, color:"#64748B", marginBottom:14 }}>📅 {formatDate(o.fecha)}</div>
+                  <div style={{ fontSize:12, color:"#64748B", marginBottom:4, display:"flex", gap:12 }}>
+                    {o.fecha_inicio && <span>🔨 Inicio: {formatDate(o.fecha_inicio)}</span>}
+                    <span>📅 Entrega: {formatDate(o.fecha)}</span>
+                  </div>
                   {(o.muebles||[]).length > 0 && (
                     <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:14 }}>
                       {normalizarMuebles(o.muebles).slice(0,3).map((m,i) => (
@@ -499,7 +528,7 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
 // ─── MODAL OBRA (Entregas) ────────────────────────────────────────────────────
 function ModalObraEntrega({ obra, onClose, onSave }) {
   const [form, setForm] = useState({
-    nombre: obra?.nombre || "", lugar: obra?.lugar || "", fecha: obra?.fecha || "",
+    nombre: obra?.nombre || "", lugar: obra?.lugar || "", fecha_inicio: obra?.fecha_inicio || "", fecha: obra?.fecha || "",
     estado: obra?.estado || "pendiente", muebles: normalizarMuebles(obra?.muebles), notas: obra?.notas || "",
   });
   const [muebleInput, setMuebleInput] = useState("");
@@ -541,7 +570,10 @@ function ModalObraEntrega({ obra, onClose, onSave }) {
         <div style={{ padding:"24px" }}>
           {inp("Nombre de la obra", "nombre", "text", "Ej: Departamento Flores")}
           {inp("Dirección", "lugar", "text", "Calle, número, barrio...")}
-          {inp("Fecha de entrega", "fecha", "date")}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            {inp("Fecha de inicio / pedido", "fecha_inicio", "date")}
+            {inp("Fecha de entrega", "fecha", "date")}
+          </div>
           <div style={{ marginBottom:16 }}>
             <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Estado</label>
             <select value={form.estado} onChange={e => setForm(f => ({...f, estado: e.target.value}))} style={{ ...modalInp, width:"100%" }}>
@@ -626,7 +658,7 @@ function DetalleObraEntrega({ obra, onClose, onEdit, onDelete, onEntregada, rol,
         </div>
         <div style={{ padding:"20px 24px 36px" }}>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
-            {[{ label:"Lugar", val: obra.lugar }, { label:"Fecha", val: formatDate(obra.fecha) }, { label:"Estado", val: ESTADO_LABELS[obra.estado] }, { label:"Muebles", val: `${normalizarMuebles(obra.muebles||[]).reduce((a,m)=>a+(m.cantidad||1),0)} unidades` }].map(d => (
+            {[{ label:"Lugar", val: obra.lugar }, { label:"Inicio", val: obra.fecha_inicio ? formatDate(obra.fecha_inicio) : "—" }, { label:"Entrega", val: formatDate(obra.fecha) }, { label:"Estado", val: ESTADO_LABELS[obra.estado] }, { label:"Muebles", val: `${normalizarMuebles(obra.muebles||[]).reduce((a,m)=>a+(m.cantidad||1),0)} unidades` }].map(d => (
               <div key={d.label} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:10, padding:"12px 14px" }}>
                 <div style={{ fontSize:11, color:"#94A3B8", fontWeight:600, marginBottom:4 }}>{d.label.toUpperCase()}</div>
                 <div style={{ fontSize:13, color:"#1A2B4A", fontWeight:500 }}>{d.val}</div>
@@ -713,6 +745,7 @@ function AvanceModule({ sesion }) {
   const [editingStation, setEditingStation] = useState(null);
   const [showClarifModal, setShowClarifModal] = useState(false);
   const [editingClarif, setEditingClarif] = useState(null);
+  const [newStationName, setNewStationName] = useState("");
 
   const isAdmin = sesion.rol === "admin";
 
@@ -792,6 +825,31 @@ function AvanceModule({ sesion }) {
         }
       }, 400);
     }
+  }
+
+  async function addStation(name) {
+    if (!obra || !name.trim()) return;
+    const stations = JSON.parse(JSON.stringify(obra.stations || []));
+    stations.push({ id: stations.length, name: name.trim(), status: 'pending', start_date: null, end_date: null, note: '' });
+    const hist = JSON.parse(JSON.stringify(obra.history || []));
+    hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Nueva estación agregada: "${name.trim()}"`, time: new Date().toISOString() });
+    setLoading(true);
+    try { await updateAixaObra(selectedObra, { stations, history: hist }); await recargar(); setNewStationName(""); } catch { alert("Error"); }
+    setLoading(false);
+  }
+
+  async function deleteStation(idx) {
+    if (!obra) return;
+    const stations = JSON.parse(JSON.stringify(obra.stations || []));
+    const removed = stations.splice(idx, 1);
+    if (!confirm(`¿Eliminar la estación "${removed[0]?.name}"?`)) return;
+    // Re-index ids
+    stations.forEach((s, i) => s.id = i);
+    const hist = JSON.parse(JSON.stringify(obra.history || []));
+    hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Estación eliminada: "${removed[0]?.name}"`, time: new Date().toISOString() });
+    setLoading(true);
+    try { await updateAixaObra(selectedObra, { stations, history: hist }); await recargar(); } catch { alert("Error"); }
+    setLoading(false);
   }
 
   async function saveClarif(title, station, responsible, detail) {
@@ -908,27 +966,47 @@ function AvanceModule({ sesion }) {
 
         {/* STATIONS */}
         {section === "stations" && (
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(260px, 1fr))", gap:14 }}>
-            {st.map((s, i) => {
-              const labels = { pending:"Pendiente", active:"En progreso", done:"Completado", blocked:"Bloqueado" };
-              const colors = { done:{bg:"#ECFDF5",text:"#059669",border:"#A7F3D0"}, active:{bg:"#FFFBEB",text:"#D97706",border:"#FDE68A"}, blocked:{bg:"#FEF2F2",text:"#DC2626",border:"#FECACA"}, pending:{bg:"#F8FAFC",text:"#94A3B8",border:"#E2E8F0"} };
-              const c = colors[s.status] || colors.pending;
-              let days = "";
-              if (s.start_date && s.end_date) { const d = Math.max(0, Math.floor((new Date(s.end_date)-new Date(s.start_date))/86400000)); days = `${d} días en esta etapa`; }
-              else if (s.start_date) { const d = Math.max(0, Math.floor((new Date()-new Date(s.start_date))/86400000)); days = `${d} días transcurridos`; }
-              return (
-                <div key={i} onClick={() => { setEditingStation(i); setShowStationModal(true); }}
-                  style={{ background:"#ffffff", border:`1.5px solid ${c.border}`, borderRadius:12, padding:"16px", cursor:"pointer", transition:"all 0.18s", position:"relative" }}>
-                  <div style={{ position:"absolute", right:14, top:10, fontFamily:"'Sora', sans-serif", fontSize:28, fontWeight:800, color:"#E8ECF0" }}>{i+1}</div>
-                  <div style={{ fontFamily:"'Sora', sans-serif", fontSize:14, fontWeight:700, color:"#1A2B4A", textTransform:"uppercase", marginBottom:6 }}>{s.name}</div>
-                  <span style={{ display:"inline-block", padding:"3px 10px", borderRadius:99, background:c.bg, color:c.text, border:`1px solid ${c.border}`, fontSize:11, fontWeight:600 }}>{labels[s.status]}</span>
-                  {days && <div style={{ fontSize:12, color:"#94A3B8", marginTop:8 }}>{days}</div>}
-                  {s.note && <div style={{ fontSize:12, color:"#94A3B8", marginTop:6, borderTop:"1px solid #F1F5F9", paddingTop:6 }}>{s.note}</div>}
-                  {s.start_date && <div style={{ fontSize:11, color:"#CBD5E1", marginTop:4 }}>Inicio: {fmtDateAixa(s.start_date)}</div>}
-                  {s.end_date && <div style={{ fontSize:11, color:"#CBD5E1" }}>Fin: {fmtDateAixa(s.end_date)}</div>}
-                </div>
-              );
-            })}
+          <div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(260px, 1fr))", gap:14, marginBottom:20 }}>
+              {st.map((s, i) => {
+                const labels = { pending:"Pendiente", active:"En progreso", done:"Completado", blocked:"Bloqueado" };
+                const colors = { done:{bg:"#ECFDF5",text:"#059669",border:"#A7F3D0"}, active:{bg:"#FFFBEB",text:"#D97706",border:"#FDE68A"}, blocked:{bg:"#FEF2F2",text:"#DC2626",border:"#FECACA"}, pending:{bg:"#F8FAFC",text:"#94A3B8",border:"#E2E8F0"} };
+                const c = colors[s.status] || colors.pending;
+                let days = "";
+                if (s.start_date && s.end_date) { const d = Math.max(0, Math.floor((new Date(s.end_date)-new Date(s.start_date))/86400000)); days = `${d} días en esta etapa`; }
+                else if (s.start_date) { const d = Math.max(0, Math.floor((new Date()-new Date(s.start_date))/86400000)); days = `${d} días transcurridos`; }
+                return (
+                  <div key={i} onClick={() => { setEditingStation(i); setShowStationModal(true); }}
+                    style={{ background:"#ffffff", border:`1.5px solid ${c.border}`, borderRadius:12, padding:"16px", cursor:"pointer", transition:"all 0.18s", position:"relative" }}>
+                    <div style={{ position:"absolute", right:14, top:10, fontFamily:"'Sora', sans-serif", fontSize:28, fontWeight:800, color:"#E8ECF0" }}>{i+1}</div>
+                    {isAdmin && (
+                      <button onClick={(e) => { e.stopPropagation(); deleteStation(i); }} title="Eliminar estación"
+                        style={{ position:"absolute", right:12, bottom:12, padding:"3px 7px", fontSize:11, border:"1px solid #FECACA", borderRadius:5, background:"#FEF2F2", color:"#DC2626", cursor:"pointer", opacity:0.6, transition:"opacity 0.15s" }}
+                        onMouseEnter={e => e.currentTarget.style.opacity="1"} onMouseLeave={e => e.currentTarget.style.opacity="0.6"}>✕</button>
+                    )}
+                    <div style={{ fontFamily:"'Sora', sans-serif", fontSize:14, fontWeight:700, color:"#1A2B4A", textTransform:"uppercase", marginBottom:6 }}>{s.name}</div>
+                    <span style={{ display:"inline-block", padding:"3px 10px", borderRadius:99, background:c.bg, color:c.text, border:`1px solid ${c.border}`, fontSize:11, fontWeight:600 }}>{labels[s.status]}</span>
+                    {days && <div style={{ fontSize:12, color:"#94A3B8", marginTop:8 }}>{days}</div>}
+                    {s.note && <div style={{ fontSize:12, color:"#94A3B8", marginTop:6, borderTop:"1px solid #F1F5F9", paddingTop:6 }}>{s.note}</div>}
+                    {s.start_date && <div style={{ fontSize:11, color:"#CBD5E1", marginTop:4 }}>Inicio: {fmtDateAixa(s.start_date)}</div>}
+                    {s.end_date && <div style={{ fontSize:11, color:"#CBD5E1" }}>Fin: {fmtDateAixa(s.end_date)}</div>}
+                  </div>
+                );
+              })}
+            </div>
+            {/* ADD STATION */}
+            {isAdmin && (
+              <div style={{ background:"#ffffff", border:"1.5px dashed #CBD5E1", borderRadius:12, padding:"16px 20px", display:"flex", gap:10, alignItems:"center" }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <input value={newStationName} onChange={e => setNewStationName(e.target.value)} placeholder="Nombre de la nueva estación..."
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addStation(newStationName); }}}
+                  style={{ flex:1, padding:"9px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" }} />
+                <button onClick={() => addStation(newStationName)} disabled={!newStationName.trim()}
+                  style={{ padding:"9px 20px", background: newStationName.trim() ? "#1A2B4A" : "#CBD5E1", border:"none", borderRadius:8, color:"#ffffff", fontSize:13, fontWeight:600, cursor: newStationName.trim() ? "pointer" : "not-allowed", fontFamily:"'Inter', sans-serif", whiteSpace:"nowrap" }}>
+                  Agregar estación
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -1303,7 +1381,6 @@ function CobrosModule({ sesion }) {
         <div onClick={e => e.target === e.currentTarget && setSelected(null)}
           style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
           <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:600, maxHeight:"92vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
-            {/* Header */}
             <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, background:"#fff", zIndex:10 }}>
               <div>
                 <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>{selected.obra_nombre}</h2>
@@ -1311,9 +1388,7 @@ function CobrosModule({ sesion }) {
               </div>
               <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16, flexShrink:0 }}>✕</button>
             </div>
-
             <div style={{ padding:"20px 24px" }}>
-
               {/* MONTO TOTAL */}
               <div style={{ marginBottom:20, padding:16, background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:12 }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -1325,7 +1400,6 @@ function CobrosModule({ sesion }) {
                     style={{ background:"#1A2B4A", border:"none", borderRadius:8, padding:"8px 14px", color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>Editar</button>
                 </div>
               </div>
-
               {/* ADELANTO */}
               <div style={{ marginBottom:16, padding:16, border:`2px solid ${selected.adelanto_cobrado ? "#A7F3D0" : "#E2E8F0"}`, borderRadius:12, background: selected.adelanto_cobrado ? "#ECFDF5" : "#fff" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
@@ -1352,7 +1426,6 @@ function CobrosModule({ sesion }) {
                   </div>
                 </div>
               </div>
-
               {/* ADICIONALES */}
               <div style={{ marginBottom:16 }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
@@ -1379,7 +1452,6 @@ function CobrosModule({ sesion }) {
                   ))
                 )}
               </div>
-
               {/* COBRO TOTAL */}
               <div style={{ marginBottom:16, padding:16, border:`2px solid ${selected.total_cobrado ? "#A7F3D0" : "#E2E8F0"}`, borderRadius:12, background: selected.total_cobrado ? "#ECFDF5" : "#fff" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
@@ -1406,7 +1478,6 @@ function CobrosModule({ sesion }) {
                   </div>
                 </div>
               </div>
-
             </div>
           </div>
         </div>
@@ -1427,7 +1498,6 @@ function CobrosModule({ sesion }) {
           </div>
         </div>
       )}
-
       {/* MODAL: ADELANTO */}
       {showModal === "adelanto" && (
         <div onClick={e => e.target === e.currentTarget && setShowModal(null)} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
@@ -1449,7 +1519,6 @@ function CobrosModule({ sesion }) {
           </div>
         </div>
       )}
-
       {/* MODAL: COBRO TOTAL + PLAZO */}
       {showModal === "total" && (
         <div onClick={e => e.target === e.currentTarget && setShowModal(null)} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
@@ -1471,10 +1540,9 @@ function CobrosModule({ sesion }) {
           </div>
         </div>
       )}
-
       {/* MODAL: ADICIONAL */}
       {showModal === "adicional" && (
-        <div onClick={e => e.target === e.currentTarget && { setShowModal: setShowModal(null), setEditingAdicionalId: setEditingAdicionalId(null) }} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+        <div onClick={e => { e.target === e.currentTarget && setShowModal(null); }} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
           <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:380, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
             <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 18px" }}>{editingAdicionalId ? "Editar adicional" : "Agregar adicional"}</h3>
             <div style={{ marginBottom:14 }}>
@@ -1652,7 +1720,7 @@ function GestionUsuarios({ onClose }) {
         <div style={{ padding:"16px 24px" }}>
           {usuarios.map(u => (
             <div key={u.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:10, marginBottom:8 }}>
-              <div style={{ width:36, height:36, borderRadius:8, background: u.rol==="admin" ? "#1A2B4A" : "#0F766E", display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <div style={{ width:36, height:36, borderRadius:8, background: (ROL_META[u.rol]||ROL_META.operario).color, display:"flex", alignItems:"center", justifyContent:"center" }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
               </div>
               <div style={{ flex:1 }}>
