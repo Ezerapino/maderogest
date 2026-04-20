@@ -385,7 +385,7 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
   async function guardarObra(obra) {
     const existente = obras.find(o => o.id === obra.id);
     const obraFinal = {
-      id: obra.id, nombre: obra.nombre, lugar: obra.lugar, fecha: obra.fecha, fecha_inicio: obra.fecha_inicio || null, estado: obra.estado,
+      id: obra.id, nombre: obra.nombre, lugar: obra.lugar, fecha: obra.fecha || null, fecha_inicio: obra.fecha_inicio || null, estado: obra.estado,
       muebles: obra.muebles, notas: obra.notas,
       creado_por: existente ? obra.creado_por : sesion.id,
       creado_en: existente ? obra.creado_en : new Date().toISOString(),
