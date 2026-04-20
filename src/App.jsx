@@ -397,7 +397,6 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
       await agregarHistorial({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, usuario_id: sesion.id, usuario_nombre: sesion.nombre, accion: existente ? "editó" : "creó", detalle: existente ? "Obra actualizada" : "Obra creada" });
       if (!existente) {
         try { await insertCobro({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, monto_total: 0, adelanto_cobrado: false, adelanto_monto: 0, adelanto_porcentaje: 0, total_cobrado: false, total_fecha: null, plazo_pago: "", adicionales: [] }); } catch {}
-        try { await insertAixaObra({ name: obraFinal.nombre, client: obraFinal.lugar, start_date: null, due_date: obraFinal.fecha || null, description: obraFinal.notas || "", stations: mkStations(), history: [], clarifications: [] }); } catch {}
         try { await insertMaterial({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, items: [], notas: "" }); } catch {}
       } else {
         try { await updateCobro(obraFinal.id, { obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, updated_at: new Date().toISOString() }); } catch {}
@@ -556,7 +555,6 @@ function ModalObraEntrega({ obra, onClose, onSave }) {
     const e = {};
     if (!form.nombre.trim()) e.nombre = "Requerido";
     if (!form.lugar.trim()) e.lugar = "Requerido";
-    if (!form.fecha) e.fecha = "Requerido";
     setErrors(e);
     if (Object.keys(e).length > 0) return;
     onSave({ ...obra, ...form, id: obra?.id || uid(), creadoEn: obra?.creadoEn || new Date().toISOString() });
@@ -1136,7 +1134,7 @@ function AvanceModule({ sesion }) {
             <option value="done">Completadas</option>
             <option value="delayed">Con demora</option>
           </select>
-          {isAdmin && <button onClick={() => { setEditingObra(null); setShowObraModal(true); }} style={{ padding:"8px 18px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#ffffff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>+ Nueva obra</button>}
+          {(isAdmin || sesion.rol === "operario") && <button onClick={() => { setEditingObra(null); setShowObraModal(true); }} style={{ padding:"8px 18px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#ffffff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>+ Nueva obra</button>}
         </div>
       </div>
 
