@@ -2254,7 +2254,7 @@ function AvanceObraModule({ sesion }) {
       if (editingObra) {
         await updateObraAvance(editingObra.id, { ...form, updated_at: new Date().toISOString() });
       } else {
-        await insertObraAvance({ ...form, id: uid(), finalizada: false });
+        await insertObraAvance({ ...form, finalizada: false });
       }
       const newObras = await getObrasAvance();
       setObras(newObras || []);
@@ -2284,7 +2284,7 @@ function AvanceObraModule({ sesion }) {
       if (editingDia) {
         await updateDiaAvance(editingDia.id, form);
       } else {
-        await insertDiaAvance({ ...form, id: uid(), obra_id: selected.id, archivos: [] });
+        await insertDiaAvance({ ...form, obra_id: selected.id, archivos: [] });
       }
       await loadDias(selected.id);
     } catch { alert("Error al guardar el día."); return; }
