@@ -98,6 +98,49 @@ async function updateMaterial(id, data) { return sbFetch(`materiales?id=eq.${id}
 async function deleteMaterialByObraId(obraId) { return sbFetch(`materiales?obra_id=eq.${obraId}`, { method: "DELETE" }); }
 async function deleteMaterialById(id) { return sbFetch(`materiales?id=eq.${id}`, { method: "DELETE" }); }
 
+// ─── AVANCE DE OBRA API (tabla: obras_avance + avance_dias) ───────────────────
+const AVANCE_BUCKET = "avance-obra-fotos";
+async function getObrasAvance() { return sbFetch("obras_avance?select=*&order=created_at.desc"); }
+async function insertObraAvance(obra) { return sbFetch("obras_avance", { method: "POST", body: JSON.stringify(obra) }); }
+async function updateObraAvance(id, data) { return sbFetch(`obras_avance?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
+async function deleteObraAvanceById(id) { return sbFetch(`obras_avance?id=eq.${id}`, { method: "DELETE" }); }
+async function getDiasAvance(obraId) { return sbFetch(`avance_dias?obra_id=eq.${obraId}&order=fecha.asc,created_at.asc`); }
+async function insertDiaAvance(dia) { return sbFetch("avance_dias", { method: "POST", body: JSON.stringify(dia) }); }
+async function updateDiaAvance(id, data) { return sbFetch(`avance_dias?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
+async function deleteDiaAvanceById(id) { return sbFetch(`avance_dias?id=eq.${id}`, { method: "DELETE" }); }
+
+async function uploadFileAvance(file, obraId) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  const path = `${obraId}/${Date.now()}_${Math.random().toString(36).slice(2,6)}.${ext}`;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${AVANCE_BUCKET}/${path}`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': file.type, 'x-upsert': 'true' },
+    body: file
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error(t); }
+  return { url: `${SUPABASE_URL}/storage/v1/object/public/${AVANCE_BUCKET}/${path}`, path, name: file.name };
+}
+
+async function deleteFileAvance(filePath) {
+  await fetch(`${SUPABASE_URL}/storage/v1/object/${AVANCE_BUCKET}/${filePath}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'apikey': SUPABASE_KEY }
+  });
+}
+
+async function imgToBase64(url) {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    return await new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
 // Old separate API functions removed — now using unified functions above
 
 // ─── SESSION ──────────────────────────────────────────────────────────────────
@@ -270,6 +313,63 @@ function generarInformeCierre(obra) {
 </div></body></html>`;
   const win = window.open("", "_blank");
   if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 600); }
+}
+
+
+async function generarPDFDiaAvance(obra, dia) {
+  const ahora = new Date().toLocaleDateString("es-AR",{day:"2-digit",month:"long",year:"numeric"});
+  const archivos = dia.archivos || [];
+  const fotos = archivos.filter(f => /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(f.name));
+  const otrosArchivos = archivos.filter(f => !/\.(jpg|jpeg|png|gif|webp|heic)$/i.test(f.name));
+
+  const b64Fotos = await Promise.all(fotos.map(async f => {
+    const b64 = await imgToBase64(f.url);
+    return b64 ? { ...f, b64 } : null;
+  }));
+  const fotosEmb = b64Fotos.filter(Boolean);
+
+  const fotosHTML = fotosEmb.length === 0
+    ? '<p style="color:#94a3b8;font-size:13px;text-align:center">Sin fotos para este día.</p>'
+    : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:12px">${fotosEmb.map(f=>`<div style="border-radius:8px;overflow:hidden;border:1px solid #e2e8f0"><img src="${f.b64}" style="width:100%;height:170px;object-fit:cover"/><div style="padding:5px 8px;background:#f8fafc;font-size:10px;color:#64748b">${f.name}</div></div>`).join('')}</div>`;
+
+  const otrosHTML = otrosArchivos.length > 0
+    ? `<div style="margin-top:14px">${otrosArchivos.map(f=>`<div style="padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:#475569;margin-bottom:4px">📎 ${f.name}</div>`).join('')}</div>` : '';
+
+  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Avance de Obra – ${dia.fecha ? formatDate(dia.fecha) : ''}</title>
+<style>@page{margin:18mm 15mm}body{font-family:'Segoe UI',system-ui,sans-serif;color:#1e293b;margin:0}
+.cover{background:linear-gradient(135deg,#1A2B4A 0%,#2563EB 100%);color:#fff;padding:36px 48px}
+.cover h1{font-size:24px;margin:0 0 4px;font-weight:800}.cover .sub{font-size:13px;opacity:.75;margin-bottom:20px}
+.cover-grid{display:flex;gap:16px;flex-wrap:wrap}.citem{background:rgba(255,255,255,.13);border-radius:8px;padding:10px 16px}
+.citem .lbl{font-size:10px;text-transform:uppercase;letter-spacing:1px;opacity:.7;margin-bottom:2px}.citem .val{font-size:16px;font-weight:700}
+.body{padding:28px 40px}.sec-t{font-size:11px;text-transform:uppercase;letter-spacing:2px;color:#94a3b8;border-bottom:2px solid #e2e8f0;padding-bottom:8px;margin-bottom:14px;font-weight:700}
+.campo{margin-bottom:18px}.campo .lbl{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}.campo .val{font-size:14px;color:#1e293b;line-height:1.6;white-space:pre-line}
+.footer{margin-top:32px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:11px;color:#94a3b8}
+</style></head><body>
+<div class="cover">
+  <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:.6;margin-bottom:12px">Obras Grupo Aixa S.A.</div>
+  <h1>Avance de Obra</h1>
+  <div class="sub">${obra.nombre}${obra.direccion ? ` — ${obra.direccion}` : ''}</div>
+  <div class="cover-grid">
+    ${obra.fecha_entrega ? `<div class="citem"><div class="lbl">Entrega pactada</div><div class="val">${formatDate(obra.fecha_entrega)}</div></div>` : ''}
+    <div class="citem"><div class="lbl">Fecha del día</div><div class="val">${dia.fecha ? formatDate(dia.fecha) : '—'}</div></div>
+    ${obra.finalizada ? '<div class="citem"><div class="lbl">Estado</div><div class="val">✅ Finalizada</div></div>' : ''}
+  </div>
+</div>
+<div class="body">
+  <div style="margin-bottom:24px">
+    <div class="sec-t">📋 Detalle del día</div>
+    <div class="campo"><div class="lbl">Fecha</div><div class="val">${dia.fecha ? formatDate(dia.fecha) : '—'}</div></div>
+    <div class="campo"><div class="lbl">Operarios</div><div class="val">${dia.operarios || '—'}</div></div>
+    <div class="campo"><div class="lbl">Detalle de trabajo</div><div class="val">${dia.detalle || '—'}</div></div>
+  </div>
+  <div style="margin-bottom:24px">
+    <div class="sec-t">📷 Fotos (${fotosEmb.length})</div>
+    ${fotosHTML}${otrosHTML}
+  </div>
+  <div class="footer"><span>Obras Grupo Aixa S.A. — Avance de Obra</span><span>Generado: ${ahora}</span></div>
+</div></body></html>`;
+  const win = window.open("","_blank");
+  if (win) { win.document.write(html); win.document.close(); setTimeout(()=>win.print(),900); }
 }
 
 
@@ -2118,6 +2218,394 @@ function MaterialesModule({ sesion }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// AVANCE DE OBRA MODULE (nuevo — con días y fotos)
+// ═══════════════════════════════════════════════════════════════════════════════
+function AvanceObraModule({ sesion }) {
+  const [obras, setObras] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [dias, setDias] = useState([]);
+  const [cargandoDias, setCargandoDias] = useState(false);
+  const [showObraModal, setShowObraModal] = useState(false);
+  const [editingObra, setEditingObra] = useState(null);
+  const [showDiaModal, setShowDiaModal] = useState(false);
+  const [editingDia, setEditingDia] = useState(null);
+  const [uploadingFiles, setUploadingFiles] = useState({});
+
+  const isAdmin = sesion.rol === "admin";
+  const canEdit = isAdmin || sesion.rol === "operario" || sesion.rol === "arquitecto";
+
+  useEffect(() => { loadObras(); }, []);
+
+  async function loadObras() {
+    setCargando(true);
+    try { const obs = await getObrasAvance(); setObras(obs || []); } catch {}
+    setCargando(false);
+  }
+
+  async function loadDias(obraId) {
+    setCargandoDias(true);
+    try { const d = await getDiasAvance(obraId); setDias(d || []); } catch {}
+    setCargandoDias(false);
+  }
+
+  async function saveObra(form) {
+    try {
+      if (editingObra) {
+        await updateObraAvance(editingObra.id, { ...form, updated_at: new Date().toISOString() });
+      } else {
+        await insertObraAvance({ ...form, id: uid(), finalizada: false });
+      }
+      const newObras = await getObrasAvance();
+      setObras(newObras || []);
+      if (selected && editingObra?.id === selected.id) {
+        setSelected(newObras?.find(o => o.id === selected.id) || null);
+      }
+    } catch { alert("Error al guardar la obra."); return; }
+    setShowObraModal(false); setEditingObra(null);
+  }
+
+  async function deleteObra(id) {
+    if (!confirm("¿Eliminar esta obra y todos sus registros?")) return;
+    try {
+      const ds = await getDiasAvance(id);
+      for (const d of (ds || [])) {
+        for (const f of (d.archivos || [])) { try { await deleteFileAvance(f.path); } catch {} }
+        await deleteDiaAvanceById(d.id);
+      }
+      await deleteObraAvanceById(id);
+      if (selected?.id === id) { setSelected(null); setDias([]); }
+      await loadObras();
+    } catch { alert("Error al eliminar."); }
+  }
+
+  async function saveDia(form) {
+    try {
+      if (editingDia) {
+        await updateDiaAvance(editingDia.id, form);
+      } else {
+        await insertDiaAvance({ ...form, id: uid(), obra_id: selected.id, archivos: [] });
+      }
+      await loadDias(selected.id);
+    } catch { alert("Error al guardar el día."); return; }
+    setShowDiaModal(false); setEditingDia(null);
+  }
+
+  async function deleteDia(id) {
+    if (!confirm("¿Eliminar este registro de día?")) return;
+    try {
+      const dia = dias.find(d => d.id === id);
+      for (const f of (dia?.archivos || [])) { try { await deleteFileAvance(f.path); } catch {} }
+      await deleteDiaAvanceById(id);
+      await loadDias(selected.id);
+    } catch { alert("Error al eliminar."); }
+  }
+
+  async function handleFileUpload(files, diaId) {
+    setUploadingFiles(s => ({ ...s, [diaId]: true }));
+    try {
+      const dia = dias.find(d => d.id === diaId);
+      const archivos = [...(dia?.archivos || [])];
+      for (const file of Array.from(files)) {
+        try { const fi = await uploadFileAvance(file, selected.id); archivos.push(fi); }
+        catch (e) { alert(`Error al subir ${file.name}: ${e.message}`); }
+      }
+      await updateDiaAvance(diaId, { archivos });
+      await loadDias(selected.id);
+    } catch {}
+    setUploadingFiles(s => ({ ...s, [diaId]: false }));
+  }
+
+  async function deleteFile(diaId, fileIdx) {
+    if (!confirm("¿Eliminar este archivo?")) return;
+    try {
+      const dia = dias.find(d => d.id === diaId);
+      const archivos = [...(dia?.archivos || [])];
+      const removed = archivos.splice(fileIdx, 1);
+      try { await deleteFileAvance(removed[0]?.path); } catch {}
+      await updateDiaAvance(diaId, { archivos });
+      await loadDias(selected.id);
+    } catch { alert("Error al eliminar archivo."); }
+  }
+
+  async function marcarFinalizada(obra) {
+    try {
+      await updateObraAvance(obra.id, { finalizada: !obra.finalizada, updated_at: new Date().toISOString() });
+      const newObras = await getObrasAvance();
+      setObras(newObras || []);
+      if (selected?.id === obra.id) setSelected(newObras?.find(o => o.id === obra.id) || null);
+    } catch { alert("Error al actualizar."); }
+  }
+
+  const obrasActivas = obras.filter(o => !o.finalizada);
+  const obrasFinalizadas = obras.filter(o => o.finalizada);
+
+  if (cargando) return <div style={{ textAlign:"center", padding:"60px 0", color:"#94A3B8", fontSize:13 }}>Cargando avance de obras...</div>;
+
+  return (
+    <div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:32 }}>
+        {[
+          { num: obras.length, label:"Total obras", color:"#2563EB", border:"#DBEAFE" },
+          { num: obrasActivas.length, label:"En curso", color:"#D97706", border:"#FDE68A" },
+          { num: obrasFinalizadas.length, label:"Finalizadas", color:"#059669", border:"#A7F3D0" },
+        ].map((s, i) => (
+          <div key={i} style={{ background:"#ffffff", border:`1px solid ${s.border}`, borderRadius:12, padding:"20px 20px 18px" }}>
+            <div style={{ fontFamily:"'Sora', sans-serif", fontSize:32, fontWeight:800, color:s.color, lineHeight:1 }}>{s.num}</div>
+            <div style={{ fontSize:12, color:"#64748B", fontWeight:500, marginTop:6 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+        <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Obras — Avance de Obra</h2>
+        {canEdit && (
+          <button onClick={() => { setEditingObra(null); setShowObraModal(true); }}
+            style={{ padding:"8px 18px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
+            + Nueva obra
+          </button>
+        )}
+      </div>
+
+      {obras.length === 0 ? (
+        <div style={{ textAlign:"center", padding:"80px 20px", background:"#ffffff", borderRadius:16, border:"1px solid #E8ECF0" }}>
+          <div style={{ fontSize:13, color:"#94A3B8" }}>No hay obras registradas aún</div>
+        </div>
+      ) : (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))", gap:16 }}>
+          {obras.map((obra, idx) => (
+            <div key={obra.id} onClick={() => { setSelected(obra); loadDias(obra.id); }}
+              style={{ background:"#ffffff", border: obra.finalizada ? "1px solid #A7F3D0" : "1px solid #E8ECF0", borderRadius:14, overflow:"hidden", cursor:"pointer", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
+              <div style={{ height:4, background: obra.finalizada ? "#059669" : "#2563EB" }} />
+              <div style={{ padding:"18px 18px 16px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+                  <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", flex:1, paddingRight:8 }}>{obra.nombre}</div>
+                  {obra.finalizada && <span style={{ fontSize:10, fontWeight:700, color:"#059669", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:5, padding:"2px 8px", whiteSpace:"nowrap", flexShrink:0 }}>✅ FINALIZADA</span>}
+                </div>
+                {obra.direccion && <div style={{ fontSize:12, color:"#64748B", marginBottom:4 }}>📍 {obra.direccion}</div>}
+                {obra.fecha_entrega && <div style={{ fontSize:12, color:"#64748B", marginBottom:12 }}>📅 Entrega: {formatDate(obra.fecha_entrega)}</div>}
+                <div onClick={e => e.stopPropagation()} style={{ display:"flex", gap:6, paddingTop:12, borderTop:"1px solid #F1F5F9" }}>
+                  {canEdit && <button onClick={() => { setEditingObra(obra); setShowObraModal(true); }} style={{ flex:1, padding:"7px 0", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Editar</button>}
+                  {canEdit && (
+                    <button onClick={() => marcarFinalizada(obra)}
+                      style={{ flex:1, padding:"7px 0", background: obra.finalizada ? "#F8FAFC" : "#ECFDF5", border:`1px solid ${obra.finalizada ? "#E2E8F0" : "#A7F3D0"}`, borderRadius:8, color: obra.finalizada ? "#475569" : "#059669", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
+                      {obra.finalizada ? "Reabrir" : "Finalizar"}
+                    </button>
+                  )}
+                  {isAdmin && <button onClick={() => deleteObra(obra.id)} style={{ padding:"7px 10px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:12, cursor:"pointer" }}>✕</button>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {selected && (
+        <div onClick={e => e.target === e.currentTarget && setSelected(null)}
+          style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:720, maxHeight:"92vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+            <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"flex-start", position:"sticky", top:0, background:"#fff", zIndex:10, borderRadius:"14px 14px 0 0" }}>
+              <div style={{ flex:1 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+                  <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>{selected.nombre}</h2>
+                  {selected.finalizada && <span style={{ fontSize:10, fontWeight:700, color:"#059669", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:5, padding:"2px 8px" }}>✅ FINALIZADA</span>}
+                </div>
+                {selected.direccion && <div style={{ fontSize:12, color:"#64748B", marginTop:3 }}>📍 {selected.direccion}</div>}
+                {selected.fecha_entrega && <div style={{ fontSize:12, color:"#64748B" }}>📅 Entrega pactada: {formatDate(selected.fecha_entrega)}</div>}
+              </div>
+              <div style={{ display:"flex", gap:8, alignItems:"center", flexShrink:0 }}>
+                {canEdit && (
+                  <button onClick={() => marcarFinalizada(selected)}
+                    style={{ padding:"7px 14px", background: selected.finalizada ? "#F8FAFC" : "#ECFDF5", border:`1px solid ${selected.finalizada ? "#E2E8F0" : "#A7F3D0"}`, borderRadius:8, color: selected.finalizada ? "#475569" : "#059669", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                    {selected.finalizada ? "Reabrir obra" : "✅ Finalizar obra"}
+                  </button>
+                )}
+                <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16, flexShrink:0 }}>✕</button>
+              </div>
+            </div>
+            <div style={{ padding:"20px 24px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                <div style={{ fontSize:14, fontWeight:700, color:"#1A2B4A" }}>Registros por día ({dias.length})</div>
+                {canEdit && (
+                  <button onClick={() => { setEditingDia(null); setShowDiaModal(true); }}
+                    style={{ padding:"7px 14px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>+ Agregar día</button>
+                )}
+              </div>
+              {cargandoDias ? (
+                <div style={{ textAlign:"center", padding:"40px 0", color:"#94A3B8", fontSize:13 }}>Cargando...</div>
+              ) : dias.length === 0 ? (
+                <div style={{ textAlign:"center", padding:"40px 20px", background:"#F8FAFC", borderRadius:12, border:"1px solid #E2E8F0", fontSize:13, color:"#94A3B8" }}>Sin registros aún.{canEdit ? ' Agregá el primer día.' : ''}</div>
+              ) : (
+                <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                  {dias.map((dia, idx) => {
+                    const fotos = (dia.archivos || []).filter(f => /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(f.name));
+                    const otros = (dia.archivos || []).filter(f => !/\.(jpg|jpeg|png|gif|webp|heic)$/i.test(f.name));
+                    return (
+                      <div key={dia.id} style={{ border:"1px solid #E2E8F0", borderRadius:12, overflow:"hidden" }}>
+                        <div style={{ padding:"13px 16px", background:"#F8FAFC", borderBottom:"1px solid #E2E8F0", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                          <div>
+                            <div style={{ fontSize:14, fontWeight:700, color:"#1A2B4A" }}>{dia.fecha ? formatDate(dia.fecha) : `Día ${idx + 1}`}</div>
+                            {dia.operarios && <div style={{ fontSize:12, color:"#64748B", marginTop:2 }}>👷 {dia.operarios}</div>}
+                          </div>
+                          <div style={{ display:"flex", gap:6 }}>
+                            <button onClick={() => generarPDFDiaAvance(selected, dia)}
+                              style={{ padding:"5px 10px", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:7, color:"#2563EB", fontSize:11, fontWeight:600, cursor:"pointer" }}>📄 PDF</button>
+                            {canEdit && <>
+                              <button onClick={() => { setEditingDia(dia); setShowDiaModal(true); }} style={{ padding:"5px 10px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:7, color:"#475569", fontSize:11, cursor:"pointer" }}>Editar</button>
+                              <button onClick={() => deleteDia(dia.id)} style={{ padding:"5px 8px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:7, color:"#DC2626", fontSize:11, cursor:"pointer" }}>✕</button>
+                            </>}
+                          </div>
+                        </div>
+                        <div style={{ padding:"14px 16px" }}>
+                          {dia.detalle && (
+                            <div style={{ marginBottom:12 }}>
+                              <div style={{ fontSize:11, color:"#94A3B8", textTransform:"uppercase", letterSpacing:0.5, marginBottom:4 }}>Detalle</div>
+                              <div style={{ fontSize:13, color:"#1A2B4A", lineHeight:1.6, whiteSpace:"pre-line" }}>{dia.detalle}</div>
+                            </div>
+                          )}
+                          {fotos.length > 0 && (
+                            <div style={{ marginBottom:12 }}>
+                              <div style={{ fontSize:11, color:"#94A3B8", textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Fotos ({fotos.length})</div>
+                              <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                                {fotos.map((f, fi) => {
+                                  const globalIdx = (dia.archivos||[]).indexOf(f);
+                                  return (
+                                    <div key={fi} style={{ position:"relative" }}>
+                                      <img src={f.url} alt={f.name} style={{ width:90, height:90, objectFit:"cover", borderRadius:8, border:"1px solid #E2E8F0", display:"block" }} />
+                                      {canEdit && <button onClick={() => deleteFile(dia.id, globalIdx)} style={{ position:"absolute", top:3, right:3, width:20, height:20, background:"rgba(220,38,38,0.85)", border:"none", borderRadius:"50%", color:"#fff", fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0, lineHeight:1 }}>✕</button>}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          {otros.length > 0 && (
+                            <div style={{ marginBottom:12 }}>
+                              <div style={{ fontSize:11, color:"#94A3B8", textTransform:"uppercase", letterSpacing:0.5, marginBottom:6 }}>Archivos</div>
+                              {otros.map((f, fi) => {
+                                const globalIdx = (dia.archivos||[]).indexOf(f);
+                                return (
+                                  <div key={fi} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:7, marginBottom:4 }}>
+                                    <span style={{ fontSize:12, color:"#475569", flex:1 }}>📎 {f.name}</span>
+                                    <a href={f.url} target="_blank" rel="noreferrer" style={{ fontSize:11, color:"#2563EB", textDecoration:"none" }}>Ver</a>
+                                    {canEdit && <button onClick={() => deleteFile(dia.id, globalIdx)} style={{ background:"none", border:"none", color:"#CBD5E1", cursor:"pointer", fontSize:13, padding:0 }} onMouseEnter={e=>e.currentTarget.style.color="#EF4444"} onMouseLeave={e=>e.currentTarget.style.color="#CBD5E1"}>✕</button>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                          {canEdit && (
+                            <label style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"6px 12px", background:"#F8FAFC", border:"1px dashed #CBD5E1", borderRadius:8, cursor: uploadingFiles[dia.id] ? "not-allowed" : "pointer", fontSize:12, color:"#64748B" }}>
+                              {uploadingFiles[dia.id] ? "Subiendo..." : "📎 Subir archivos / fotos"}
+                              <input type="file" multiple accept="image/*,.pdf,.doc,.docx" onChange={e => { if (e.target.files?.length) { handleFileUpload(e.target.files, dia.id); e.target.value=""; } }} style={{ display:"none" }} disabled={!!uploadingFiles[dia.id]} />
+                            </label>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showObraModal && <ModalObraAvance obra={editingObra} onClose={() => { setShowObraModal(false); setEditingObra(null); }} onSave={saveObra} />}
+      {showDiaModal && <ModalDiaAvance dia={editingDia} onClose={() => { setShowDiaModal(false); setEditingDia(null); }} onSave={saveDia} />}
+    </div>
+  );
+}
+
+function ModalObraAvance({ obra, onClose, onSave }) {
+  const [form, setForm] = useState({ nombre: obra?.nombre || "", direccion: obra?.direccion || "", fecha_entrega: obra?.fecha_entrega || "" });
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const si = { width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:14, outline:"none", boxSizing:"border-box" };
+
+  async function handleSave() {
+    const e = {};
+    if (!form.nombre.trim()) e.nombre = "Requerido";
+    setErrors(e);
+    if (Object.keys(e).length > 0) return;
+    setSaving(true);
+    await onSave({ nombre: form.nombre.trim(), direccion: form.direccion.trim(), fecha_entrega: form.fecha_entrega || null });
+    setSaving(false);
+  }
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:460, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+        <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{obra ? "Editar obra" : "Nueva obra"}</h2>
+          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
+        </div>
+        <div style={{ padding:"24px" }}>
+          <div style={{ marginBottom:16 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Nombre de la obra *</label>
+            <input style={{ ...si, borderColor: errors.nombre ? "#FCA5A5" : "#E2E8F0" }} value={form.nombre} onChange={e => { setForm(f=>({...f, nombre:e.target.value})); setErrors(er=>({...er,nombre:""})); }} placeholder="Ej: Remodelación Cocina" autoFocus />
+            {errors.nombre && <div style={{ color:"#DC2626", fontSize:11, marginTop:4 }}>{errors.nombre}</div>}
+          </div>
+          <div style={{ marginBottom:16 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Dirección</label>
+            <input style={si} value={form.direccion} onChange={e => setForm(f=>({...f, direccion:e.target.value}))} placeholder="Calle, número, barrio..." />
+          </div>
+          <div style={{ marginBottom:24 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Fecha de entrega de la obra</label>
+            <input type="date" style={si} value={form.fecha_entrega} onChange={e => setForm(f=>({...f, fecha_entrega:e.target.value}))} />
+          </div>
+          <div style={{ display:"flex", gap:10 }}>
+            <button onClick={onClose} style={{ flex:1, padding:"11px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>Cancelar</button>
+            <button onClick={handleSave} disabled={saving} style={{ flex:1, padding:"11px", border:"none", borderRadius:8, background: saving ? "#94A3B8" : "#1A2B4A", color:"#fff", cursor: saving ? "not-allowed" : "pointer", fontSize:13, fontWeight:600 }}>{saving ? "Guardando..." : "Guardar"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModalDiaAvance({ dia, onClose, onSave }) {
+  const [form, setForm] = useState({ fecha: dia?.fecha || "", detalle: dia?.detalle || "", operarios: dia?.operarios || "" });
+  const [saving, setSaving] = useState(false);
+  const si = { width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:14, outline:"none", boxSizing:"border-box" };
+
+  async function handleSave() {
+    setSaving(true);
+    await onSave({ fecha: form.fecha || null, detalle: form.detalle, operarios: form.operarios });
+    setSaving(false);
+  }
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:600, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:460, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+        <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{dia ? "Editar día" : "Agregar día"}</h2>
+          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
+        </div>
+        <div style={{ padding:"24px" }}>
+          <div style={{ marginBottom:16 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Fecha</label>
+            <input type="date" style={si} value={form.fecha} onChange={e => setForm(f=>({...f, fecha:e.target.value}))} autoFocus />
+          </div>
+          <div style={{ marginBottom:16 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Operarios</label>
+            <input type="text" style={si} value={form.operarios} onChange={e => setForm(f=>({...f, operarios:e.target.value}))} placeholder="Ej: Juan Pérez, Carlos García" />
+          </div>
+          <div style={{ marginBottom:24 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Detalle del trabajo</label>
+            <textarea style={{ ...si, height:100, resize:"vertical" }} value={form.detalle} onChange={e => setForm(f=>({...f, detalle:e.target.value}))} placeholder="Descripción de los trabajos realizados ese día..." />
+          </div>
+          <div style={{ display:"flex", gap:10 }}>
+            <button onClick={onClose} style={{ flex:1, padding:"11px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>Cancelar</button>
+            <button onClick={handleSave} disabled={saving} style={{ flex:1, padding:"11px", border:"none", borderRadius:8, background: saving ? "#94A3B8" : "#1A2B4A", color:"#fff", cursor: saving ? "not-allowed" : "pointer", fontSize:13, fontWeight:600 }}>{saving ? "Guardando..." : "Guardar"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 export default function App() {
   const [sesion, setSesion] = useState(null);
   const [obras, setObras] = useState([]);
@@ -2141,7 +2629,11 @@ export default function App() {
 
   const isAdmin = sesion?.rol === "admin";
   const isFinanzas = sesion?.rol === "finanzas";
+  const isArquitecto = sesion?.rol === "arquitecto";
   const canSeeCobros = isAdmin || isFinanzas;
+  const canSeeAvanceProduccion = !isArquitecto && !isFinanzas;
+  const canSeeAvanceObra = !isFinanzas;
+  const canSeeMateriales = !isArquitecto && !isFinanzas;
   const activas = obras.filter(o => o.estado !== "terminado");
   const urgentes = activas.filter(o => { const d = diasRestantes(o.fecha); return d >= 0 && d <= 7; });
   const proximas = activas.filter(o => { const d = diasRestantes(o.fecha); return d > 7 && d <= 21; });
@@ -2169,20 +2661,30 @@ export default function App() {
               style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="entregas" ? "#1A2B4A" : "transparent", color: activeTab==="entregas" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="entregas" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
               📦 Entregas
             </button>
-            <button onClick={() => setActiveTab("avance")}
-              style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="avance" ? "#1A2B4A" : "transparent", color: activeTab==="avance" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="avance" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
-              🏗 Avance de Obra
-            </button>
+            {canSeeAvanceProduccion && (
+              <button onClick={() => setActiveTab("avance")}
+                style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="avance" ? "#1A2B4A" : "transparent", color: activeTab==="avance" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="avance" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
+                🏗 Avance de Producción
+              </button>
+            )}
+            {canSeeAvanceObra && (
+              <button onClick={() => setActiveTab("avance_obra")}
+                style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="avance_obra" ? "#1A2B4A" : "transparent", color: activeTab==="avance_obra" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="avance_obra" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
+                🏠 Avance de Obra
+              </button>
+            )}
             {canSeeCobros && (
               <button onClick={() => setActiveTab("cobros")}
                 style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="cobros" ? "#7C3AED" : "transparent", color: activeTab==="cobros" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="cobros" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
                 💰 Cobros
               </button>
             )}
-            <button onClick={() => setActiveTab("materiales")}
-              style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="materiales" ? "#0F766E" : "transparent", color: activeTab==="materiales" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="materiales" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
-              🪵 Materiales
-            </button>
+            {canSeeMateriales && (
+              <button onClick={() => setActiveTab("materiales")}
+                style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="materiales" ? "#0F766E" : "transparent", color: activeTab==="materiales" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="materiales" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
+                🪵 Materiales
+              </button>
+            )}
           </div>
         </div>
 
@@ -2199,12 +2701,13 @@ export default function App() {
           {/* User */}
           <div onClick={isAdmin ? () => setShowUsuarios(true) : undefined}
             style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px 6px 8px", background:"#F8FAFC", border:"1px solid #E8ECF0", borderRadius:8, cursor: isAdmin ? "pointer" : "default" }}>
-            <div style={{ width:26, height:26, borderRadius:6, background: isAdmin ? "#1A2B4A" : isFinanzas ? "#7C3AED" : "#0F766E", display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <div style={{ width:26, height:26, borderRadius:6, background: isAdmin ? "#1A2B4A" : isFinanzas ? "#7C3AED" : isArquitecto ? "#B45309" : "#0F766E", display:"flex", alignItems:"center", justifyContent:"center" }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </div>
             <span style={{ fontSize:13, color:"#1A2B4A", fontWeight:500 }}>{sesion.nombre.split(" ")[0]}</span>
             {isAdmin && <span style={{ fontSize:10, color:"#1A2B4A", background:"#EFF6FF", border:"1px solid #DBEAFE", borderRadius:4, padding:"1px 6px", fontWeight:600 }}>ADMIN</span>}
             {isFinanzas && <span style={{ fontSize:10, color:"#7C3AED", background:"#F5F3FF", border:"1px solid #DDD6FE", borderRadius:4, padding:"1px 6px", fontWeight:600 }}>FINANZAS</span>}
+            {isArquitecto && <span style={{ fontSize:10, color:"#92400E", background:"#FEF3C7", border:"1px solid #FDE68A", borderRadius:4, padding:"1px 6px", fontWeight:600 }}>ARQUITECTO</span>}
           </div>
 
           <button onClick={handleLogout}
@@ -2217,9 +2720,10 @@ export default function App() {
       {/* MAIN CONTENT */}
       <main style={{ maxWidth:1200, margin:"0 auto", padding:"28px 24px 100px" }}>
         {activeTab === "entregas" && <EntregasModule sesion={sesion} obras={obras} setObras={setObras} recargarObras={recargarObras} />}
-        {activeTab === "avance" && <AvanceModule sesion={sesion} />}
+        {activeTab === "avance" && canSeeAvanceProduccion && <AvanceModule sesion={sesion} />}
+        {activeTab === "avance_obra" && canSeeAvanceObra && <AvanceObraModule sesion={sesion} />}
         {activeTab === "cobros" && canSeeCobros && <CobrosModule sesion={sesion} />}
-        {activeTab === "materiales" && <MaterialesModule sesion={sesion} />}
+        {activeTab === "materiales" && canSeeMateriales && <MaterialesModule sesion={sesion} />}
       </main>
 
       {/* MODALES GLOBALES */}
@@ -2234,7 +2738,7 @@ export default function App() {
 function GestionUsuarios({ onClose }) {
   const [usuarios, setUsuarios] = useState([]);
   const [form, setForm] = useState({ nombre:"", email:"", password:"", rol:"operario" });
-  const ROL_META = { admin: { label:"ADMIN", color:"#1A2B4A", bg:"#EFF6FF", border:"#DBEAFE" }, operario: { label:"OPERARIO", color:"#0F766E", bg:"#F0FDF4", border:"#BBF7D0" }, finanzas: { label:"FINANZAS", color:"#7C3AED", bg:"#F5F3FF", border:"#DDD6FE" } };
+  const ROL_META = { admin: { label:"ADMIN", color:"#1A2B4A", bg:"#EFF6FF", border:"#DBEAFE" }, operario: { label:"OPERARIO", color:"#0F766E", bg:"#F0FDF4", border:"#BBF7D0" }, finanzas: { label:"FINANZAS", color:"#7C3AED", bg:"#F5F3FF", border:"#DDD6FE" }, arquitecto: { label:"ARQUITECTO", color:"#B45309", bg:"#FEF3C7", border:"#FDE68A" } };
   const [msg, setMsg] = useState("");
   const [guardando, setGuardando] = useState(false);
   useEffect(() => { getUsuarios().then(u => u && setUsuarios(u)).catch(() => {}); }, []);
@@ -2299,6 +2803,7 @@ function GestionUsuarios({ onClose }) {
                 <option value="operario">Operario</option>
                 <option value="admin">Admin</option>
                 <option value="finanzas">Finanzas</option>
+                <option value="arquitecto">Arquitecto</option>
               </select>
             </div>
             {msg && <div style={{ padding:"9px 13px", borderRadius:8, background: msg.startsWith("✅") ? "#ECFDF5" : "#FEF2F2", border:`1px solid ${msg.startsWith("✅") ? "#A7F3D0" : "#FECACA"}`, color: msg.startsWith("✅") ? "#059669" : "#DC2626", fontSize:13, marginBottom:12 }}>{msg}</div>}
