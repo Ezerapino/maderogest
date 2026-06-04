@@ -109,6 +109,28 @@ async function insertDiaAvance(dia) { return sbFetch("avance_dias", { method: "P
 async function updateDiaAvance(id, data) { return sbFetch(`avance_dias?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
 async function deleteDiaAvanceById(id) { return sbFetch(`avance_dias?id=eq.${id}`, { method: "DELETE" }); }
 
+// ─── INFORMES FINALES API ─────────────────────────────────────────────────────
+async function getInformesFinalesObraIds() {
+  const r = await sbFetch("informes_finales?select=obra_id");
+  return (r || []).map(x => x.obra_id);
+}
+async function getInformeFinal(obraId) {
+  const r = await sbFetch(`informes_finales?obra_id=eq.${obraId}&limit=1`);
+  return r?.[0] || null;
+}
+async function upsertInformeFinal(obraId, datos, archivos, existingId) {
+  if (existingId) {
+    return sbFetch(`informes_finales?id=eq.${existingId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ datos, archivos, updated_at: new Date().toISOString() })
+    });
+  }
+  return sbFetch("informes_finales", {
+    method: "POST",
+    body: JSON.stringify({ obra_id: obraId, datos, archivos })
+  });
+}
+
 async function uploadFileAvance(file, obraId) {
   const ext = file.name.split('.').pop().toLowerCase();
   const path = `${obraId}/${Date.now()}_${Math.random().toString(36).slice(2,6)}.${ext}`;
@@ -139,6 +161,25 @@ async function imgToBase64(url) {
       reader.readAsDataURL(blob);
     });
   } catch { return null; }
+}
+
+function b64ToBlob(b64, type) {
+  const byteStr = atob(b64.split(",")[1]);
+  const arr = new Uint8Array(byteStr.length);
+  for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+  return new Blob([arr], { type });
+}
+
+async function uploadFileInforme(file, obraId) {
+  const ext = file.name.split(".").pop().toLowerCase();
+  const path = `informes/${obraId}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${ext}`;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${AVANCE_BUCKET}/${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": file.type, "x-upsert": "true" },
+    body: file,
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error(t); }
+  return { url: `${SUPABASE_URL}/storage/v1/object/public/${AVANCE_BUCKET}/${path}`, path, name: file.name, type: file.type, size: file.size };
 }
 
 // Old separate API functions removed — now using unified functions above
@@ -2233,11 +2274,16 @@ function AvanceObraModule({ sesion }) {
   const [uploadingFiles, setUploadingFiles] = useState({});
   const [showInformeFinal, setShowInformeFinal] = useState(false);
   const [informeFinalObra, setInformeFinalObra] = useState(null);
+  const [informesIds, setInformesIds] = useState(new Set());
 
   const isAdmin = sesion.rol === "admin";
   const canEdit = isAdmin || sesion.rol === "operario" || sesion.rol === "arquitecto";
 
-  useEffect(() => { loadObras(); }, []);
+  useEffect(() => { loadObras(); loadInformesIds(); }, []);
+
+  async function loadInformesIds() {
+    try { const ids = await getInformesFinalesObraIds(); setInformesIds(new Set(ids)); } catch {}
+  }
 
   async function loadObras() {
     setCargando(true);
@@ -2388,7 +2434,10 @@ function AvanceObraModule({ sesion }) {
               <div style={{ padding:"18px 18px 16px" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
                   <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", flex:1, paddingRight:8 }}>{obra.nombre}</div>
-                  {obra.finalizada && <span style={{ fontSize:10, fontWeight:700, color:"#059669", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:5, padding:"2px 8px", whiteSpace:"nowrap", flexShrink:0 }}>✅ FINALIZADA</span>}
+                  <div style={{ display:"flex", flexDirection:"column", gap:4, alignItems:"flex-end", flexShrink:0 }}>
+                    {obra.finalizada && <span style={{ fontSize:10, fontWeight:700, color:"#059669", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:5, padding:"2px 8px", whiteSpace:"nowrap" }}>✅ FINALIZADA</span>}
+                    {informesIds.has(obra.id) && <span style={{ fontSize:10, fontWeight:700, color:"#7C3AED", background:"#F5F3FF", border:"1px solid #DDD6FE", borderRadius:5, padding:"2px 8px", whiteSpace:"nowrap" }}>💾 INFORME GUARDADO</span>}
+                  </div>
                 </div>
                 {obra.direccion && <div style={{ fontSize:12, color:"#64748B", marginBottom:4 }}>📍 {obra.direccion}</div>}
                 {obra.fecha_entrega && <div style={{ fontSize:12, color:"#64748B", marginBottom:12 }}>📅 Entrega: {formatDate(obra.fecha_entrega)}</div>}
@@ -2528,7 +2577,7 @@ function AvanceObraModule({ sesion }) {
 
       {showObraModal && <ModalObraAvance obra={editingObra} onClose={() => { setShowObraModal(false); setEditingObra(null); }} onSave={saveObra} />}
       {showDiaModal && <ModalDiaAvance dia={editingDia} onClose={() => { setShowDiaModal(false); setEditingDia(null); }} onSave={saveDia} />}
-      {showInformeFinal && informeFinalObra && <ModalInformeFinalObra obra={informeFinalObra} onClose={() => { setShowInformeFinal(false); setInformeFinalObra(null); }} />}
+      {showInformeFinal && informeFinalObra && <ModalInformeFinalObra obra={informeFinalObra} onClose={() => { setShowInformeFinal(false); setInformeFinalObra(null); }} onSave={() => loadInformesIds()} />}
     </div>
   );
 }
@@ -2622,8 +2671,8 @@ function ModalDiaAvance({ dia, onClose, onSave }) {
 }
 
 // ─── INFORME FINAL DE OBRA ────────────────────────────────────────────────────
-function ModalInformeFinalObra({ obra, onClose }) {
-  const [form, setForm] = useState({
+function ModalInformeFinalObra({ obra, onClose, onSave }) {
+  const defaultForm = {
     nombreObra: obra?.nombre || "",
     cliente: "",
     direccion: obra?.direccion || "",
@@ -2636,10 +2685,58 @@ function ModalInformeFinalObra({ obra, onClose }) {
     informe: "",
     faltantes: "",
     informacionDestacada: "",
-  });
+  };
+  const [form, setForm] = useState(defaultForm);
   const [archivos, setArchivos] = useState([]);
   const [dragging, setDragging] = useState(false);
+  const [cargando, setCargando] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+  const [guardado, setGuardado] = useState(false);
+  const [informeId, setInformeId] = useState(null);
   const fileInputRef = useRef(null);
+
+  useEffect(() => { loadInforme(); }, []);
+
+  async function loadInforme() {
+    setCargando(true);
+    try {
+      const informe = await getInformeFinal(obra.id);
+      if (informe) {
+        setInformeId(informe.id);
+        setForm({ ...defaultForm, ...informe.datos });
+        setArchivos(informe.archivos || []);
+        setGuardado(true);
+      }
+    } catch {}
+    setCargando(false);
+  }
+
+  async function handleSave() {
+    setGuardando(true);
+    try {
+      const archivosGuardados = [];
+      for (const f of archivos) {
+        if (f.path) {
+          archivosGuardados.push({ name: f.name, type: f.type, size: f.size, url: f.url, path: f.path });
+        } else if (f.b64) {
+          try {
+            const blob = b64ToBlob(f.b64, f.type);
+            const file = new File([blob], f.name, { type: f.type });
+            const uploaded = await uploadFileInforme(file, obra.id);
+            archivosGuardados.push(uploaded);
+          } catch {
+            archivosGuardados.push({ name: f.name, type: f.type, size: f.size, b64: f.b64 });
+          }
+        }
+      }
+      await upsertInformeFinal(obra.id, form, archivosGuardados, informeId);
+      const saved = await getInformeFinal(obra.id);
+      if (saved) { setInformeId(saved.id); setArchivos(saved.archivos || archivosGuardados); }
+      setGuardado(true);
+      if (onSave) onSave();
+    } catch (e) { alert("Error al guardar el informe: " + e.message); }
+    setGuardando(false);
+  }
 
   async function handleFiles(files) {
     const nuevos = [];
@@ -2653,11 +2750,13 @@ function ModalInformeFinalObra({ obra, onClose }) {
       nuevos.push({ name: file.name, type: file.type, size: file.size, b64 });
     }
     setArchivos(a => [...a, ...nuevos]);
+    setGuardado(false);
   }
 
-  function removeFile(name) { setArchivos(a => a.filter(f => f.name !== name)); }
+  function removeFile(name) { setArchivos(a => a.filter(f => f.name !== name)); setGuardado(false); }
 
   function getFileIcon(type) {
+    if (!type) return "📎";
     if (type.startsWith("image/")) return "🖼️";
     if (type.startsWith("video/")) return "🎥";
     if (type.includes("pdf")) return "📄";
@@ -2665,16 +2764,26 @@ function ModalInformeFinalObra({ obra, onClose }) {
   }
 
   function formatFileSize(bytes) {
+    if (!bytes) return "";
     if (bytes < 1024) return bytes + " B";
     if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
     return (bytes / 1048576).toFixed(1) + " MB";
   }
 
-  function exportPDF() {
-    const fotosHTML = archivos.filter(f => f.type.startsWith("image/")).map(f =>
+  async function exportPDF() {
+    const archivosConSrc = await Promise.all(archivos.map(async f => {
+      if (f.b64) return f;
+      if (f.url && f.type?.startsWith("image/")) {
+        const b64 = await imgToBase64(f.url);
+        return { ...f, b64 };
+      }
+      return f;
+    }));
+
+    const fotosHTML = archivosConSrc.filter(f => f.type?.startsWith("image/") && f.b64).map(f =>
       `<div class="prev-img"><img src="${f.b64}" alt="${f.name}"><div class="caption">${f.name}</div></div>`
     ).join("");
-    const otrosHTML = archivos.filter(f => !f.type.startsWith("image/")).map(f =>
+    const otrosHTML = archivosConSrc.filter(f => !f.type?.startsWith("image/")).map(f =>
       `<div class="prev-file"><span style="font-size:28px">${getFileIcon(f.type)}</span><div><b>${f.name}</b><br><span style="font-size:12px;color:#666">${formatFileSize(f.size)}</span></div></div>`
     ).join("");
 
@@ -2753,13 +2862,18 @@ body{font-family:'Archivo',sans-serif;background:var(--bg);color:var(--text);lin
           <div style={{ position:"relative", zIndex:1, display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
             <div>
               <h1 style={{ fontFamily:"'Sora',sans-serif", fontSize:36, fontWeight:800, letterSpacing:-1, marginBottom:8 }}>Informe Final de Obra</h1>
-              <p style={{ fontSize:14, opacity:.75 }}>Documentación completa del proyecto</p>
+              <p style={{ fontSize:14, opacity:.75 }}>
+                {cargando ? "Cargando informe guardado..." : informeId ? "💾 Informe guardado en el sistema" : "Nuevo informe — aún no guardado"}
+              </p>
             </div>
             <button onClick={onClose} style={{ background:"rgba(255,255,255,.15)", border:"1px solid rgba(255,255,255,.3)", borderRadius:8, width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#fff", fontSize:16, flexShrink:0 }}>✕</button>
           </div>
         </div>
 
-        {/* FORM */}
+        {cargando ? (
+          <div style={{ padding:"80px 44px", textAlign:"center", color:"#94A3B8", fontSize:14 }}>Cargando informe guardado...</div>
+        ) : (
+        /* FORM */
         <div style={{ padding:"44px", background:"#fff" }}>
 
           {/* 1. Info General */}
@@ -2775,13 +2889,13 @@ body{font-family:'Archivo',sans-serif;background:var(--bg);color:var(--text);lin
               ].map(f => (
                 <div key={f.key}>
                   <label style={lbl}>{f.label}</label>
-                  <input style={inp} value={form[f.key]} onChange={e => setForm(x => ({...x, [f.key]:e.target.value}))} placeholder={f.ph}
+                  <input style={inp} value={form[f.key]} onChange={e => { setForm(x => ({...x, [f.key]:e.target.value})); setGuardado(false); }} placeholder={f.ph}
                     onFocus={e => e.target.style.borderColor="#004e89"} onBlur={e => e.target.style.borderColor="#e0e0e0"} />
                 </div>
               ))}
               <div>
                 <label style={lbl}>Fecha del Informe</label>
-                <input type="date" style={inp} value={form.fecha} onChange={e => setForm(x => ({...x, fecha:e.target.value}))} />
+                <input type="date" style={inp} value={form.fecha} onChange={e => { setForm(x => ({...x, fecha:e.target.value})); setGuardado(false); }} />
               </div>
             </div>
           </div>
@@ -2792,17 +2906,17 @@ body{font-family:'Archivo',sans-serif;background:var(--bg);color:var(--text);lin
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:18, marginTop:16, marginBottom:18 }}>
               <div>
                 <label style={lbl}>Responsable de Obra (Estudio/Arquitecto)</label>
-                <input style={inp} value={form.responsableEstudio} onChange={e => setForm(x => ({...x, responsableEstudio:e.target.value}))} placeholder="Nombre completo"
+                <input style={inp} value={form.responsableEstudio} onChange={e => { setForm(x => ({...x, responsableEstudio:e.target.value})); setGuardado(false); }} placeholder="Nombre completo"
                   onFocus={e => e.target.style.borderColor="#004e89"} onBlur={e => e.target.style.borderColor="#e0e0e0"} />
               </div>
               <div>
                 <label style={lbl}>Responsable de Obra (Nuestra Empresa)</label>
-                <input style={inp} value={form.responsableEmpresa} onChange={e => setForm(x => ({...x, responsableEmpresa:e.target.value}))} placeholder="Nombre completo"
+                <input style={inp} value={form.responsableEmpresa} onChange={e => { setForm(x => ({...x, responsableEmpresa:e.target.value})); setGuardado(false); }} placeholder="Nombre completo"
                   onFocus={e => e.target.style.borderColor="#004e89"} onBlur={e => e.target.style.borderColor="#e0e0e0"} />
               </div>
             </div>
             <label style={lbl}>Operarios Asignados</label>
-            <textarea style={{ ...ta, minHeight:90 }} value={form.operarios} onChange={e => setForm(x => ({...x, operarios:e.target.value}))} placeholder="Lista de operarios (uno por línea o separados por comas)"
+            <textarea style={{ ...ta, minHeight:90 }} value={form.operarios} onChange={e => { setForm(x => ({...x, operarios:e.target.value})); setGuardado(false); }} placeholder="Lista de operarios (uno por línea o separados por comas)"
               onFocus={e => e.target.style.borderColor="#004e89"} onBlur={e => e.target.style.borderColor="#e0e0e0"} />
           </div>
 
@@ -2810,7 +2924,7 @@ body{font-family:'Archivo',sans-serif;background:var(--bg);color:var(--text);lin
           <div style={{ marginBottom:44 }}>
             <div style={secT}>Informe y Aclaraciones</div>
             <label style={{ ...lbl, marginTop:16 }}>Detalles del Trabajo Realizado</label>
-            <textarea style={ta} value={form.informe} onChange={e => setForm(x => ({...x, informe:e.target.value}))} placeholder="Describa en detalle los trabajos realizados, observaciones y cualquier información relevante del avance de la obra..."
+            <textarea style={ta} value={form.informe} onChange={e => { setForm(x => ({...x, informe:e.target.value})); setGuardado(false); }} placeholder="Describa en detalle los trabajos realizados, observaciones y cualquier información relevante del avance de la obra..."
               onFocus={e => e.target.style.borderColor="#004e89"} onBlur={e => e.target.style.borderColor="#e0e0e0"} />
           </div>
 
@@ -2835,9 +2949,9 @@ body{font-family:'Archivo',sans-serif;background:var(--bg);color:var(--text);lin
                     <span style={{ fontSize:22 }}>{getFileIcon(f.type)}</span>
                     <div style={{ flex:1 }}>
                       <div style={{ fontSize:13, fontWeight:600, color:"#2a2a2a" }}>{f.name}</div>
-                      <div style={{ fontSize:11, color:"#999" }}>{formatFileSize(f.size)}</div>
+                      <div style={{ fontSize:11, color:"#999" }}>{formatFileSize(f.size)}{f.path ? " · guardado" : ""}</div>
                     </div>
-                    {f.type.startsWith("image/") && <img src={f.b64} alt={f.name} style={{ width:48, height:48, objectFit:"cover", borderRadius:3, border:"1px solid #e0e0e0" }} />}
+                    {f.type?.startsWith("image/") && <img src={f.b64 || f.url} alt={f.name} style={{ width:48, height:48, objectFit:"cover", borderRadius:3, border:"1px solid #e0e0e0" }} />}
                     <button onClick={() => removeFile(f.name)} style={{ background:"none", border:"none", color:"#bbb", cursor:"pointer", fontSize:20, padding:"2px 6px" }}
                       onMouseEnter={e => e.currentTarget.style.color="#e74c3c"} onMouseLeave={e => e.currentTarget.style.color="#bbb"}>×</button>
                   </div>
@@ -2850,7 +2964,7 @@ body{font-family:'Archivo',sans-serif;background:var(--bg);color:var(--text);lin
           <div style={{ marginBottom:44 }}>
             <div style={secT}>Pendientes a Resolver</div>
             <label style={{ ...lbl, marginTop:16 }}>Descripción de Pendientes</label>
-            <textarea style={ta} value={form.faltantes} onChange={e => setForm(x => ({...x, faltantes:e.target.value}))} placeholder="Liste los trabajos pendientes, materiales faltantes, detalles a resolver, etc."
+            <textarea style={ta} value={form.faltantes} onChange={e => { setForm(x => ({...x, faltantes:e.target.value})); setGuardado(false); }} placeholder="Liste los trabajos pendientes, materiales faltantes, detalles a resolver, etc."
               onFocus={e => e.target.style.borderColor="#004e89"} onBlur={e => e.target.style.borderColor="#e0e0e0"} />
           </div>
 
@@ -2858,20 +2972,31 @@ body{font-family:'Archivo',sans-serif;background:var(--bg);color:var(--text);lin
           <div style={{ marginBottom:44 }}>
             <div style={secT}>Información a Destacar</div>
             <label style={{ ...lbl, marginTop:16 }}>Información Relevante</label>
-            <textarea style={ta} value={form.informacionDestacada} onChange={e => setForm(x => ({...x, informacionDestacada:e.target.value}))} placeholder="Información importante, observaciones especiales, aspectos críticos del proyecto, etc."
+            <textarea style={ta} value={form.informacionDestacada} onChange={e => { setForm(x => ({...x, informacionDestacada:e.target.value})); setGuardado(false); }} placeholder="Información importante, observaciones especiales, aspectos críticos del proyecto, etc."
               onFocus={e => e.target.style.borderColor="#004e89"} onBlur={e => e.target.style.borderColor="#e0e0e0"} />
           </div>
 
           {/* BOTONES */}
-          <div style={{ display:"flex", gap:16, justifyContent:"flex-end", paddingTop:32, borderTop:"2px solid #e0e0e0" }}>
-            <button onClick={onClose} style={{ padding:"14px 32px", border:"2px solid #e0e0e0", borderRadius:2, background:"#fafafa", color:"#666", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600, cursor:"pointer", textTransform:"uppercase", letterSpacing:.5 }}>Cancelar</button>
-            <button onClick={exportPDF}
-              style={{ padding:"14px 42px", border:"none", borderRadius:2, background:"#004e89", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, cursor:"pointer", textTransform:"uppercase", letterSpacing:.5, boxShadow:"0 4px 12px rgba(0,78,137,.3)" }}
-              onMouseEnter={e => e.currentTarget.style.background="#003d6d"} onMouseLeave={e => e.currentTarget.style.background="#004e89"}>
-              📄 Exportar PDF
-            </button>
+          <div style={{ display:"flex", gap:16, justifyContent:"space-between", alignItems:"center", paddingTop:32, borderTop:"2px solid #e0e0e0" }}>
+            <div style={{ fontSize:13, color: guardado ? "#059669" : "#94A3B8", fontWeight:600 }}>
+              {guardado ? "✓ Guardado en el sistema" : "Sin cambios guardados"}
+            </div>
+            <div style={{ display:"flex", gap:12 }}>
+              <button onClick={onClose} style={{ padding:"14px 24px", border:"2px solid #e0e0e0", borderRadius:2, background:"#fafafa", color:"#666", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600, cursor:"pointer", textTransform:"uppercase", letterSpacing:.5 }}>Cerrar</button>
+              <button onClick={handleSave} disabled={guardando}
+                style={{ padding:"14px 28px", border:"none", borderRadius:2, background: guardando ? "#94A3B8" : "#059669", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, cursor: guardando ? "not-allowed" : "pointer", textTransform:"uppercase", letterSpacing:.5, boxShadow:"0 4px 12px rgba(5,150,105,.3)" }}
+                onMouseEnter={e => { if (!guardando) e.currentTarget.style.background="#047857"; }} onMouseLeave={e => { if (!guardando) e.currentTarget.style.background="#059669"; }}>
+                {guardando ? "Guardando..." : "💾 Guardar"}
+              </button>
+              <button onClick={exportPDF}
+                style={{ padding:"14px 28px", border:"none", borderRadius:2, background:"#004e89", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, cursor:"pointer", textTransform:"uppercase", letterSpacing:.5, boxShadow:"0 4px 12px rgba(0,78,137,.3)" }}
+                onMouseEnter={e => e.currentTarget.style.background="#003d6d"} onMouseLeave={e => e.currentTarget.style.background="#004e89"}>
+                📄 Exportar PDF
+              </button>
+            </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   );
