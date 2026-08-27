@@ -131,6 +131,28 @@ async function upsertInformeFinal(obraId, datos, archivos, existingId) {
   });
 }
 
+// ─── OBRAS ACEPTADAS API (tabla: obras_aceptadas) ─────────────────────────────
+// You need to create the table "obras_aceptadas" in your Supabase with:
+// id (uuid, default gen_random_uuid()), nombre (text not null), direccion (text),
+// cliente (text), fecha_aceptacion (date), fecha_entrega_aprox (date),
+// archivos (jsonb default '[]'::jsonb), creado_por (text), creado_por_nombre (text),
+// created_at (timestamptz default now()), updated_at (timestamptz default now())
+async function getObrasAceptadas() { return sbFetch("obras_aceptadas?select=*&order=fecha_aceptacion.desc.nullslast,created_at.desc"); }
+async function insertObraAceptada(obra) { return sbFetch("obras_aceptadas", { method: "POST", body: JSON.stringify(obra) }); }
+async function updateObraAceptada(id, data) { return sbFetch(`obras_aceptadas?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
+async function deleteObraAceptadaById(id) { return sbFetch(`obras_aceptadas?id=eq.${id}`, { method: "DELETE" }); }
+async function uploadFileObraAceptada(file, obraId) {
+  const ext = file.name.split(".").pop().toLowerCase();
+  const path = `aceptadas/${obraId}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${ext}`;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${AVANCE_BUCKET}/${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": file.type, "x-upsert": "true" },
+    body: file,
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error(t); }
+  return { url: `${SUPABASE_URL}/storage/v1/object/public/${AVANCE_BUCKET}/${path}`, path, name: file.name, type: file.type, size: file.size };
+}
+
 async function uploadFileAvance(file, obraId) {
   const ext = file.name.split('.').pop().toLowerCase();
   const path = `${obraId}/${Date.now()}_${Math.random().toString(36).slice(2,6)}.${ext}`;
@@ -3002,6 +3024,325 @@ body{font-family:'Archivo',sans-serif;background:var(--bg);color:var(--text);lin
   );
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OBRAS ACEPTADAS MODULE
+// ═══════════════════════════════════════════════════════════════════════════════
+function getFileIconAceptada(type) {
+  if (!type) return "📎";
+  if (type.includes("pdf")) return "📄";
+  if (type.includes("sheet") || type.includes("excel") || type.includes("csv")) return "📊";
+  return "📎";
+}
+function formatFileSizeAceptada(bytes) {
+  if (!bytes) return "";
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / 1048576).toFixed(1) + " MB";
+}
+
+function ObrasAceptadasModule({ sesion }) {
+  const [obras, setObras] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [search, setSearch] = useState("");
+  const [mesFilter, setMesFilter] = useState("");
+  const [modalObra, setModalObra] = useState(null);
+
+  const isAdmin = sesion.rol === "admin";
+  const canEdit = isAdmin || sesion.rol === "operario" || sesion.rol === "arquitecto";
+  const canDelete = isAdmin || sesion.rol === "operario";
+
+  useEffect(() => { loadObras(); }, []);
+
+  async function loadObras() {
+    setCargando(true);
+    try { const obs = await getObrasAceptadas(); setObras(obs || []); } catch {}
+    setCargando(false);
+  }
+
+  async function deleteObra(obra) {
+    if (!confirm(`¿Eliminar la obra "${obra.nombre}" y todos sus archivos?`)) return;
+    try {
+      for (const f of (obra.archivos || [])) { try { await deleteFileAvance(f.path); } catch {} }
+      await deleteObraAceptadaById(obra.id);
+      setModalObra(null);
+      await loadObras();
+    } catch { alert("Error al eliminar la obra."); }
+  }
+
+  const hoy = new Date();
+  const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
+  const esteMes = obras.filter(o => (o.fecha_aceptacion || "").startsWith(mesActual) || (o.fecha_entrega_aprox || "").startsWith(mesActual)).length;
+  const conArchivos = obras.filter(o => (o.archivos || []).length > 0).length;
+
+  const obrasFiltradas = obras.filter(o => {
+    if (search) {
+      const q = search.toLowerCase();
+      if (!o.nombre.toLowerCase().includes(q) && !(o.direccion || "").toLowerCase().includes(q) && !(o.cliente || "").toLowerCase().includes(q)) return false;
+    }
+    if (mesFilter) {
+      if (!(o.fecha_aceptacion || "").startsWith(mesFilter) && !(o.fecha_entrega_aprox || "").startsWith(mesFilter)) return false;
+    }
+    return true;
+  });
+
+  if (cargando) return <div style={{ textAlign:"center", padding:"60px 0", color:"#94A3B8", fontSize:13 }}>Cargando obras aceptadas...</div>;
+
+  return (
+    <div>
+      {/* STATS */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:32 }}>
+        {[
+          { num: obras.length, label:"Total obras aceptadas", color:"#2563EB", border:"#DBEAFE" },
+          { num: esteMes, label:"Este mes", color:"#D97706", border:"#FDE68A" },
+          { num: conArchivos, label:"Con archivos adjuntos", color:"#059669", border:"#A7F3D0" },
+        ].map((s, i) => (
+          <div key={i} style={{ background:"#ffffff", border:`1px solid ${s.border}`, borderRadius:12, padding:"20px 20px 18px", animation:`fadeUp 0.35s ease ${i*0.06}s both` }}>
+            <div style={{ fontFamily:"'Sora', sans-serif", fontSize:32, fontWeight:800, color:s.color, lineHeight:1 }}>{s.num}</div>
+            <div style={{ fontSize:12, color:"#64748B", fontWeight:500, marginTop:6 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* TITLE + FILTERS */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:12 }}>
+        <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Obras Aceptadas</h2>
+        {canEdit && (
+          <button onClick={() => setModalObra("nueva")}
+            style={{ padding:"8px 18px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
+            + Nueva obra
+          </button>
+        )}
+      </div>
+      <div style={{ display:"flex", gap:10, marginBottom:20, flexWrap:"wrap", alignItems:"center" }}>
+        <div style={{ position:"relative", flex:"1 1 200px", maxWidth:320 }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)" }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar obra, dirección, cliente..."
+            style={{ width:"100%", padding:"9px 12px 9px 36px", background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" }} />
+          {search && <button onClick={() => setSearch("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"#94A3B8", cursor:"pointer", fontSize:14, padding:2 }}>✕</button>}
+        </div>
+        <input type="month" value={mesFilter} onChange={e => setMesFilter(e.target.value)}
+          style={{ padding:"9px 12px", background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" }} />
+        {mesFilter && <button onClick={() => setMesFilter("")} style={{ padding:"6px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#64748B", fontSize:12, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Limpiar mes</button>}
+        {(search || mesFilter) && <span style={{ fontSize:12, color:"#94A3B8" }}>{obrasFiltradas.length} resultado{obrasFiltradas.length !== 1 ? "s" : ""}</span>}
+      </div>
+
+      {/* GRID */}
+      {obrasFiltradas.length === 0 ? (
+        <div style={{ textAlign:"center", padding:"80px 20px", background:"#ffffff", borderRadius:16, border:"1px solid #E8ECF0" }}>
+          <div style={{ fontSize:32, marginBottom:8 }}>🗂️</div>
+          <div style={{ fontSize:13, color:"#94A3B8" }}>{obras.length === 0 ? "No hay obras aceptadas registradas aún" : "No hay obras en esta búsqueda/filtro"}</div>
+        </div>
+      ) : (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:16 }}>
+          {obrasFiltradas.map((o, idx) => (
+            <div key={o.id} className="obra-card" onClick={() => setModalObra(o)}
+              style={{ background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:14, overflow:"hidden", cursor:"pointer", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
+              <div style={{ height:4, background:"#2563EB" }} />
+              <div style={{ padding:"18px 18px 16px" }}>
+                <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", marginBottom:6, lineHeight:1.35 }}>{o.nombre}</div>
+                {o.cliente && <div style={{ fontSize:12, color:"#64748B", marginBottom:4 }}>👤 {o.cliente}</div>}
+                {o.direccion && <div style={{ fontSize:12, color:"#64748B", marginBottom:4 }}>📍 {o.direccion}</div>}
+                <div style={{ fontSize:12, color:"#64748B", marginBottom:12, display:"flex", gap:12, flexWrap:"wrap" }}>
+                  {o.fecha_aceptacion && <span>✅ Aceptada: {formatDate(o.fecha_aceptacion)}</span>}
+                  {o.fecha_entrega_aprox && <span>📅 Entrega aprox: {formatDate(o.fecha_entrega_aprox)}</span>}
+                </div>
+                {(o.archivos || []).length > 0 && (
+                  <div style={{ fontSize:11, color:"#2563EB", background:"#EFF6FF", border:"1px solid #DBEAFE", borderRadius:6, padding:"3px 9px", display:"inline-block", marginBottom:12 }}>
+                    📎 {o.archivos.length} archivo{o.archivos.length !== 1 ? "s" : ""}
+                  </div>
+                )}
+                <div onClick={e => e.stopPropagation()} style={{ display:"flex", gap:6, paddingTop:12, borderTop:"1px solid #F1F5F9" }}>
+                  <button onClick={() => setModalObra(o)} style={{ flex:1, padding:"7px 0", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>{canEdit ? "Editar" : "Ver"}</button>
+                  {canDelete && <button onClick={() => deleteObra(o)} style={{ padding:"7px 10px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:12, cursor:"pointer" }}>✕</button>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {modalObra && (
+        <ModalObraAceptada
+          obra={modalObra === "nueva" ? null : modalObra}
+          canEdit={canEdit}
+          canDelete={canDelete}
+          onClose={() => setModalObra(null)}
+          onSave={loadObras}
+          onDelete={deleteObra}
+        />
+      )}
+    </div>
+  );
+}
+
+function ModalObraAceptada({ obra, canEdit, canDelete, onClose, onSave, onDelete }) {
+  const [form, setForm] = useState({
+    nombre: obra?.nombre || "", direccion: obra?.direccion || "", cliente: obra?.cliente || "",
+    fecha_aceptacion: obra?.fecha_aceptacion || "", fecha_entrega_aprox: obra?.fecha_entrega_aprox || "",
+  });
+  const [archivos, setArchivos] = useState(obra?.archivos || []);
+  const [dragging, setDragging] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef(null);
+  const originalArchivos = useRef(obra?.archivos || []);
+
+  const inp = { width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:14, outline:"none", boxSizing:"border-box" };
+  const lbl = { display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 };
+
+  async function handleFiles(files) {
+    const nuevos = [];
+    for (const file of Array.from(files)) {
+      if (archivos.find(f => f.name === file.name)) continue;
+      const okType = /\.(pdf|xls|xlsx|csv)$/i.test(file.name);
+      if (!okType) { alert(`"${file.name}" no es un PDF o Excel válido.`); continue; }
+      const b64 = await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.readAsDataURL(file);
+      });
+      nuevos.push({ name: file.name, type: file.type, size: file.size, b64 });
+    }
+    setArchivos(a => [...a, ...nuevos]);
+  }
+
+  function removeFile(name) { setArchivos(a => a.filter(f => f.name !== name)); }
+
+  async function handleSave() {
+    const e = {};
+    if (!form.nombre.trim()) e.nombre = "Requerido";
+    setErrors(e);
+    if (Object.keys(e).length > 0) return;
+    setSaving(true);
+    try {
+      let obraId = obra?.id;
+      const baseData = {
+        nombre: form.nombre.trim(), direccion: form.direccion.trim(), cliente: form.cliente.trim(),
+        fecha_aceptacion: form.fecha_aceptacion || null, fecha_entrega_aprox: form.fecha_entrega_aprox || null,
+      };
+      if (!obraId) {
+        const inserted = await insertObraAceptada({ ...baseData, archivos: [] });
+        obraId = inserted?.[0]?.id;
+      } else {
+        await updateObraAceptada(obraId, { ...baseData, updated_at: new Date().toISOString() });
+      }
+      for (const orig of originalArchivos.current) {
+        if (orig.path && !archivos.find(a => a.path === orig.path)) { try { await deleteFileAvance(orig.path); } catch {} }
+      }
+      const archivosFinal = [];
+      for (const f of archivos) {
+        if (f.path) { archivosFinal.push({ name: f.name, type: f.type, size: f.size, url: f.url, path: f.path }); }
+        else if (f.b64) {
+          try {
+            const blob = b64ToBlob(f.b64, f.type);
+            const file = new File([blob], f.name, { type: f.type });
+            const uploaded = await uploadFileObraAceptada(file, obraId);
+            archivosFinal.push(uploaded);
+          } catch (err) { alert(`Error al subir ${f.name}: ${err.message}`); }
+        }
+      }
+      await updateObraAceptada(obraId, { archivos: archivosFinal, updated_at: new Date().toISOString() });
+      await onSave();
+      onClose();
+    } catch (e) { alert("Error al guardar: " + e.message); }
+    setSaving(false);
+  }
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:580, maxHeight:"90vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+        <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, background:"#ffffff", borderRadius:"14px 14px 0 0", zIndex:1 }}>
+          <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{obra ? (canEdit ? "Editar obra aceptada" : "Obra aceptada") : "Nueva obra aceptada"}</h2>
+          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
+        </div>
+        <div style={{ padding:"24px" }}>
+          <fieldset disabled={!canEdit} style={{ border:"none", padding:0, margin:0 }}>
+            <div style={{ marginBottom:16 }}>
+              <label style={lbl}>Nombre de la obra *</label>
+              <input style={{ ...inp, borderColor: errors.nombre ? "#FCA5A5" : "#E2E8F0" }} value={form.nombre}
+                onChange={e => { setForm(f => ({...f, nombre:e.target.value})); setErrors(er => ({...er, nombre:""})); }}
+                placeholder="Ej: Remodelación Cocina" autoFocus />
+              {errors.nombre && <div style={{ color:"#DC2626", fontSize:11, marginTop:4 }}>{errors.nombre}</div>}
+            </div>
+            <div style={{ marginBottom:16 }}>
+              <label style={lbl}>Dirección de la obra</label>
+              <input style={inp} value={form.direccion} onChange={e => setForm(f => ({...f, direccion:e.target.value}))} placeholder="Calle, número, barrio..." />
+            </div>
+            <div style={{ marginBottom:16 }}>
+              <label style={lbl}>Nombre del cliente</label>
+              <input style={inp} value={form.cliente} onChange={e => setForm(f => ({...f, cliente:e.target.value}))} placeholder="Nombre del cliente" />
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
+              <div>
+                <label style={lbl}>Fecha de aceptación</label>
+                <input type="date" style={inp} value={form.fecha_aceptacion} onChange={e => setForm(f => ({...f, fecha_aceptacion:e.target.value}))} />
+              </div>
+              <div>
+                <label style={lbl}>Fecha aprox. de entrega</label>
+                <input type="date" style={inp} value={form.fecha_entrega_aprox} onChange={e => setForm(f => ({...f, fecha_entrega_aprox:e.target.value}))} />
+              </div>
+            </div>
+          </fieldset>
+
+          {/* ARCHIVOS */}
+          <div style={{ marginBottom:20 }}>
+            <label style={lbl}>Archivos (PDF / Excel)</label>
+            {canEdit && (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={e => { e.preventDefault(); setDragging(true); }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={e => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
+                style={{ border:`2px dashed ${dragging ? "#2563EB" : "#CBD5E1"}`, borderRadius:10, padding:"22px 16px", textAlign:"center", cursor:"pointer", background: dragging ? "rgba(37,99,235,0.04)" : "#F8FAFC", marginBottom:10, transition:"all 0.15s" }}>
+                <div style={{ fontSize:28, marginBottom:6, color:"#94A3B8" }}>📎</div>
+                <div style={{ fontSize:13, color:"#64748B" }}>Arrastrá archivos aquí o hacé clic para seleccionar</div>
+                <div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>Solo PDF y Excel (.xls, .xlsx, .csv)</div>
+                <input ref={fileInputRef} type="file" multiple accept=".pdf,.xls,.xlsx,.csv,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  style={{ display:"none" }} onChange={e => { if (e.target.files?.length) handleFiles(e.target.files); e.target.value=""; }} />
+              </div>
+            )}
+            {archivos.length === 0 ? (
+              <div style={{ color:"#94A3B8", fontSize:12, textAlign:"center", padding:"10px 0" }}>Sin archivos adjuntos</div>
+            ) : (
+              <div style={{ border:"1px solid #E2E8F0", borderRadius:10, overflow:"hidden" }}>
+                {archivos.map((f, i) => (
+                  <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderBottom: i < archivos.length-1 ? "1px solid #F1F5F9" : "none" }}>
+                    <span style={{ fontSize:20 }}>{getFileIconAceptada(f.type)}</span>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13, fontWeight:500, color:"#1A2B4A", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.name}</div>
+                      <div style={{ fontSize:11, color:"#94A3B8" }}>{formatFileSizeAceptada(f.size)}{f.path ? " · guardado" : " · pendiente de subir"}</div>
+                    </div>
+                    {f.url && <>
+                      <a href={f.url} target="_blank" rel="noreferrer" style={{ fontSize:11, color:"#2563EB", textDecoration:"none", fontWeight:600, whiteSpace:"nowrap" }}>Ver</a>
+                      <a href={f.url} download={f.name} style={{ fontSize:11, color:"#2563EB", textDecoration:"none", fontWeight:600, whiteSpace:"nowrap" }}>Descargar</a>
+                    </>}
+                    {canEdit && <button onClick={() => removeFile(f.name)} style={{ background:"none", border:"none", color:"#CBD5E1", cursor:"pointer", fontSize:16, padding:"0 2px" }}
+                      onMouseEnter={e => e.currentTarget.style.color="#EF4444"} onMouseLeave={e => e.currentTarget.style.color="#CBD5E1"}>✕</button>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display:"flex", gap:10 }}>
+            {obra && canDelete && (
+              <button onClick={() => onDelete(obra)} style={{ padding:"11px 16px", border:"1px solid #FECACA", borderRadius:8, background:"#FEF2F2", color:"#DC2626", cursor:"pointer", fontSize:13, fontWeight:500 }}>Eliminar</button>
+            )}
+            <button onClick={onClose} style={{ flex:1, padding:"11px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>{canEdit ? "Cancelar" : "Cerrar"}</button>
+            {canEdit && (
+              <button onClick={handleSave} disabled={saving} style={{ flex:1, padding:"11px", border:"none", borderRadius:8, background: saving ? "#94A3B8" : "#1A2B4A", color:"#fff", cursor: saving ? "not-allowed" : "pointer", fontSize:13, fontWeight:600 }}>
+                {saving ? "Guardando..." : "Guardar"}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function App() {
   const [sesion, setSesion] = useState(null);
@@ -3057,6 +3398,10 @@ export default function App() {
             <button onClick={() => setActiveTab("entregas")}
               style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="entregas" ? "#1A2B4A" : "transparent", color: activeTab==="entregas" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="entregas" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
               📦 Entregas
+            </button>
+            <button onClick={() => setActiveTab("aceptadas")}
+              style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="aceptadas" ? "#1A2B4A" : "transparent", color: activeTab==="aceptadas" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="aceptadas" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
+              🗂️ Obras Aceptadas
             </button>
             {canSeeAvanceProduccion && (
               <button onClick={() => setActiveTab("avance")}
@@ -3117,6 +3462,7 @@ export default function App() {
       {/* MAIN CONTENT */}
       <main style={{ maxWidth:1200, margin:"0 auto", padding:"28px 24px 100px" }}>
         {activeTab === "entregas" && <EntregasModule sesion={sesion} obras={obras} setObras={setObras} recargarObras={recargarObras} />}
+        {activeTab === "aceptadas" && <ObrasAceptadasModule sesion={sesion} />}
         {activeTab === "avance" && canSeeAvanceProduccion && <AvanceModule sesion={sesion} />}
         {activeTab === "avance_obra" && canSeeAvanceObra && <AvanceObraModule sesion={sesion} />}
         {activeTab === "cobros" && canSeeCobros && <CobrosModule sesion={sesion} />}
