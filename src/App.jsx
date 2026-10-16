@@ -134,7 +134,7 @@ async function upsertInformeFinal(obraId, datos, archivos, existingId) {
 // ─── OBRAS ACEPTADAS API (tabla: obras_aceptadas) ─────────────────────────────
 // You need to create the table "obras_aceptadas" in your Supabase with:
 // id (uuid, default gen_random_uuid()), nombre (text not null), direccion (text),
-// cliente (text), fecha_aceptacion (date), fecha_entrega_aprox (date),
+// cliente (text), fecha_aceptacion (date), fecha_entrega_aprox (date), descripcion (text),
 // archivos (jsonb default '[]'::jsonb), creado_por (text), creado_por_nombre (text),
 // created_at (timestamptz default now()), updated_at (timestamptz default now())
 async function getObrasAceptadas() { return sbFetch("obras_aceptadas?select=*&order=fecha_aceptacion.desc.nullslast,created_at.desc"); }
@@ -3030,6 +3030,7 @@ body{font-family:'Archivo',sans-serif;background:var(--bg);color:var(--text);lin
 // ═══════════════════════════════════════════════════════════════════════════════
 function getFileIconAceptada(type) {
   if (!type) return "📎";
+  if (type.startsWith("image/")) return "🖼️";
   if (type.includes("pdf")) return "📄";
   if (type.includes("sheet") || type.includes("excel") || type.includes("csv")) return "📊";
   return "📎";
@@ -3040,6 +3041,8 @@ function formatFileSizeAceptada(bytes) {
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
   return (bytes / 1048576).toFixed(1) + " MB";
 }
+const IMG_RE_ACEPTADA = /\.(jpe?g|png|gif|webp|bmp)$/i;
+function esImagenAceptada(f) { return (f.type || "").startsWith("image/") || IMG_RE_ACEPTADA.test(f.name || ""); }
 
 function ObrasAceptadasModule({ sesion }) {
   const [obras, setObras] = useState([]);
@@ -3139,6 +3142,9 @@ function ObrasAceptadasModule({ sesion }) {
             <div key={o.id} className="obra-card" onClick={() => setModalObra(o)}
               style={{ background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:14, overflow:"hidden", cursor:"pointer", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
               <div style={{ height:4, background:"#2563EB" }} />
+              {(() => { const img = (o.archivos || []).find(esImagenAceptada); return img?.url ? (
+                <img src={img.url} alt="" loading="lazy" style={{ width:"100%", height:140, objectFit:"cover", display:"block" }} />
+              ) : null; })()}
               <div style={{ padding:"18px 18px 16px" }}>
                 <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", marginBottom:6, lineHeight:1.35 }}>{o.nombre}</div>
                 {o.cliente && <div style={{ fontSize:12, color:"#64748B", marginBottom:4 }}>👤 {o.cliente}</div>}
@@ -3147,11 +3153,21 @@ function ObrasAceptadasModule({ sesion }) {
                   {o.fecha_aceptacion && <span>✅ Aceptada: {formatDate(o.fecha_aceptacion)}</span>}
                   {o.fecha_entrega_aprox && <span>📅 Entrega aprox: {formatDate(o.fecha_entrega_aprox)}</span>}
                 </div>
-                {(o.archivos || []).length > 0 && (
-                  <div style={{ fontSize:11, color:"#2563EB", background:"#EFF6FF", border:"1px solid #DBEAFE", borderRadius:6, padding:"3px 9px", display:"inline-block", marginBottom:12 }}>
-                    📎 {o.archivos.length} archivo{o.archivos.length !== 1 ? "s" : ""}
-                  </div>
+                {o.descripcion && (
+                  <div style={{ fontSize:12, color:"#475569", marginBottom:12, lineHeight:1.45, whiteSpace:"pre-line", display:"-webkit-box", WebkitLineClamp:3, WebkitBoxOrient:"vertical", overflow:"hidden" }}>{o.descripcion}</div>
                 )}
+                {(() => {
+                  const imgs = (o.archivos || []).filter(esImagenAceptada).length;
+                  const docs = (o.archivos || []).length - imgs;
+                  if (!imgs && !docs) return null;
+                  const chip = { fontSize:11, color:"#2563EB", background:"#EFF6FF", border:"1px solid #DBEAFE", borderRadius:6, padding:"3px 9px" };
+                  return (
+                    <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:12 }}>
+                      {docs > 0 && <span style={chip}>📎 {docs} archivo{docs !== 1 ? "s" : ""}</span>}
+                      {imgs > 0 && <span style={chip}>🖼️ {imgs} imagen{imgs !== 1 ? "es" : ""}</span>}
+                    </div>
+                  );
+                })()}
                 <div onClick={e => e.stopPropagation()} style={{ display:"flex", gap:6, paddingTop:12, borderTop:"1px solid #F1F5F9" }}>
                   <button onClick={() => setModalObra(o)} style={{ flex:1, padding:"7px 0", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>{canEdit ? "Editar" : "Ver"}</button>
                   {canDelete && <button onClick={() => deleteObra(o)} style={{ padding:"7px 10px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:12, cursor:"pointer" }}>✕</button>}
@@ -3180,23 +3196,26 @@ function ModalObraAceptada({ obra, canEdit, canDelete, onClose, onSave, onDelete
   const [form, setForm] = useState({
     nombre: obra?.nombre || "", direccion: obra?.direccion || "", cliente: obra?.cliente || "",
     fecha_aceptacion: obra?.fecha_aceptacion || "", fecha_entrega_aprox: obra?.fecha_entrega_aprox || "",
+    descripcion: obra?.descripcion || "",
   });
   const [archivos, setArchivos] = useState(obra?.archivos || []);
   const [dragging, setDragging] = useState(false);
+  const [draggingImg, setDraggingImg] = useState(false);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef(null);
+  const imgInputRef = useRef(null);
   const originalArchivos = useRef(obra?.archivos || []);
 
   const inp = { width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:14, outline:"none", boxSizing:"border-box" };
   const lbl = { display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 };
 
-  async function handleFiles(files) {
+  async function handleFiles(files, kind = "docs") {
     const nuevos = [];
     for (const file of Array.from(files)) {
       if (archivos.find(f => f.name === file.name)) continue;
-      const okType = /\.(pdf|xls|xlsx|csv)$/i.test(file.name);
-      if (!okType) { alert(`"${file.name}" no es un PDF o Excel válido.`); continue; }
+      const okType = kind === "img" ? IMG_RE_ACEPTADA.test(file.name) : /\.(pdf|xls|xlsx|csv)$/i.test(file.name);
+      if (!okType) { alert(kind === "img" ? `"${file.name}" no es una imagen válida (JPG, PNG, WEBP, GIF).` : `"${file.name}" no es un PDF o Excel válido.`); continue; }
       const b64 = await new Promise(resolve => {
         const reader = new FileReader();
         reader.onload = e => resolve(e.target.result);
@@ -3220,6 +3239,7 @@ function ModalObraAceptada({ obra, canEdit, canDelete, onClose, onSave, onDelete
       const baseData = {
         nombre: form.nombre.trim(), direccion: form.direccion.trim(), cliente: form.cliente.trim(),
         fecha_aceptacion: form.fecha_aceptacion || null, fecha_entrega_aprox: form.fecha_entrega_aprox || null,
+        descripcion: form.descripcion.trim(),
       };
       if (!obraId) {
         const inserted = await insertObraAceptada({ ...baseData, archivos: [] });
@@ -3283,7 +3303,48 @@ function ModalObraAceptada({ obra, canEdit, canDelete, onClose, onSave, onDelete
                 <input type="date" style={inp} value={form.fecha_entrega_aprox} onChange={e => setForm(f => ({...f, fecha_entrega_aprox:e.target.value}))} />
               </div>
             </div>
+            <div style={{ marginBottom:16 }}>
+              <label style={lbl}>Descripción</label>
+              <textarea style={{ ...inp, minHeight:110, resize:"vertical", lineHeight:1.5 }} value={form.descripcion}
+                onChange={e => setForm(f => ({...f, descripcion:e.target.value}))}
+                placeholder={"Qué hay que hacer, materiales necesarios, items a fabricar y entregar...\nEj:\n- 2 bajo mesadas melamina blanca 18mm\n- 1 placard 3 puertas"} />
+            </div>
           </fieldset>
+
+          {/* IMÁGENES */}
+          <div style={{ marginBottom:20 }}>
+            <label style={lbl}>Imágenes (JPG / PNG / WEBP / GIF)</label>
+            {canEdit && (
+              <div
+                onClick={() => imgInputRef.current?.click()}
+                onDragOver={e => { e.preventDefault(); setDraggingImg(true); }}
+                onDragLeave={() => setDraggingImg(false)}
+                onDrop={e => { e.preventDefault(); setDraggingImg(false); handleFiles(e.dataTransfer.files, "img"); }}
+                style={{ border:`2px dashed ${draggingImg ? "#2563EB" : "#CBD5E1"}`, borderRadius:10, padding:"22px 16px", textAlign:"center", cursor:"pointer", background: draggingImg ? "rgba(37,99,235,0.04)" : "#F8FAFC", marginBottom:10, transition:"all 0.15s" }}>
+                <div style={{ fontSize:28, marginBottom:6, color:"#94A3B8" }}>🖼️</div>
+                <div style={{ fontSize:13, color:"#64748B" }}>Arrastrá imágenes aquí o hacé clic para seleccionar</div>
+                <div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>JPG, PNG, WEBP, GIF</div>
+                <input ref={imgInputRef} type="file" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,image/*"
+                  style={{ display:"none" }} onChange={e => { if (e.target.files?.length) handleFiles(e.target.files, "img"); e.target.value=""; }} />
+              </div>
+            )}
+            {archivos.filter(esImagenAceptada).length === 0 ? (
+              <div style={{ color:"#94A3B8", fontSize:12, textAlign:"center", padding:"10px 0" }}>Sin imágenes</div>
+            ) : (
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(110px, 1fr))", gap:8 }}>
+                {archivos.filter(esImagenAceptada).map(f => (
+                  <div key={f.name} style={{ position:"relative", borderRadius:8, overflow:"hidden", border:"1px solid #E2E8F0", aspectRatio:"1 / 1", background:"#F8FAFC" }}>
+                    <a href={f.url || undefined} target="_blank" rel="noreferrer" style={{ display:"block", width:"100%", height:"100%", cursor: f.url ? "zoom-in" : "default" }}>
+                      <img src={f.url || f.b64} alt={f.name} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} />
+                    </a>
+                    {!f.path && <div style={{ position:"absolute", left:0, right:0, bottom:0, background:"rgba(15,23,42,0.65)", color:"#fff", fontSize:10, padding:"2px 6px" }}>pendiente de subir</div>}
+                    {canEdit && <button onClick={() => removeFile(f.name)} title="Quitar imagen"
+                      style={{ position:"absolute", top:4, right:4, width:22, height:22, borderRadius:"50%", border:"none", background:"rgba(15,23,42,0.7)", color:"#fff", cursor:"pointer", fontSize:12, padding:0 }}>✕</button>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* ARCHIVOS */}
           <div style={{ marginBottom:20 }}>
@@ -3302,12 +3363,12 @@ function ModalObraAceptada({ obra, canEdit, canDelete, onClose, onSave, onDelete
                   style={{ display:"none" }} onChange={e => { if (e.target.files?.length) handleFiles(e.target.files); e.target.value=""; }} />
               </div>
             )}
-            {archivos.length === 0 ? (
+            {archivos.filter(f => !esImagenAceptada(f)).length === 0 ? (
               <div style={{ color:"#94A3B8", fontSize:12, textAlign:"center", padding:"10px 0" }}>Sin archivos adjuntos</div>
             ) : (
               <div style={{ border:"1px solid #E2E8F0", borderRadius:10, overflow:"hidden" }}>
-                {archivos.map((f, i) => (
-                  <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderBottom: i < archivos.length-1 ? "1px solid #F1F5F9" : "none" }}>
+                {archivos.filter(f => !esImagenAceptada(f)).map((f, i, docs) => (
+                  <div key={f.name} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderBottom: i < docs.length-1 ? "1px solid #F1F5F9" : "none" }}>
                     <span style={{ fontSize:20 }}>{getFileIconAceptada(f.type)}</span>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontSize:13, fontWeight:500, color:"#1A2B4A", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.name}</div>
