@@ -561,6 +561,8 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
       if (!existente) {
         try { await insertCobro({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, monto_total: 0, adelanto_cobrado: false, adelanto_monto: 0, adelanto_porcentaje: 0, total_cobrado: false, total_fecha: null, plazo_pago: "", adicionales: [] }); } catch {}
         try { await insertMaterial({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, items: [], notas: "" }); } catch {}
+        try { await insertAixaObra({ name: obraFinal.nombre, client: obraFinal.lugar, start_date: null, due_date: obraFinal.fecha || null, description: obraFinal.notas || "", stations: mkStations(), history: [], clarifications: [] }); }
+        catch (e) { console.error("Error creando obra en Avance de Producción:", e); alert("La obra se guardó, pero no se pudo crear en Avance de Producción."); }
       } else {
         try { await updateCobro(obraFinal.id, { obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, updated_at: new Date().toISOString() }); } catch {}
       }
@@ -932,13 +934,14 @@ function AvanceModule({ sesion }) {
         const [obs, users] = await Promise.all([getAixaObras(), getAixaUsers()]);
         setAixaObras(obs || []);
         setAixaUsers(users || []);
-      } catch {}
+      } catch (e) { console.error("Error cargando Avance de Producción:", e); alert("No se pudieron cargar las obras de Avance de Producción."); }
       setLoading(false);
     })();
   }, []);
 
   async function recargar() {
-    try { const obs = await getAixaObras(); setAixaObras(obs || []); } catch {}
+    try { const obs = await getAixaObras(); setAixaObras(obs || []); }
+    catch (e) { console.error("Error recargando Avance de Producción:", e); alert("No se pudieron recargar las obras de Avance de Producción."); }
   }
 
   const obra = selectedObra ? aixaObras.find(o => o.id === selectedObra) : null;
