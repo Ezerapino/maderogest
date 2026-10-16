@@ -247,6 +247,14 @@ function fmtDateAixa(d) { if(!d) return '—'; const[y,m,day]=(d.split('T')[0]).
 function fmtDateTimeAixa(iso) { return new Date(iso).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
 function obraProgressAixa(o) { const st=o.stations||[]; return st.length ? Math.round(st.filter(s=>s.status==='done').length/st.length*100) : 0; }
 function isDelayedAixa(o) { if(!o.due_date||obraProgressAixa(o)===100) return false; const t=new Date(); t.setHours(0,0,0,0); return t>new Date(o.due_date); }
+function calcDurMinAixa(start_date, end_date, start_time, end_time) {
+  if (!start_time || !end_time) return null;
+  const d1 = (start_date || '2000-01-01').split('T')[0], d2 = (end_date || d1).split('T')[0];
+  let min = Math.round((new Date(`${d2}T${end_time}`) - new Date(`${d1}T${start_time}`)) / 60000);
+  if (min < 0 && d1 === d2) min += 1440;
+  return min >= 0 ? min : null;
+}
+function fmtDurAixa(min) { if (min == null || min === '') return ''; const h = Math.floor(min / 60), m = min % 60; return h ? `${h} h${m ? ` ${m} min` : ''}` : `${m} min`; }
 function daysDelayedAixa(o) { if(!o.due_date)return 0; const t=new Date();t.setHours(0,0,0,0); return Math.floor((t-new Date(o.due_date))/86400000); }
 
 // ─── PDF GENERATOR ────────────────────────────────────────────────────────────
@@ -325,7 +333,7 @@ function generarInformeCierre(obra) {
   const timelineHTML = stDur.map((s, i) => {
     const sl = {done:'Completado',active:'En progreso',blocked:'Bloqueado',pending:'Pendiente'}[s.status];
     const sc = {done:'#059669',active:'#D97706',blocked:'#DC2626',pending:'#94A3B8'}[s.status];
-    return `<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #f1f5f9"><div style="width:28px;height:28px;border-radius:50%;background:${sc};display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;flex-shrink:0">${i+1}</div><div style="flex:1"><div style="font-weight:600;font-size:13px;color:#1e293b">${s.name}</div><div style="font-size:11px;color:#64748b">${sl} · ${s.days} días${s.start_date ? ` · ${fmtDateAixa(s.start_date)}` : ''}${s.end_date ? ` → ${fmtDateAixa(s.end_date)}` : ''}</div>${s.note ? `<div style="font-size:11px;color:#94a3b8;margin-top:3px;font-style:italic">"${s.note}"</div>` : ''}</div></div>`;
+    return `<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #f1f5f9"><div style="width:28px;height:28px;border-radius:50%;background:${sc};display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;flex-shrink:0">${i+1}</div><div style="flex:1"><div style="font-weight:600;font-size:13px;color:#1e293b">${s.name}</div><div style="font-size:11px;color:#64748b">${sl} · ${s.days} días${s.start_date ? ` · ${fmtDateAixa(s.start_date)}` : ''}${s.end_date ? ` → ${fmtDateAixa(s.end_date)}` : ''}</div>${s.operario || s.start_time || s.end_time || s.duration_min != null ? `<div style="font-size:11px;color:#475569">${s.operario ? `Operario: ${s.operario}` : ''}${s.operario && (s.start_time || s.end_time || s.duration_min != null) ? ' · ' : ''}${s.start_time || s.end_time ? `${s.start_time || '—'} → ${s.end_time || '—'}` : ''}${s.duration_min != null ? ` (${fmtDurAixa(s.duration_min)})` : ''}</div>` : ''}${s.note ? `<div style="font-size:11px;color:#94a3b8;margin-top:3px;font-style:italic">"${s.note}"</div>` : ''}</div></div>`;
   }).join('');
 
   const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Informe de Cierre – ${obra.name}</title>
@@ -984,14 +992,18 @@ function AvanceModule({ sesion }) {
     setLoading(false);
   }
 
-  async function saveStation(stationIdx, status, start_date, end_date, note) {
+  async function saveStation(stationIdx, { status, start_date, end_date, start_time, end_time, duration_min, operario, note }) {
     if (!obra) return;
     const stations = JSON.parse(JSON.stringify(obra.stations || []));
     const s = stations[stationIdx];
     const old = s.status;
     s.status = status; s.start_date = start_date || null; s.end_date = end_date || null; s.note = note;
+    s.start_time = start_time || null; s.end_time = end_time || null; s.operario = operario || null;
+    // Manual duration wins; otherwise derive it from the start/end times
+    s.duration_manual = duration_min !== "" && duration_min != null;
+    s.duration_min = s.duration_manual ? Math.max(0, Math.round(Number(duration_min))) : calcDurMinAixa(s.start_date, s.end_date, s.start_time, s.end_time);
     const hist = JSON.parse(JSON.stringify(obra.history || []));
-    hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Estación "${s.name}": "${old}" → "${status}"${note ? ' — '+note : ''}`, time: new Date().toISOString() });
+    hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Estación "${s.name}": "${old}" → "${status}"${s.operario ? ' · Operario: '+s.operario : ''}${s.duration_min != null ? ' · '+fmtDurAixa(s.duration_min) : ''}${note ? ' — '+note : ''}`, time: new Date().toISOString() });
     setLoading(true);
     try { await updateAixaObra(selectedObra, { stations, history: hist }); await recargar(); } catch { alert("Error"); }
     setLoading(false); setShowStationModal(false);
@@ -1166,6 +1178,12 @@ function AvanceModule({ sesion }) {
                     <div style={{ fontFamily:"'Sora', sans-serif", fontSize:14, fontWeight:700, color:"#1A2B4A", textTransform:"uppercase", marginBottom:6 }}>{s.name}</div>
                     <span style={{ display:"inline-block", padding:"3px 10px", borderRadius:99, background:c.bg, color:c.text, border:`1px solid ${c.border}`, fontSize:11, fontWeight:600 }}>{labels[s.status]}</span>
                     {days && <div style={{ fontSize:12, color:"#94A3B8", marginTop:8 }}>{days}</div>}
+                    {s.operario && <div style={{ fontSize:12, color:"#475569", marginTop:6 }}>👷 {s.operario}</div>}
+                    {(s.start_time || s.end_time || s.duration_min != null) && (
+                      <div style={{ fontSize:12, color:"#475569", marginTop:4 }}>
+                        ⏱ {s.start_time || "—"} → {s.end_time || "—"}{s.duration_min != null && <strong style={{ color:"#2563EB" }}> · {fmtDurAixa(s.duration_min)}</strong>}
+                      </div>
+                    )}
                     {s.note && <div style={{ fontSize:12, color:"#94A3B8", marginTop:6, borderTop:"1px solid #F1F5F9", paddingTop:6 }}>{s.note}</div>}
                     {s.start_date && <div style={{ fontSize:11, color:"#CBD5E1", marginTop:4 }}>Inicio: {fmtDateAixa(s.start_date)}</div>}
                     {s.end_date && <div style={{ fontSize:11, color:"#CBD5E1" }}>Fin: {fmtDateAixa(s.end_date)}</div>}
@@ -1241,12 +1259,19 @@ function AvanceModule({ sesion }) {
         {/* Station Modal */}
         {showStationModal && editingStation !== null && (() => {
           const s = st[editingStation];
+          const operarios = aixaUsers.filter(u => u.rol === "operario").map(u => u.name || u.nombre);
+          // Keep a previously saved operario selectable even if the user no longer exists
+          const operarioOpts = s.operario && !operarios.includes(s.operario) ? [...operarios, s.operario] : operarios;
           return <ModalSimple title={`Estación ${editingStation+1}: ${s.name}`} onClose={() => setShowStationModal(false)}
-            onSave={(data) => saveStation(editingStation, data.status, data.start_date, data.end_date, data.note)}
+            onSave={(data) => saveStation(editingStation, data)}
             fields={[
               { key:"status", label:"Estado", type:"select", options:[{v:"pending",l:"Pendiente"},{v:"active",l:"En progreso"},{v:"done",l:"Completado"},{v:"blocked",l:"Bloqueado"}], initial:s.status },
+              { key:"operario", label:"Operario a cargo", type:"select", options:[{v:"",l:"— Sin operario —"}, ...operarioOpts.map(n => ({v:n,l:n}))], initial:s.operario||"" },
               { key:"start_date", label:"Fecha inicio", type:"date", initial:s.start_date?.split('T')[0]||"" },
+              { key:"start_time", label:"Hora inicio", type:"time", initial:s.start_time||"" },
               { key:"end_date", label:"Fecha fin", type:"date", initial:s.end_date?.split('T')[0]||"" },
+              { key:"end_time", label:"Hora fin", type:"time", initial:s.end_time||"" },
+              { key:"duration_min", label:"Tiempo empleado (minutos) — si lo dejás vacío se calcula con las horas", type:"number", initial:s.duration_manual && s.duration_min != null ? String(s.duration_min) : "" },
               { key:"note", label:"Observación", type:"textarea", initial:s.note||"" },
             ]} />;
         })()}
