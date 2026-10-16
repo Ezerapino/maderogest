@@ -998,7 +998,7 @@ function AvanceModule({ sesion }) {
     const s = stations[stationIdx];
     const old = s.status;
     s.status = status; s.start_date = start_date || null; s.end_date = end_date || null; s.note = note;
-    s.start_time = start_time || null; s.end_time = end_time || null; s.operario = operario || null;
+    s.start_time = start_time || null; s.end_time = end_time || null; s.operario = operario?.trim() || null;
     // Manual duration wins; otherwise derive it from the start/end times
     s.duration_manual = duration_min !== "" && duration_min != null;
     s.duration_min = s.duration_manual ? Math.max(0, Math.round(Number(duration_min))) : calcDurMinAixa(s.start_date, s.end_date, s.start_time, s.end_time);
@@ -1259,14 +1259,11 @@ function AvanceModule({ sesion }) {
         {/* Station Modal */}
         {showStationModal && editingStation !== null && (() => {
           const s = st[editingStation];
-          const operarios = aixaUsers.filter(u => u.rol === "operario").map(u => u.name || u.nombre);
-          // Keep a previously saved operario selectable even if the user no longer exists
-          const operarioOpts = s.operario && !operarios.includes(s.operario) ? [...operarios, s.operario] : operarios;
           return <ModalSimple title={`Estación ${editingStation+1}: ${s.name}`} onClose={() => setShowStationModal(false)}
             onSave={(data) => saveStation(editingStation, data)}
             fields={[
               { key:"status", label:"Estado", type:"select", options:[{v:"pending",l:"Pendiente"},{v:"active",l:"En progreso"},{v:"done",l:"Completado"},{v:"blocked",l:"Bloqueado"}], initial:s.status },
-              { key:"operario", label:"Operario a cargo", type:"select", options:[{v:"",l:"— Sin operario —"}, ...operarioOpts.map(n => ({v:n,l:n}))], initial:s.operario||"" },
+              { key:"operario", label:"Operario a cargo", type:"text", initial:s.operario||"" },
               { key:"start_date", label:"Fecha inicio", type:"date", initial:s.start_date?.split('T')[0]||"" },
               { key:"start_time", label:"Hora inicio", type:"time", initial:s.start_time||"" },
               { key:"end_date", label:"Fecha fin", type:"date", initial:s.end_date?.split('T')[0]||"" },
