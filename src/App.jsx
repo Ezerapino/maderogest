@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
 
 // ─── LOGO ─────────────────────────────────────────────────────────────────────
 const LOGO_AIXA = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgNDgiIHdpZHRoPSIxMjAiIGhlaWdodD0iNDgiPgogIDxyZWN0IHdpZHRoPSIxMjAiIGhlaWdodD0iNDgiIHJ4PSI2IiBmaWxsPSIjMUEyQjRBIi8+CiAgPGxpbmUgeDE9IjgiIHkxPSI0OCIgeDI9IjE2IiB5Mj0iMCIgc3Ryb2tlPSIjMDU5NjY5IiBzdHJva2Utd2lkdGg9IjMuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgPGxpbmUgeDE9IjE0IiB5MT0iNDgiIHgyPSIyMiIgeTI9IjAiIHN0cm9rZT0iI0YwQzA0MCIgc3Ryb2tlLXdpZHRoPSIzLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDxsaW5lIHgxPSIyMCIgeTE9IjQ4IiB4Mj0iMjgiIHkyPSIwIiBzdHJva2U9IiMyNTYzRUIiIHN0cm9rZS13aWR0aD0iMy41IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICA8dGV4dCB4PSI2OCIgeT0iMzIiIGZvbnQtZmFtaWx5PSInU2Vnb2UgVUknLCdIZWx2ZXRpY2EgTmV1ZScsQXJpYWwsc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMiIgZm9udC13ZWlnaHQ9IjgwMCIgZmlsbD0iI0ZGRkZGRiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgbGV0dGVyLXNwYWNpbmc9IjMiPkFJWEE8L3RleHQ+Cjwvc3ZnPg==";
@@ -7,6 +8,24 @@ const LOGO_AIXA = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5
 // MaderoGest Supabase (Entregas)
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || "";
+
+// Supabase Auth: la sesión (token) se guarda y se renueva sola. Todas las consultas
+// viajan con el token del usuario logueado; sin sesión la base no devuelve nada.
+const supabase = createClient(SUPABASE_URL.trim(), SUPABASE_KEY.trim());
+let accessToken = null;
+supabase.auth.onAuthStateChange((_evento, session) => { accessToken = session?.access_token || null; });
+function authHeader() { return `Bearer ${accessToken || SUPABASE_KEY}`; }
+
+// Llamadas a las funciones del servidor (/api/*) con la sesión del usuario
+async function apiFetch(path, options = {}) {
+  const res = await fetch(path, {
+    ...options,
+    headers: { "Authorization": authHeader(), ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+  return data;
+}
 
 // Single DB — all avance_obras data now lives in MaderoGest's Supabase
 // You need to create the table "avance_obras" in your Supabase with:
@@ -31,7 +50,7 @@ async function sbFetch(path, options = {}) {
     method: options.method || "GET",
     headers: {
       "apikey": SUPABASE_KEY,
-      "Authorization": `Bearer ${SUPABASE_KEY}`,
+      "Authorization": authHeader(),
       ...(isWrite ? { "Content-Type": "application/json" } : {}),
       "Prefer": "return=representation",
       ...options.headers,
@@ -62,11 +81,10 @@ async function upsertObra(obra) {
 }
 async function deleteObra(id) { return sbFetch(`obras?id=eq.${id}`, { method: "DELETE" }); }
 
-async function getUsuarios() { return sbFetch("usuarios?select=*", { method: "GET" }); }
-async function upsertUsuario(usuario) {
-  return sbFetch("usuarios", { method: "POST", headers: { "Prefer": "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(usuario) });
-}
-async function deleteUsuario(id) { return sbFetch(`usuarios?id=eq.${id}`, { method: "DELETE" }); }
+async function getUsuarios() { return sbFetch("usuarios?select=id,nombre,email,rol&order=nombre.asc", { method: "GET" }); }
+// Altas y bajas pasan por el servidor: crean/borran también el usuario de Supabase Auth
+async function crearUsuario(usuario) { return apiFetch("/api/usuarios", { method: "POST", body: JSON.stringify(usuario) }); }
+async function deleteUsuario(id) { return apiFetch(`/api/usuarios?id=${encodeURIComponent(id)}`, { method: "DELETE" }); }
 
 async function getHistorial(obraId = null) {
   const filter = obraId ? `obra_id=eq.${obraId}&` : "";
@@ -146,7 +164,7 @@ async function uploadFileObraAceptada(file, obraId) {
   const path = `aceptadas/${obraId}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${ext}`;
   const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${AVANCE_BUCKET}/${path}`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": file.type, "x-upsert": "true" },
+    headers: { Authorization: authHeader(), apikey: SUPABASE_KEY, "Content-Type": file.type, "x-upsert": "true" },
     body: file,
   });
   if (!res.ok) { const t = await res.text(); throw new Error(t); }
@@ -158,7 +176,7 @@ async function uploadFileAvance(file, obraId) {
   const path = `${obraId}/${Date.now()}_${Math.random().toString(36).slice(2,6)}.${ext}`;
   const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${AVANCE_BUCKET}/${path}`, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': file.type, 'x-upsert': 'true' },
+    headers: { 'Authorization': authHeader(), 'apikey': SUPABASE_KEY, 'Content-Type': file.type, 'x-upsert': 'true' },
     body: file
   });
   if (!res.ok) { const t = await res.text(); throw new Error(t); }
@@ -168,7 +186,7 @@ async function uploadFileAvance(file, obraId) {
 async function deleteFileAvance(filePath) {
   await fetch(`${SUPABASE_URL}/storage/v1/object/${AVANCE_BUCKET}/${filePath}`, {
     method: 'DELETE',
-    headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'apikey': SUPABASE_KEY }
+    headers: { 'Authorization': authHeader(), 'apikey': SUPABASE_KEY }
   });
 }
 
@@ -197,7 +215,7 @@ async function uploadFileInforme(file, obraId) {
   const path = `informes/${obraId}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${ext}`;
   const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${AVANCE_BUCKET}/${path}`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": file.type, "x-upsert": "true" },
+    headers: { Authorization: authHeader(), apikey: SUPABASE_KEY, "Content-Type": file.type, "x-upsert": "true" },
     body: file,
   });
   if (!res.ok) { const t = await res.text(); throw new Error(t); }
@@ -207,8 +225,22 @@ async function uploadFileInforme(file, obraId) {
 // Old separate API functions removed — now using unified functions above
 
 // ─── SESSION ──────────────────────────────────────────────────────────────────
-function getSesion() { try { return JSON.parse(localStorage.getItem("mg_sesion")); } catch { return null; } }
-function setSesionLocal(u) { if (u) localStorage.setItem("mg_sesion", JSON.stringify(u)); else localStorage.removeItem("mg_sesion"); }
+// Perfil del usuario logueado (tabla usuarios), a partir de la sesión de Supabase Auth
+async function perfilDeSesion(session) {
+  if (!session) return null;
+  accessToken = session.access_token;
+  const u = session.user;
+  const filas = await sbFetch(`usuarios?select=id,nombre,email,rol&auth_id=eq.${u.id}`);
+  const p = filas?.[0];
+  if (p) return p;
+  // Respaldo por si la fila todavía no tiene auth_id
+  return { id: u.app_metadata?.usuario_id || u.id, nombre: u.user_metadata?.nombre || u.email, email: u.email, rol: u.app_metadata?.rol || "operario" };
+}
+async function getSesion() {
+  const { data } = await supabase.auth.getSession();
+  return perfilDeSesion(data.session);
+}
+async function cerrarSesion() { await supabase.auth.signOut(); accessToken = null; localStorage.removeItem("mg_sesion"); }
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
 function diasRestantes(fecha) {
@@ -457,11 +489,9 @@ function Login({ onLogin }) {
     if (!email || !pass) { setError("Completá email y contraseña."); return; }
     setCargando(true);
     try {
-      const usuarios = await getUsuarios();
-      const u = usuarios.find(x => x.email.toLowerCase() === email.toLowerCase() && x.password === pass);
-      if (!u) { setError("Email o contraseña incorrectos."); setCargando(false); return; }
-      setSesionLocal({ id: u.id, nombre: u.nombre, rol: u.rol, email: u.email });
-      onLogin(u);
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password: pass });
+      if (authError) { setError(/invalid/i.test(authError.message) ? "Email o contraseña incorrectos." : authError.message); setCargando(false); return; }
+      onLogin(await perfilDeSesion(data.session));
     } catch {
       setError("Error de conexión. Verificá tu internet.");
       setCargando(false);
@@ -1951,6 +1981,174 @@ tr{page-break-inside:avoid}
   if (win) { win.document.write(html); win.document.close(); setTimeout(()=>win.print(),600); }
 }
 
+// ─── CARGA DE MATERIALES CON CLAUDE ──────────────────────────────────────────
+const EXT_IMPORTABLES = ["pdf","xlsx","xls","xlsm","ods","csv","jpg","jpeg","png","webp"];
+function extArchivo(nombre) { return (nombre || "").split(".").pop().toLowerCase(); }
+
+async function uploadArchivoImportacion(file, listaId) {
+  const path = `materiales-import/${listaId}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${extArchivo(file.name)}`;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${AVANCE_BUCKET}/${path}`, {
+    method: "POST",
+    headers: { Authorization: authHeader(), apikey: SUPABASE_KEY, "Content-Type": file.type || "application/octet-stream", "x-upsert": "true" },
+    body: file,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return path;
+}
+
+function ImportarMaterialesIA({ lista, onClose, onAgregar }) {
+  const [adjuntos, setAdjuntos] = useState([]);
+  const [paso, setPaso] = useState("elegir"); // elegir | leyendo | revisar
+  const [error, setError] = useState("");
+  const [items, setItems] = useState([]);
+  const [observaciones, setObservaciones] = useState("");
+  const [archivoNombre, setArchivoNombre] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const fileRef = useRef(null);
+
+  // Adjuntos de Obras Aceptadas que se pueden leer (primero los de la obra con el mismo nombre)
+  useEffect(() => {
+    getObrasAceptadas().then(obs => {
+      const n = normNombreObra(lista.obra_nombre);
+      const archivos = (obs || []).flatMap(o => (o.archivos || [])
+        .filter(f => f.path && EXT_IMPORTABLES.includes(extArchivo(f.name || f.path)))
+        .map(f => ({ ...f, obra: o.nombre, coincide: normNombreObra(o.nombre) === n })));
+      archivos.sort((a, b) => (b.coincide - a.coincide) || (a.obra || "").localeCompare(b.obra || ""));
+      setAdjuntos(archivos);
+    }).catch(() => {});
+  }, [lista.obra_nombre]);
+
+  async function leer(path, nombre) {
+    setError(""); setArchivoNombre(nombre); setPaso("leyendo");
+    try {
+      const r = await apiFetch("/api/extraer-materiales", { method: "POST", body: JSON.stringify({ path, nombre }) });
+      if (!r.items.length) { setError("Claude no encontró materiales en ese documento." + (r.observaciones ? ` ${r.observaciones}` : "")); setPaso("elegir"); return; }
+      setItems(r.items.map(it => ({ ...it, id: uid(), incluir: true, estado: "pendiente" })));
+      setObservaciones(r.observaciones || "");
+      setPaso("revisar");
+    } catch (e) { setError(e.message); setPaso("elegir"); }
+  }
+
+  async function subirYLeer(file) {
+    if (!file) return;
+    if (!EXT_IMPORTABLES.includes(extArchivo(file.name))) { setError("Formato no soportado. Usá PDF, Excel, CSV o una imagen."); return; }
+    setError(""); setArchivoNombre(file.name); setPaso("leyendo");
+    try { await leer(await uploadArchivoImportacion(file, lista.id), file.name); }
+    catch (e) { setError(e.message); setPaso("elegir"); }
+  }
+
+  function setItem(id, campo, valor) { setItems(xs => xs.map(x => x.id === id ? { ...x, [campo]: valor } : x)); }
+
+  async function agregar() {
+    const elegidos = items.filter(i => i.incluir && i.nombre.trim()).map(({ incluir: _incluir, ...it }) => ({ ...it, nombre: it.nombre.trim(), notas: [it.notas, `Importado de ${archivoNombre}`].filter(Boolean).join(" · ") }));
+    if (!elegidos.length) return;
+    setGuardando(true);
+    try { await onAgregar(elegidos); onClose(); } catch { setGuardando(false); }
+  }
+
+  const inp = { width:"100%", padding:"6px 8px", background:"#fff", border:"1px solid #E2E8F0", borderRadius:6, color:"#1A2B4A", fontSize:12, outline:"none", boxSizing:"border-box", fontFamily:"'Inter', sans-serif" };
+  const incluidos = items.filter(i => i.incluir).length;
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && paso !== "leyendo" && onClose()}
+      style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:320, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth: paso === "revisar" ? 980 : 560, maxHeight:"92vh", overflowY:"auto", padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+          <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:0 }}>✨ Cargar materiales con Claude</h3>
+          {paso !== "leyendo" && <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:32, height:32, cursor:"pointer", color:"#64748B" }}>✕</button>}
+        </div>
+        <div style={{ fontSize:12, color:"#64748B", marginBottom:16 }}>{lista.obra_nombre} · Claude lee el presupuesto, plano o planilla y arma la lista. Revisala antes de agregarla.</div>
+
+        {error && <div style={{ padding:"10px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:13, marginBottom:14 }}>{error}</div>}
+
+        {paso === "elegir" && (
+          <>
+            <div onClick={() => fileRef.current?.click()}
+              style={{ border:"2px dashed #CBD5E1", borderRadius:10, padding:"22px 16px", textAlign:"center", cursor:"pointer", marginBottom:16, background:"#F8FAFC" }}>
+              <div style={{ fontSize:26 }}>📄</div>
+              <div style={{ fontSize:13, fontWeight:600, color:"#1A2B4A", marginTop:4 }}>Subir un archivo</div>
+              <div style={{ fontSize:11, color:"#94A3B8" }}>PDF, Excel (xlsx/xls), CSV o foto (JPG/PNG)</div>
+              <input ref={fileRef} type="file" accept=".pdf,.xlsx,.xls,.xlsm,.ods,.csv,.jpg,.jpeg,.png,.webp" style={{ display:"none" }}
+                onChange={e => { subirYLeer(e.target.files?.[0]); e.target.value = ""; }} />
+            </div>
+            <div style={{ fontSize:12, fontWeight:600, color:"#475569", marginBottom:8 }}>O elegí un adjunto de Obras Aceptadas</div>
+            {adjuntos.length === 0 ? <div style={{ fontSize:12, color:"#94A3B8" }}>No hay adjuntos PDF/Excel en Obras Aceptadas.</div> : (
+              <div style={{ border:"1px solid #E2E8F0", borderRadius:10, maxHeight:260, overflowY:"auto" }}>
+                {adjuntos.map((f, i) => (
+                  <div key={f.path} onClick={() => leer(f.path, f.name)}
+                    style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", cursor:"pointer", borderBottom: i < adjuntos.length - 1 ? "1px solid #F1F5F9" : "none", background: f.coincide ? "#F0FDF4" : "#fff" }}>
+                    <span>{extArchivo(f.name) === "pdf" ? "📕" : ["jpg","jpeg","png","webp"].includes(extArchivo(f.name)) ? "🖼" : "📗"}</span>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13, color:"#1A2B4A", fontWeight:500, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.name}</div>
+                      <div style={{ fontSize:11, color:"#94A3B8" }}>{f.obra}{f.coincide ? " · esta obra" : ""}</div>
+                    </div>
+                    <span style={{ fontSize:12, color:"#0F766E", fontWeight:600 }}>Leer →</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {paso === "leyendo" && (
+          <div style={{ textAlign:"center", padding:"40px 10px" }}>
+            <div style={{ fontSize:30, marginBottom:10 }}>⏳</div>
+            <div style={{ fontSize:14, fontWeight:600, color:"#1A2B4A" }}>Claude está leyendo "{archivoNombre}"…</div>
+            <div style={{ fontSize:12, color:"#94A3B8", marginTop:6 }}>Según el tamaño del documento puede tardar entre 20 segundos y un par de minutos. No cierres esta ventana.</div>
+          </div>
+        )}
+
+        {paso === "revisar" && (
+          <>
+            {observaciones && <div style={{ padding:"10px 14px", background:"#FFFBEB", border:"1px solid #FDE68A", borderRadius:8, color:"#92400E", fontSize:12, marginBottom:12 }}>💬 {observaciones}</div>}
+            <div style={{ fontSize:12, color:"#64748B", marginBottom:8 }}>{items.length} materiales encontrados en "{archivoNombre}". Corregí lo que haga falta, destildá lo que no va y marcá lo que ya tienen en stock.</div>
+            <div style={{ overflowX:"auto", border:"1px solid #E2E8F0", borderRadius:10 }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+                <thead><tr style={{ background:"#F8FAFC", color:"#475569", textAlign:"left" }}>
+                  {["","Descripción","Cant.","Unidad","Tipo","Medidas (L × An × Esp)","Color","¿Pedir?"].map(h => <th key={h} style={{ padding:"8px 6px", fontWeight:600, borderBottom:"1px solid #E2E8F0", whiteSpace:"nowrap" }}>{h}</th>)}
+                </tr></thead>
+                <tbody>
+                  {items.map(it => (
+                    <tr key={it.id} style={{ opacity: it.incluir ? 1 : 0.45, borderBottom:"1px solid #F1F5F9" }}>
+                      <td style={{ padding:"6px" }}><input type="checkbox" checked={it.incluir} onChange={e => setItem(it.id, "incluir", e.target.checked)} /></td>
+                      <td style={{ padding:"6px", minWidth:200 }}><input style={inp} value={it.nombre} onChange={e => setItem(it.id, "nombre", e.target.value)} />{it.notas && <div style={{ fontSize:10, color:"#94A3B8", marginTop:2 }}>{it.notas}</div>}</td>
+                      <td style={{ padding:"6px", width:60 }}><input style={inp} value={it.cantidad} onChange={e => setItem(it.id, "cantidad", e.target.value)} /></td>
+                      <td style={{ padding:"6px", width:90 }}><input style={inp} list="mat-opts-unidad-ia" value={it.unidad} onChange={e => setItem(it.id, "unidad", e.target.value)} /></td>
+                      <td style={{ padding:"6px", width:120 }}><input style={inp} list="mat-opts-tipo-ia" value={it.tipo} onChange={e => setItem(it.id, "tipo", e.target.value)} /></td>
+                      <td style={{ padding:"6px", width:170 }}>
+                        <div style={{ display:"flex", gap:3 }}>
+                          {["largo","ancho","espesor"].map(k => <input key={k} style={{ ...inp, padding:"6px 4px" }} placeholder={k[0].toUpperCase()} value={it[k]} onChange={e => setItem(it.id, k, e.target.value)} />)}
+                        </div>
+                      </td>
+                      <td style={{ padding:"6px", width:110 }}><input style={inp} value={it.color} onChange={e => setItem(it.id, "color", e.target.value)} /></td>
+                      <td style={{ padding:"6px", width:130 }}>
+                        <select style={inp} value={it.estado} onChange={e => setItem(it.id, "estado", e.target.value)}>
+                          <option value="pendiente">🛒 Hay que pedirlo</option>
+                          <option value="stock">📦 En stock</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <datalist id="mat-opts-unidad-ia">{UNIDADES.map(o => <option key={o} value={o} />)}</datalist>
+              <datalist id="mat-opts-tipo-ia">{TIPOS_MATERIAL.map(o => <option key={o} value={o} />)}</datalist>
+            </div>
+            <div style={{ display:"flex", gap:10, marginTop:16 }}>
+              <button onClick={() => { setPaso("elegir"); setItems([]); }} style={{ padding:"10px 16px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>← Otro archivo</button>
+              <div style={{ flex:1 }} />
+              <button onClick={agregar} disabled={guardando || !incluidos}
+                style={{ padding:"10px 20px", border:"none", borderRadius:8, background: guardando || !incluidos ? "#94A3B8" : "#0F766E", color:"#fff", cursor: guardando || !incluidos ? "not-allowed" : "pointer", fontSize:13, fontWeight:600 }}>
+                {guardando ? "Agregando..." : `Agregar ${incluidos} material${incluidos !== 1 ? "es" : ""} a la obra`}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MaterialesModule({ sesion, obras = [] }) {
   const [listas, setListas] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -1964,6 +2162,10 @@ function MaterialesModule({ sesion, obras = [] }) {
   const [savingNueva, setSavingNueva] = useState(false);
   const [showNotasModal, setShowNotasModal] = useState(false);
   const [notasEdit, setNotasEdit] = useState("");
+  const [showImportarIA, setShowImportarIA] = useState(false);
+  const [enviandoResumen, setEnviandoResumen] = useState(false);
+  const isAdmin = sesion.rol === "admin";
+  const puedeImportar = isAdmin || sesion.rol === "operario";
 
   useEffect(() => { recargar(); }, []);
 
@@ -2048,6 +2250,20 @@ function MaterialesModule({ sesion, obras = [] }) {
     setSavingNueva(false);
   }
 
+  async function agregarItemsImportados(nuevos) {
+    const items = [...(selected.items || []), ...nuevos];
+    await guardarLista(selected.id, { items });
+  }
+
+  async function enviarResumenAhora() {
+    setEnviandoResumen(true);
+    try {
+      const r = await apiFetch("/api/alertas-diarias");
+      alert(r.enviado ? `Resumen enviado a ${r.destinos} destinatario(s).` : (r.motivo || "No había nada para avisar."));
+    } catch (e) { alert(`No se pudo enviar: ${e.message}`); }
+    setEnviandoResumen(false);
+  }
+
   async function vincularEntrega(listaId, obraId) {
     if (!obras.some(o => o.id === obraId)) return;
     await guardarLista(listaId, { obra_id: obraId });
@@ -2118,6 +2334,13 @@ function MaterialesModule({ sesion, obras = [] }) {
 
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
         <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Materiales por obra</h2>
+        <div style={{ flex:1 }} />
+        {isAdmin && (
+          <button onClick={enviarResumenAhora} disabled={enviandoResumen} title="Manda ahora el email de alertas a la lista configurada"
+            style={{ padding:"9px 14px", marginRight:8, background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:600, cursor: enviandoResumen ? "not-allowed" : "pointer" }}>
+            {enviandoResumen ? "Enviando..." : "📧 Enviar resumen ahora"}
+          </button>
+        )}
         <button onClick={() => { setNuevaObraData({ nombre:"", lugar:"" }); setShowNuevaObra(true); }}
           style={{ padding:"9px 18px", background:"#0F766E", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer" }}>
           + Nueva obra
@@ -2204,6 +2427,8 @@ function MaterialesModule({ sesion, obras = [] }) {
                       style={{ padding:"7px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#64748B", fontSize:12, cursor:"pointer" }}>📝 Notas</button>
                     <button onClick={() => generarPDFMateriales(selected, entrega)}
                       style={{ padding:"7px 14px", background:"#0F766E", border:"none", borderRadius:8, color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>⬇ PDF</button>
+                    {puedeImportar && <button onClick={() => setShowImportarIA(true)}
+                      style={{ padding:"7px 14px", background:"#F5F3FF", border:"1px solid #DDD6FE", borderRadius:8, color:"#7C3AED", fontSize:12, fontWeight:600, cursor:"pointer" }}>✨ Cargar con Claude</button>}
                     <button onClick={() => abrirItemModal()}
                       style={{ padding:"7px 14px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>+ Agregar</button>
                     <button onClick={() => eliminarMaterial(selected.id)}
@@ -2325,6 +2550,10 @@ function MaterialesModule({ sesion, obras = [] }) {
           </div>
         );
       })()}
+
+      {showImportarIA && selected && (
+        <ImportarMaterialesIA lista={selected} onClose={() => setShowImportarIA(false)} onAgregar={agregarItemsImportados} />
+      )}
 
       {/* MODAL: AGREGAR / EDITAR ITEM */}
       {showItemModal && (
@@ -3552,11 +3781,18 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      const s = getSesion();
-      if (s) setSesion(s);
-      try { const ob = await getObras(); setObras(ob || []); } catch { setObras([]); }
+      try {
+        const s = await getSesion();
+        if (s) {
+          setSesion(s);
+          const ob = await getObras(); setObras(ob || []);
+        }
+      } catch { setObras([]); }
       setCargando(false);
     })();
+    // Si la sesión vence o se cierra en otra pestaña, volver al login
+    const { data: sub } = supabase.auth.onAuthStateChange((evento) => { if (evento === "SIGNED_OUT") setSesion(null); });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   const [matAlertCount, setMatAlertCount] = useState(0);
@@ -3568,7 +3804,7 @@ export default function App() {
 
   async function recargarObras() { try { const ob = await getObras(); setObras(ob || []); } catch {} }
   function handleLogin(u) { setSesion(u); if (u.rol === "finanzas") setActiveTab("cobros"); recargarObras(); }
-  function handleLogout() { setSesionLocal(null); setSesion(null); }
+  async function handleLogout() { await cerrarSesion(); setSesion(null); setObras([]); }
 
   const isAdmin = sesion?.rol === "admin";
   const isFinanzas = sesion?.rol === "finanzas";
@@ -3698,21 +3934,21 @@ function GestionUsuarios({ onClose }) {
   async function agregar() {
     if (!form.nombre || !form.email || !form.password) { setMsg("⚠️ Completá todos los campos"); return; }
     if (usuarios.find(u => u.email.toLowerCase() === form.email.toLowerCase())) { setMsg("⚠️ Ya existe ese email"); return; }
+    if (form.password.length < 6) { setMsg("⚠️ La contraseña debe tener al menos 6 caracteres"); return; }
     setGuardando(true);
     try {
-      const nuevo = { ...form, id: uid() };
-      await upsertUsuario(nuevo);
+      const nuevo = await crearUsuario(form);
       setUsuarios(u => [...u, nuevo]);
       setForm({ nombre:"", email:"", password:"", rol:"operario" });
       setMsg("✅ Usuario creado");
       setTimeout(() => setMsg(""), 3000);
-    } catch { setMsg("⚠️ Error al guardar."); }
+    } catch (e) { setMsg(`⚠️ ${e.message}`); }
     setGuardando(false);
   }
 
   async function eliminar(id) {
     if (!confirm("¿Eliminar este usuario?")) return;
-    try { await deleteUsuario(id); setUsuarios(u => u.filter(x => x.id !== id)); } catch { alert("Error."); }
+    try { await deleteUsuario(id); setUsuarios(u => u.filter(x => x.id !== id)); } catch (e) { alert(e.message); }
   }
 
   const si = { width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" };
