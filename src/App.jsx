@@ -1833,64 +1833,115 @@ function CobrosModule({ sesion }) {
 // MATERIALES MODULE
 // ═══════════════════════════════════════════════════════════════════════════════
 const TIPOS_MATERIAL = ["MDF","Melamina","Madera maciza","Terciado / Multilaminado","Vidrio","Espejo","Herraje","Bisagra","Corredera","Manija / Tirador","Tapacanto","Moldura / Perfil","Chapa","Pintura / Laca","Tela / Cuero","Otro"];
-const UNIDADES = ["Unidades","m²","ml","Planchas","Tablas","Pares","Sets","kg","Litros","Metros"];
+const UNIDADES = ["Unidades","m²","ml","Planchas","Tablas","Tiras","Cajas","Pares","Sets","kg","Litros","Metros"];
 const TERMINACIONES = ["Mate","Brillante","Texturado","Natural","Pintado","Barnizado","Laqueado","Cromo","Negro mate","Blanco mate","Otro"];
-const ESTADOS_MAT = { pendiente:"Pendiente", pedido:"Pedido", recibido:"Recibido" };
-const ESTADO_MAT_COLORS = { pendiente:{bg:"#FFF7ED",text:"#D97706",border:"#FDE68A"}, pedido:{bg:"#EFF6FF",text:"#2563EB",border:"#BFDBFE"}, recibido:{bg:"#ECFDF5",text:"#059669",border:"#A7F3D0"} };
+// "stock" = ya lo tenemos, no hay que pedirlo. El resto son estados de un material a pedir.
+const ESTADOS_MAT = { stock:"En stock", pendiente:"Falta pedir", pedido:"Pedido – falta recibir", parcial:"Llegó incompleto", recibido:"Recibido" };
+const ESTADOS_MAT_PEDIR = ["pendiente","pedido","parcial","recibido"];
+const ESTADO_MAT_COLORS = { stock:{bg:"#F5F3FF",text:"#7C3AED",border:"#DDD6FE"}, pendiente:{bg:"#FFF7ED",text:"#D97706",border:"#FDE68A"}, pedido:{bg:"#EFF6FF",text:"#2563EB",border:"#BFDBFE"}, parcial:{bg:"#FEF2F2",text:"#DC2626",border:"#FECACA"}, recibido:{bg:"#ECFDF5",text:"#059669",border:"#A7F3D0"} };
+const DIAS_ALERTA_MAT = 10;
 
-function generarPDFMateriales(lista) {
+function resumenMateriales(items = []) {
+  const faltaPedir = items.filter(i => !i.estado || i.estado === "pendiente");
+  const faltaRecibir = items.filter(i => i.estado === "pedido" || i.estado === "parcial");
+  return { faltaPedir, faltaRecibir, stock: items.filter(i => i.estado === "stock").length, recibidos: items.filter(i => i.estado === "recibido").length, completo: items.length > 0 && faltaPedir.length === 0 && faltaRecibir.length === 0 };
+}
+function normNombreObra(s) { return (s || "").trim().toLowerCase().replace(/\s+/g, " "); }
+// Obra de Entregas asociada a una lista de materiales: por id, o por nombre si se creó por separado
+function entregaDeLista(lista, obras = []) {
+  return obras.find(o => o.id === lista.obra_id) || obras.find(o => normNombreObra(o.nombre) === normNombreObra(lista.obra_nombre)) || null;
+}
+function diasHastaFecha(fecha) {
+  if (!fecha) return null;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const [y,m,d] = fecha.split("T")[0].split("-").map(Number);
+  return Math.round((new Date(y, m-1, d) - hoy) / 86400000);
+}
+// Obras con entrega en ≤ DIAS_ALERTA_MAT días (o vencida) a las que les falta algún material
+function alertasMateriales(listas = [], obras = []) {
+  return listas.map(l => {
+    const entrega = entregaDeLista(l, obras);
+    if (!entrega || entrega.estado === "terminado" || !entrega.fecha) return null;
+    const dias = diasHastaFecha(entrega.fecha);
+    const r = resumenMateriales(l.items || []);
+    if (dias > DIAS_ALERTA_MAT || r.faltaPedir.length + r.faltaRecibir.length === 0) return null;
+    return { lista: l, entrega, dias, ...r };
+  }).filter(Boolean).sort((a, b) => a.dias - b.dias);
+}
+function textoDiasEntrega(dias) { return dias < 0 ? `vencida hace ${-dias} día${dias === -1 ? "" : "s"}` : dias === 0 ? "entrega hoy" : `faltan ${dias} día${dias === 1 ? "" : "s"}`; }
+function detalleFaltante(it) {
+  const cant = [it.cantidad, it.unidad].filter(Boolean).join(" ");
+  if (it.estado === "parcial") return `${it.nombre}${it.cantidad_recibida ? ` (llegaron ${it.cantidad_recibida} de ${cant || "?"})` : " (llegó incompleto)"}`;
+  return `${it.nombre}${cant ? ` (${cant})` : ""}`;
+}
+
+function generarPDFMateriales(lista, entrega) {
   const ahora = new Date().toLocaleDateString("es-AR",{day:"2-digit",month:"long",year:"numeric"});
-  const totalItems = lista.items?.length || 0;
-  const recibidos = (lista.items||[]).filter(i => i.estado === "recibido").length;
-  const rowsHTML = (lista.items||[]).map((it,i) => {
-    const ec = ESTADO_MAT_COLORS[it.estado] || ESTADO_MAT_COLORS.pendiente;
+  const items = lista.items || [];
+  const r = resumenMateriales(items);
+  const rowsHTML = items.map((it,i) => {
+    const est = it.estado || "pendiente";
+    const ec = ESTADO_MAT_COLORS[est] || ESTADO_MAT_COLORS.pendiente;
     const medidas = [it.largo&&`L:${it.largo}`, it.ancho&&`An:${it.ancho}`, it.espesor&&`Esp:${it.espesor}`].filter(Boolean).join(" × ");
+    const seg = [it.orden_pedido&&`Ped: ${it.orden_pedido}`, it.numero_remito&&`Rem: ${it.numero_remito}`].filter(Boolean).join("<br>");
+    const estTxt = est === "parcial" && it.cantidad_recibida ? `Llegó incompleto (${it.cantidad_recibida} de ${it.cantidad||'?'})` : ESTADOS_MAT[est];
     return `<tr style="background:${i%2===0?'#f8fafc':'#ffffff'}">
-      <td style="padding:9px 12px;font-size:13px;color:#1e293b;font-weight:500;border-bottom:1px solid #e2e8f0">${it.nombre||'—'}</td>
-      <td style="padding:9px 12px;font-size:12px;color:#475569;border-bottom:1px solid #e2e8f0">${it.tipo||'—'}</td>
-      <td style="padding:9px 12px;font-size:13px;color:#1e293b;font-weight:600;text-align:center;border-bottom:1px solid #e2e8f0">${it.cantidad||'—'} ${it.unidad||''}</td>
-      <td style="padding:9px 12px;font-size:12px;color:#475569;border-bottom:1px solid #e2e8f0">${medidas||'—'}</td>
-      <td style="padding:9px 12px;font-size:12px;color:#475569;border-bottom:1px solid #e2e8f0">${it.color||'—'}</td>
-      <td style="padding:9px 12px;font-size:12px;color:#475569;border-bottom:1px solid #e2e8f0">${it.terminacion||'—'}</td>
-      <td style="padding:9px 12px;font-size:12px;color:#475569;border-bottom:1px solid #e2e8f0">${it.marca||'—'}</td>
-      <td style="padding:9px 12px;font-size:11px;border-bottom:1px solid #e2e8f0"><span style="background:${ec.bg};color:${ec.text};border:1px solid ${ec.border};border-radius:4px;padding:2px 8px;font-weight:600">${ESTADOS_MAT[it.estado]||'Pendiente'}</span></td>
-      <td style="padding:9px 12px;font-size:11px;color:#94a3b8;border-bottom:1px solid #e2e8f0">${it.notas||''}</td>
+      <td style="padding:8px 10px;font-size:12px;color:#1e293b;font-weight:500;border-bottom:1px solid #e2e8f0">${it.nombre||'—'}</td>
+      <td style="padding:8px 10px;font-size:11px;color:#475569;border-bottom:1px solid #e2e8f0">${it.tipo||'—'}</td>
+      <td style="padding:8px 10px;font-size:12px;color:#1e293b;font-weight:600;text-align:center;border-bottom:1px solid #e2e8f0">${it.cantidad||'—'} ${it.unidad||''}</td>
+      <td style="padding:8px 10px;font-size:11px;color:#475569;border-bottom:1px solid #e2e8f0">${medidas||'—'}</td>
+      <td style="padding:8px 10px;font-size:11px;color:#475569;border-bottom:1px solid #e2e8f0">${it.color||'—'}</td>
+      <td style="padding:8px 10px;font-size:11px;color:#475569;border-bottom:1px solid #e2e8f0">${it.terminacion||'—'}</td>
+      <td style="padding:8px 10px;font-size:11px;color:#475569;border-bottom:1px solid #e2e8f0">${[it.marca,it.proveedor].filter(Boolean).join(' / ')||'—'}</td>
+      <td style="padding:8px 10px;font-size:10px;border-bottom:1px solid #e2e8f0"><span style="background:${ec.bg};color:${ec.text};border:1px solid ${ec.border};border-radius:4px;padding:2px 6px;font-weight:600;white-space:nowrap">${estTxt}</span></td>
+      <td style="padding:8px 10px;font-size:10px;color:#475569;border-bottom:1px solid #e2e8f0">${seg||'—'}</td>
+      <td style="padding:8px 10px;font-size:10px;color:#94a3b8;border-bottom:1px solid #e2e8f0">${it.notas||''}</td>
     </tr>`;
   }).join("");
+  const faltantesHTML = items.length === 0 ? '' : r.completo
+    ? `<div style="background:#ecfdf5;border-left:4px solid #059669;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:18px;font-size:13px;color:#065f46"><strong>✓ Están todos los materiales</strong> (${r.stock} en stock, ${r.recibidos} recibidos).</div>`
+    : `<div style="background:#fef2f2;border-left:4px solid #dc2626;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:18px;font-size:12px;color:#7f1d1d">
+        <strong style="font-size:13px">Faltan materiales</strong>
+        ${r.faltaPedir.length ? `<div style="margin-top:6px"><strong>Falta pedir (${r.faltaPedir.length}):</strong> ${r.faltaPedir.map(detalleFaltante).join(' · ')}</div>` : ''}
+        ${r.faltaRecibir.length ? `<div style="margin-top:4px"><strong>Falta recibir (${r.faltaRecibir.length}):</strong> ${r.faltaRecibir.map(detalleFaltante).join(' · ')}</div>` : ''}
+      </div>`;
 
   const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Materiales – ${lista.obra_nombre}</title>
-<style>@page{margin:15mm 12mm}body{font-family:'Segoe UI',system-ui,sans-serif;color:#1e293b;margin:0;font-size:13px}
-.cover{background:linear-gradient(135deg,#1A2B4A 0%,#0F766E 100%);color:#fff;padding:36px 48px}
-.cover h1{font-size:26px;margin:0 0 6px;font-weight:800}.cover .sub{font-size:13px;opacity:.75;margin-bottom:20px}
-.cover-grid{display:flex;gap:20px}.cover-item{background:rgba(255,255,255,.13);border-radius:8px;padding:12px 18px}
+<style>@page{size:A4 landscape;margin:12mm 10mm}body{font-family:'Segoe UI',system-ui,sans-serif;color:#1e293b;margin:0;font-size:13px}
+.cover{background:linear-gradient(135deg,#1A2B4A 0%,#0F766E 100%);color:#fff;padding:30px 40px}
+.cover h1{font-size:26px;margin:0 0 6px;font-weight:800}.cover .sub{font-size:13px;opacity:.75;margin-bottom:18px}
+.cover-grid{display:flex;gap:16px;flex-wrap:wrap}.cover-item{background:rgba(255,255,255,.13);border-radius:8px;padding:10px 16px}
 .cover-item .lbl{font-size:10px;text-transform:uppercase;letter-spacing:1px;opacity:.7;margin-bottom:3px}
 .cover-item .val{font-size:20px;font-weight:800}
-.body{padding:24px 36px}
+.body{padding:22px 30px}
 table{width:100%;border-collapse:collapse;margin-top:8px}
-th{background:#1A2B4A;color:#fff;padding:10px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;text-align:left;font-weight:700}
-.footer{margin-top:32px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:11px;color:#94a3b8}
-${lista.notas?'.nota{background:#fffbeb;border-left:4px solid #d97706;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:20px;font-size:13px}':''}
+th{background:#1A2B4A;color:#fff;padding:9px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.5px;text-align:left;font-weight:700}
+tr{page-break-inside:avoid}
+.footer{margin-top:28px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:11px;color:#94a3b8}
+.nota{background:#fffbeb;border-left:4px solid #d97706;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:18px;font-size:13px}
 </style></head><body>
 <div class="cover">
   <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:.6;margin-bottom:12px">Obras Grupo Aixa S.A.</div>
   <h1>Lista de Materiales</h1>
   <div class="sub">${lista.obra_nombre}${lista.obra_lugar?` — ${lista.obra_lugar}`:''}</div>
   <div class="cover-grid">
-    <div class="cover-item"><div class="lbl">Total ítems</div><div class="val">${totalItems}</div></div>
-    <div class="cover-item"><div class="lbl">Recibidos</div><div class="val">${recibidos}</div></div>
-    <div class="cover-item"><div class="lbl">Pendientes</div><div class="val">${totalItems-recibidos}</div></div>
+    <div class="cover-item"><div class="lbl">Total ítems</div><div class="val">${items.length}</div></div>
+    <div class="cover-item"><div class="lbl">En stock</div><div class="val">${r.stock}</div></div>
+    <div class="cover-item"><div class="lbl">Recibidos</div><div class="val">${r.recibidos}</div></div>
+    <div class="cover-item"><div class="lbl">Falta pedir</div><div class="val">${r.faltaPedir.length}</div></div>
+    <div class="cover-item"><div class="lbl">Falta recibir</div><div class="val">${r.faltaRecibir.length}</div></div>
+    ${entrega?.fecha?`<div class="cover-item"><div class="lbl">Entrega</div><div class="val" style="font-size:14px">${fmtDateAixa(entrega.fecha)}</div></div>`:''}
     <div class="cover-item"><div class="lbl">Fecha</div><div class="val" style="font-size:14px">${ahora}</div></div>
-    ${lista.orden_pedido?`<div class="cover-item"><div class="lbl">N° Orden de pedido</div><div class="val" style="font-size:15px">${lista.orden_pedido}</div></div>`:''}
-    ${lista.numero_remito?`<div class="cover-item"><div class="lbl">N° Remito</div><div class="val" style="font-size:15px">${lista.numero_remito}</div></div>`:''}
   </div>
 </div>
 <div class="body">
+  ${faltantesHTML}
   ${lista.notas?`<div class="nota">📝 <strong>Notas:</strong> ${lista.notas}</div>`:''}
-  ${totalItems===0?'<p style="color:#94a3b8;text-align:center;padding:40px 0">Sin materiales cargados.</p>':`
+  ${items.length===0?'<p style="color:#94a3b8;text-align:center;padding:40px 0">Sin materiales cargados.</p>':`
   <table>
     <thead><tr>
       <th>Descripción</th><th>Tipo</th><th>Cantidad</th><th>Medidas</th>
-      <th>Color</th><th>Terminación</th><th>Marca</th><th>Estado</th><th>Notas</th>
+      <th>Color</th><th>Terminación</th><th>Marca / Proveedor</th><th>Estado</th><th>Pedido / Remito</th><th>Notas</th>
     </tr></thead>
     <tbody>${rowsHTML}</tbody>
   </table>`}
@@ -1900,7 +1951,7 @@ ${lista.notas?'.nota{background:#fffbeb;border-left:4px solid #d97706;padding:12
   if (win) { win.document.write(html); win.document.close(); setTimeout(()=>win.print(),600); }
 }
 
-function MaterialesModule({ sesion }) {
+function MaterialesModule({ sesion, obras = [] }) {
   const [listas, setListas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [selected, setSelected] = useState(null);
@@ -1913,8 +1964,6 @@ function MaterialesModule({ sesion }) {
   const [savingNueva, setSavingNueva] = useState(false);
   const [showNotasModal, setShowNotasModal] = useState(false);
   const [notasEdit, setNotasEdit] = useState("");
-  const [showPedidoModal, setShowPedidoModal] = useState(false);
-  const [pedidoEdit, setPedidoEdit] = useState({ orden_pedido:"", numero_remito:"" });
 
   useEffect(() => { recargar(); }, []);
 
@@ -1947,7 +1996,7 @@ function MaterialesModule({ sesion }) {
 
   function abrirItemModal(item = null) {
     setEditingItem(item ? item.id : null);
-    setItemData(item ? { ...item } : { nombre:"", tipo:"", cantidad:"", unidad:"Unidades", largo:"", ancho:"", espesor:"", color:"", terminacion:"", marca:"", proveedor:"", notas:"", estado:"pendiente" });
+    setItemData(item ? { ...item, estado: item.estado || "pendiente" } : { nombre:"", tipo:"", cantidad:"", unidad:"Unidades", largo:"", ancho:"", espesor:"", color:"", terminacion:"", marca:"", proveedor:"", orden_pedido:"", numero_remito:"", cantidad_recibida:"", notas:"", estado:"pendiente" });
     setShowItemModal(true);
   }
 
@@ -1999,38 +2048,48 @@ function MaterialesModule({ sesion }) {
     setSavingNueva(false);
   }
 
-  const totalItems = listas.reduce((s, l) => s + (l.items||[]).length, 0);
-  const totalRecibidos = listas.reduce((s, l) => s + (l.items||[]).filter(i=>i.estado==="recibido").length, 0);
-  const totalPedidos = listas.reduce((s, l) => s + (l.items||[]).filter(i=>i.estado==="pedido").length, 0);
+  async function vincularEntrega(listaId, obraId) {
+    if (!obras.some(o => o.id === obraId)) return;
+    await guardarLista(listaId, { obra_id: obraId });
+  }
+
+  const resumenes = listas.map(l => resumenMateriales(l.items || []));
+  const totalCompletas = resumenes.filter(r => r.completo).length;
+  const totalFaltaPedir = resumenes.reduce((s, r) => s + r.faltaPedir.length, 0);
+  const totalFaltaRecibir = resumenes.reduce((s, r) => s + r.faltaRecibir.length, 0);
+  const alertas = alertasMateriales(listas, obras);
 
   const si = { width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" };
   const siSm = { ...si, padding:"8px 10px", fontSize:12 };
 
   const CAMPOS_ITEM = [
     { key:"nombre",      label:"Descripción *",       type:"text",   ph:"Ej: Panel lateral izquierdo", full:true },
-    { key:"tipo",        label:"Tipo de material",     type:"select", opts:TIPOS_MATERIAL },
-    { key:"cantidad",    label:"Cantidad",             type:"number", ph:"1" },
-    { key:"unidad",      label:"Unidad",               type:"select", opts:UNIDADES },
+    { key:"tipo",        label:"Tipo de material",     type:"combo",  opts:TIPOS_MATERIAL, ph:"Elegí o escribí" },
+    { key:"cantidad",    label:"Cantidad",             type:"text",   ph:"Ej: 1, 2.5" },
+    { key:"unidad",      label:"Unidad",               type:"combo",  opts:UNIDADES, ph:"Elegí o escribí (ej: tiras)" },
     { key:"largo",       label:"Largo (mm/cm)",        type:"text",   ph:"Ej: 2400" },
     { key:"ancho",       label:"Ancho (mm/cm)",        type:"text",   ph:"Ej: 600" },
     { key:"espesor",     label:"Espesor (mm)",         type:"text",   ph:"Ej: 18" },
     { key:"color",       label:"Color / Tono",         type:"text",   ph:"Ej: Blanco roto, Roble natural" },
-    { key:"terminacion", label:"Terminación",          type:"select", opts:TERMINACIONES },
+    { key:"terminacion", label:"Terminación",          type:"combo",  opts:TERMINACIONES, ph:"Elegí o escribí" },
     { key:"marca",       label:"Marca",                type:"text",   ph:"Ej: Masisa, Arauco" },
-    { key:"proveedor",   label:"Proveedor",            type:"text",   ph:"Ej: Maderería Centro" },
-    { key:"estado",      label:"Estado",               type:"select", opts:Object.entries(ESTADOS_MAT).map(([v,l])=>({v,l})), isObj:true },
+    { key:"proveedor",   label:"Proveedor",            type:"text",   ph:"Ej: Maderería Centro", soloPedir:true },
+    { key:"estado",      label:"Estado del pedido",    type:"select", opts:ESTADOS_MAT_PEDIR.map(v=>({v,l:ESTADOS_MAT[v]})), isObj:true, soloPedir:true },
+    { key:"cantidad_recibida", label:"Cantidad que llegó", type:"text", ph:"Ej: 3", soloParcial:true },
+    { key:"orden_pedido",  label:"N° de pedido",       type:"text",   ph:"Ej: OP-0051", soloPedir:true },
+    { key:"numero_remito", label:"N° de remito",       type:"text",   ph:"Ej: R-0001234", soloPedir:true },
     { key:"notas",       label:"Notas adicionales",    type:"text",   ph:"Observaciones...", full:true },
-  ];
+  ].filter(f => (!f.soloPedir || itemData.estado !== "stock") && (!f.soloParcial || itemData.estado === "parcial"));
 
   return (
     <div>
       {/* STATS */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:32 }}>
         {[
-          { num:listas.length,    label:"Total obras",  color:"#0F766E", border:"#99F6E4" },
-          { num:totalItems,       label:"Total ítems",  color:"#2563EB", border:"#DBEAFE" },
-          { num:totalPedidos,     label:"Pedidos",      color:"#D97706", border:"#FDE68A" },
-          { num:totalRecibidos,   label:"Recibidos",    color:"#059669", border:"#A7F3D0" },
+          { num:listas.length,     label:"Total obras",                   color:"#0F766E", border:"#99F6E4" },
+          { num:totalCompletas,    label:"Obras con materiales completos", color:"#059669", border:"#A7F3D0" },
+          { num:totalFaltaPedir,   label:"Materiales que falta pedir",    color:"#D97706", border:"#FDE68A" },
+          { num:totalFaltaRecibir, label:"Materiales que falta recibir",  color:"#2563EB", border:"#DBEAFE" },
         ].map((s,i) => (
           <div key={i} style={{ background:"#ffffff", border:`1px solid ${s.border}`, borderRadius:12, padding:"20px 20px 18px", animation:`fadeUp 0.35s ease ${i*0.06}s both` }}>
             <div style={{ fontFamily:"'Sora', sans-serif", fontSize:32, fontWeight:800, color:s.color, lineHeight:1 }}>{s.num}</div>
@@ -2038,6 +2097,24 @@ function MaterialesModule({ sesion }) {
           </div>
         ))}
       </div>
+
+      {/* ALERTAS: entrega próxima con materiales faltantes */}
+      {alertas.length > 0 && (
+        <div style={{ background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:12, padding:"14px 18px", marginBottom:24 }}>
+          <div style={{ fontFamily:"'Sora', sans-serif", fontSize:14, fontWeight:700, color:"#DC2626", marginBottom:8 }}>
+            ⚠ {alertas.length} obra{alertas.length!==1?"s":""} con entrega en {DIAS_ALERTA_MAT} días o menos y materiales faltantes
+          </div>
+          {alertas.map(a => (
+            <div key={a.lista.id} onClick={() => setSelected(a.lista)}
+              style={{ padding:"8px 0", borderTop:"1px solid #FEE2E2", cursor:"pointer", fontSize:12, color:"#7F1D1D" }}>
+              <strong style={{ fontSize:13 }}>{a.lista.obra_nombre}</strong>
+              <span style={{ marginLeft:8, fontWeight:700, color:"#DC2626" }}>📅 {fmtDateAixa(a.entrega.fecha)} · {textoDiasEntrega(a.dias)}</span>
+              {a.faltaPedir.length > 0 && <div style={{ marginTop:3 }}>🛒 <strong>Falta pedir:</strong> {a.faltaPedir.map(detalleFaltante).join(" · ")}</div>}
+              {a.faltaRecibir.length > 0 && <div style={{ marginTop:2 }}>🚚 <strong>Falta recibir:</strong> {a.faltaRecibir.map(detalleFaltante).join(" · ")}</div>}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
         <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Materiales por obra</h2>
@@ -2058,31 +2135,41 @@ function MaterialesModule({ sesion }) {
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:16 }}>
           {listas.map((l, idx) => {
             const items = l.items || [];
-            const rec = items.filter(i=>i.estado==="recibido").length;
-            const ped = items.filter(i=>i.estado==="pedido").length;
-            const pend = items.filter(i=>i.estado==="pendiente"||!i.estado).length;
-            const pct = items.length ? Math.round(rec/items.length*100) : 0;
+            const r = resumenes[idx];
+            const disponibles = r.stock + r.recibidos;
+            const pct = items.length ? Math.round(disponibles/items.length*100) : 0;
+            const urgente = alertas.find(a => a.lista.id === l.id);
+            const entrega = entregaDeLista(l, obras);
             return (
               <div key={l.id} onClick={() => setSelected(l)}
-                style={{ background:"#ffffff", border:`1px solid ${pct===100&&items.length>0?"#A7F3D0":"#E8ECF0"}`, borderRadius:14, overflow:"hidden", cursor:"pointer", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
-                <div style={{ height:4, background: pct===100&&items.length>0?"#059669":pct>0?"#D97706":"#CBD5E1" }} />
+                style={{ background:"#ffffff", border:`1px solid ${urgente?"#FCA5A5":r.completo?"#A7F3D0":"#E8ECF0"}`, borderRadius:14, overflow:"hidden", cursor:"pointer", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
+                <div style={{ height:4, background: urgente?"#DC2626":r.completo?"#059669":pct>0?"#D97706":"#CBD5E1" }} />
                 <div style={{ padding:"18px 18px 16px" }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
                     <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", flex:1, lineHeight:1.35, paddingRight:8 }}>{l.obra_nombre}</div>
                     <div style={{ fontSize:11, fontWeight:700, padding:"3px 9px", borderRadius:6, background:"#F0FDF4", color:"#059669", border:"1px solid #A7F3D0", whiteSpace:"nowrap" }}>{items.length} ítem{items.length!==1?"s":""}</div>
                   </div>
-                  {l.obra_lugar && <div style={{ fontSize:12, color:"#64748B", marginBottom:10 }}>📍 {l.obra_lugar}</div>}
-                  {items.length > 0 && (
+                  {l.obra_lugar && <div style={{ fontSize:12, color:"#64748B", marginBottom:6 }}>📍 {l.obra_lugar}</div>}
+                  {entrega?.fecha && entrega.estado !== "terminado" && (
+                    <div style={{ fontSize:12, color: urgente?"#DC2626":"#64748B", fontWeight: urgente?700:400, marginBottom:8 }}>📅 Entrega {fmtDateAixa(entrega.fecha)} · {textoDiasEntrega(diasHastaFecha(entrega.fecha))}</div>
+                  )}
+                  {items.length === 0 ? (
+                    <div style={{ fontSize:12, color:"#94A3B8" }}>Sin materiales cargados</div>
+                  ) : (
                     <>
                       <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:8 }}>
-                        {pend>0&&<div style={{ fontSize:11, padding:"2px 8px", borderRadius:5, background:"#FFF7ED", color:"#D97706", border:"1px solid #FDE68A" }}>{pend} pendiente{pend!==1?"s":""}</div>}
-                        {ped>0&&<div style={{ fontSize:11, padding:"2px 8px", borderRadius:5, background:"#EFF6FF", color:"#2563EB", border:"1px solid #BFDBFE" }}>{ped} pedido{ped!==1?"s":""}</div>}
-                        {rec>0&&<div style={{ fontSize:11, padding:"2px 8px", borderRadius:5, background:"#ECFDF5", color:"#059669", border:"1px solid #A7F3D0" }}>{rec} recibido{rec!==1?"s":""}</div>}
+                        {r.completo
+                          ? <div style={{ fontSize:11, fontWeight:700, padding:"2px 8px", borderRadius:5, background:"#ECFDF5", color:"#059669", border:"1px solid #A7F3D0" }}>✅ Todos los materiales disponibles</div>
+                          : <>
+                              {r.faltaPedir.length>0&&<div style={{ fontSize:11, fontWeight:600, padding:"2px 8px", borderRadius:5, background:"#FFF7ED", color:"#D97706", border:"1px solid #FDE68A" }}>🛒 Falta pedir {r.faltaPedir.length}</div>}
+                              {r.faltaRecibir.length>0&&<div style={{ fontSize:11, fontWeight:600, padding:"2px 8px", borderRadius:5, background:"#EFF6FF", color:"#2563EB", border:"1px solid #BFDBFE" }}>🚚 Falta recibir {r.faltaRecibir.length}</div>}
+                            </>}
+                        {r.stock>0&&<div style={{ fontSize:11, padding:"2px 8px", borderRadius:5, background:"#F5F3FF", color:"#7C3AED", border:"1px solid #DDD6FE" }}>{r.stock} en stock</div>}
                       </div>
                       <div style={{ height:6, background:"#F1F5F9", borderRadius:99, overflow:"hidden" }}>
                         <div style={{ height:"100%", width:`${pct}%`, background: pct===100?"#059669":"#0F766E", borderRadius:99, transition:"width 0.4s" }} />
                       </div>
-                      <div style={{ fontSize:11, color:"#94A3B8", marginTop:4, textAlign:"right" }}>{pct}% recibido</div>
+                      <div style={{ fontSize:11, color:"#94A3B8", marginTop:4, textAlign:"right" }}>{pct}% disponible</div>
                     </>
                   )}
                 </div>
@@ -2095,8 +2182,12 @@ function MaterialesModule({ sesion }) {
       {/* DETALLE */}
       {selected && (() => {
         const items = selected.items || [];
-        const rec = items.filter(i=>i.estado==="recibido").length;
-        const pct = items.length ? Math.round(rec/items.length*100) : 0;
+        const r = resumenMateriales(items);
+        const pct = items.length ? Math.round((r.stock + r.recibidos)/items.length*100) : 0;
+        const entrega = entregaDeLista(selected, obras);
+        const diasEntrega = entrega?.fecha ? diasHastaFecha(entrega.fecha) : null;
+        const urgente = diasEntrega !== null && entrega.estado !== "terminado" && diasEntrega <= DIAS_ALERTA_MAT && !r.completo && items.length > 0;
+        const obrasVinculables = obras.filter(o => o.estado !== "terminado").sort((a,b) => (a.nombre||"").localeCompare(b.nombre||""));
         return (
           <div onClick={e => e.target===e.currentTarget&&setSelected(null)}
             style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
@@ -2111,7 +2202,7 @@ function MaterialesModule({ sesion }) {
                   <div style={{ display:"flex", gap:8, alignItems:"center" }}>
                     <button onClick={() => { setNotasEdit(selected.notas||""); setShowNotasModal(true); }}
                       style={{ padding:"7px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#64748B", fontSize:12, cursor:"pointer" }}>📝 Notas</button>
-                    <button onClick={() => generarPDFMateriales(selected)}
+                    <button onClick={() => generarPDFMateriales(selected, entrega)}
                       style={{ padding:"7px 14px", background:"#0F766E", border:"none", borderRadius:8, color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>⬇ PDF</button>
                     <button onClick={() => abrirItemModal()}
                       style={{ padding:"7px 14px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>+ Agregar</button>
@@ -2123,31 +2214,50 @@ function MaterialesModule({ sesion }) {
                     <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
                   </div>
                 </div>
-                {/* Orden de pedido y remito */}
-                <div style={{ display:"flex", gap:12, marginTop:12, flexWrap:"wrap" }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, flex:1, minWidth:200 }}>
-                    <span style={{ fontSize:11, fontWeight:600, color:"#64748B", whiteSpace:"nowrap" }}>📋 N° Orden de pedido:</span>
-                    <span style={{ fontSize:13, fontWeight:700, color: selected.orden_pedido?"#1A2B4A":"#CBD5E1", flex:1 }}>{selected.orden_pedido||"—"}</span>
-                    <button onClick={() => { setPedidoEdit({ orden_pedido: selected.orden_pedido||"", numero_remito: selected.numero_remito||"" }); setShowPedidoModal(true); }}
-                      style={{ background:"none", border:"none", color:"#94A3B8", cursor:"pointer", fontSize:12, padding:"0 2px", flexShrink:0 }}
-                      onMouseEnter={e=>e.currentTarget.style.color="#2563EB"} onMouseLeave={e=>e.currentTarget.style.color="#94A3B8"}>✏️</button>
-                  </div>
-                  <div style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, flex:1, minWidth:200 }}>
-                    <span style={{ fontSize:11, fontWeight:600, color:"#64748B", whiteSpace:"nowrap" }}>🧾 N° Remito:</span>
-                    <span style={{ fontSize:13, fontWeight:700, color: selected.numero_remito?"#1A2B4A":"#CBD5E1", flex:1 }}>{selected.numero_remito||"—"}</span>
-                    <button onClick={() => { setPedidoEdit({ orden_pedido: selected.orden_pedido||"", numero_remito: selected.numero_remito||"" }); setShowPedidoModal(true); }}
-                      style={{ background:"none", border:"none", color:"#94A3B8", cursor:"pointer", fontSize:12, padding:"0 2px", flexShrink:0 }}
-                      onMouseEnter={e=>e.currentTarget.style.color="#2563EB"} onMouseLeave={e=>e.currentTarget.style.color="#94A3B8"}>✏️</button>
-                  </div>
+                {/* Entrega (desde Entregas) */}
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:10, fontSize:12, color:"#64748B", flexWrap:"wrap" }}>
+                  {entrega ? (
+                    <span style={{ color: urgente?"#DC2626":"#64748B", fontWeight: urgente?700:500 }}>
+                      📅 Entrega: {entrega.fecha ? `${fmtDateAixa(entrega.fecha)}${entrega.estado !== "terminado" ? ` · ${textoDiasEntrega(diasEntrega)}` : " · entregada"}` : "sin fecha cargada en Entregas"}
+                    </span>
+                  ) : (
+                    <>
+                      <span>📅 Sin vincular a una obra de Entregas (no se puede alertar por fecha):</span>
+                      <select value="" onChange={e => e.target.value && vincularEntrega(selected.id, e.target.value)} disabled={saving}
+                        style={{ padding:"4px 8px", borderRadius:6, border:"1px solid #E2E8F0", background:"#F8FAFC", color:"#1A2B4A", fontSize:12, outline:"none" }}>
+                        <option value="">— Vincular con… —</option>
+                        {obrasVinculables.map(o => <option key={o.id} value={o.id}>{o.nombre}{o.fecha ? ` (${fmtDateAixa(o.fecha)})` : ""}</option>)}
+                      </select>
+                    </>
+                  )}
                 </div>
               </div>
+
+              {/* Control general */}
+              {items.length > 0 && (
+                <div style={{ margin:"14px 24px 0", padding:"12px 16px", borderRadius:10,
+                  background: r.completo?"#ECFDF5":urgente?"#FEF2F2":"#FFFBEB",
+                  border:`1px solid ${r.completo?"#A7F3D0":urgente?"#FECACA":"#FDE68A"}` }}>
+                  {r.completo ? (
+                    <div style={{ fontSize:13, fontWeight:700, color:"#059669" }}>✅ Están todos los materiales para esta obra <span style={{ fontWeight:400 }}>({r.stock} en stock, {r.recibidos} recibidos)</span></div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize:13, fontWeight:700, color: urgente?"#DC2626":"#B45309", marginBottom:6 }}>
+                        {urgente ? `⚠ Faltan materiales y la entrega es en ${diasEntrega <= 0 ? "0" : diasEntrega} día${diasEntrega===1?"":"s"}${diasEntrega < 0 ? " (vencida)" : ""}` : "⚠ Faltan materiales"}
+                      </div>
+                      {r.faltaPedir.length > 0 && <div style={{ fontSize:12, color:"#92400E", marginBottom:3 }}>🛒 <strong>Falta pedir ({r.faltaPedir.length}):</strong> {r.faltaPedir.map(detalleFaltante).join(" · ")}</div>}
+                      {r.faltaRecibir.length > 0 && <div style={{ fontSize:12, color:"#1E40AF" }}>🚚 <strong>Falta recibir ({r.faltaRecibir.length}):</strong> {r.faltaRecibir.map(it => `${detalleFaltante(it)}${it.proveedor ? ` — ${it.proveedor}` : ""}${it.orden_pedido ? ` (ped. ${it.orden_pedido})` : ""}`).join(" · ")}</div>}
+                    </>
+                  )}
+                </div>
+              )}
 
               {/* Progress bar */}
               {items.length > 0 && (
                 <div style={{ padding:"10px 24px 0", background:"#fff" }}>
                   <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"#94A3B8", marginBottom:4 }}>
                     <span>{items.length} ítem{items.length!==1?"s":""} cargados</span>
-                    <span>{pct}% recibido</span>
+                    <span>{pct}% disponible (en stock o recibido)</span>
                   </div>
                   <div style={{ height:6, background:"#F1F5F9", borderRadius:99, overflow:"hidden", marginBottom:12 }}>
                     <div style={{ height:"100%", width:`${pct}%`, background: pct===100?"#059669":"#0F766E", borderRadius:99, transition:"width 0.4s" }} />
@@ -2167,8 +2277,9 @@ function MaterialesModule({ sesion }) {
                     {items.map(it => {
                       const ec = ESTADO_MAT_COLORS[it.estado] || ESTADO_MAT_COLORS.pendiente;
                       const medidas = [it.largo&&`L: ${it.largo}`, it.ancho&&`An: ${it.ancho}`, it.espesor&&`Esp: ${it.espesor}`].filter(Boolean).join("  ·  ");
+                      const ok = it.estado==="recibido" || it.estado==="stock";
                       return (
-                        <div key={it.id} style={{ background: it.estado==="recibido"?"#F0FDF4":"#F8FAFC", border:`1px solid ${it.estado==="recibido"?"#A7F3D0":"#E2E8F0"}`, borderRadius:10, padding:"14px 16px" }}>
+                        <div key={it.id} style={{ background: ok?"#F0FDF4":"#F8FAFC", border:`1px solid ${ok?"#A7F3D0":"#E2E8F0"}`, borderRadius:10, padding:"14px 16px" }}>
                           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
                             <div style={{ flex:1 }}>
                               <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
@@ -2182,13 +2293,19 @@ function MaterialesModule({ sesion }) {
                                 {it.terminacion && <span>✨ {it.terminacion}</span>}
                                 {it.marca && <span>🏷 {it.marca}</span>}
                                 {it.proveedor && <span>🏪 {it.proveedor}</span>}
+                                {it.orden_pedido && <span>📋 Pedido {it.orden_pedido}</span>}
+                                {it.numero_remito && <span>🧾 Remito {it.numero_remito}</span>}
+                                {it.estado === "parcial" && <span style={{ color:"#DC2626", fontWeight:600 }}>⚠ {it.cantidad_recibida ? `Llegaron ${it.cantidad_recibida} de ${it.cantidad || "?"}` : "Llegó incompleto"}</span>}
                               </div>
                               {it.notas && <div style={{ marginTop:6, fontSize:12, color:"#94A3B8", fontStyle:"italic" }}>"{it.notas}"</div>}
                             </div>
                             <div style={{ display:"flex", flexDirection:"column", gap:6, alignItems:"flex-end", flexShrink:0 }}>
                               <select value={it.estado||"pendiente"} onChange={e => cambiarEstadoItem(it.id, e.target.value)}
                                 style={{ padding:"4px 8px", borderRadius:6, border:`1px solid ${ec.border}`, background:ec.bg, color:ec.text, fontSize:11, fontWeight:700, cursor:"pointer", outline:"none" }}>
-                                {Object.entries(ESTADOS_MAT).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                                <option value="stock">En stock (no se pide)</option>
+                                <optgroup label="A pedir">
+                                  {ESTADOS_MAT_PEDIR.map(v => <option key={v} value={v}>{ESTADOS_MAT[v]}</option>)}
+                                </optgroup>
                               </select>
                               <div style={{ display:"flex", gap:6 }}>
                                 <button onClick={() => abrirItemModal(it)}
@@ -2214,12 +2331,30 @@ function MaterialesModule({ sesion }) {
         <div onClick={e => e.target===e.currentTarget&&setShowItemModal(false)}
           style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
           <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:560, maxHeight:"90vh", overflowY:"auto", padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
-            <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 18px" }}>{editingItem ? "Editar material" : "Agregar material"}</h3>
+            <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 14px" }}>{editingItem ? "Editar material" : "Agregar material"}</h3>
+            <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+              {[{ stock:false, label:"🛒 Hay que pedirlo" }, { stock:true, label:"📦 Lo tenemos en stock" }].map(op => {
+                const activo = (itemData.estado === "stock") === op.stock;
+                return (
+                  <button key={op.label} type="button"
+                    onClick={() => setItemData(d => ({ ...d, estado: op.stock ? "stock" : (d.estado === "stock" ? "pendiente" : d.estado) }))}
+                    style={{ flex:1, padding:"10px", borderRadius:8, fontSize:13, fontWeight:600, cursor:"pointer",
+                      border:`1.5px solid ${activo ? (op.stock?"#7C3AED":"#D97706") : "#E2E8F0"}`,
+                      background: activo ? (op.stock?"#F5F3FF":"#FFF7ED") : "#F8FAFC",
+                      color: activo ? (op.stock?"#7C3AED":"#D97706") : "#64748B" }}>{op.label}</button>
+                );
+              })}
+            </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
               {CAMPOS_ITEM.map(f => (
                 <div key={f.key} style={{ gridColumn: f.full ? "1 / -1" : "auto" }}>
                   <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:5 }}>{f.label}</label>
-                  {f.type === "select" ? (
+                  {f.type === "combo" ? (
+                    <>
+                      <input list={`mat-opts-${f.key}`} value={itemData[f.key]||""} onChange={e => setItemData(d=>({...d,[f.key]:e.target.value}))} style={siSm} placeholder={f.ph||""} />
+                      <datalist id={`mat-opts-${f.key}`}>{f.opts.map(o => <option key={o} value={o} />)}</datalist>
+                    </>
+                  ) : f.type === "select" ? (
                     <select value={itemData[f.key]||""} onChange={e => setItemData(d=>({...d,[f.key]:e.target.value}))} style={siSm}>
                       <option value="">— Seleccionar —</option>
                       {f.isObj ? f.opts.map(o=><option key={o.v} value={o.v}>{o.l}</option>) : f.opts.map(o=><option key={o} value={o}>{o}</option>)}
@@ -2250,29 +2385,6 @@ function MaterialesModule({ sesion }) {
             <div style={{ display:"flex", gap:10, marginTop:16 }}>
               <button onClick={() => setShowNotasModal(false)} style={{ flex:1, padding:"10px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>Cancelar</button>
               <button onClick={async () => { await guardarLista(selected.id, { notas: notasEdit }); setShowNotasModal(false); }} disabled={saving}
-                style={{ flex:1, padding:"10px", border:"none", borderRadius:8, background:"#1A2B4A", color:"#fff", cursor:"pointer", fontSize:13, fontWeight:600 }}>Guardar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: ORDEN DE PEDIDO Y REMITO */}
-      {showPedidoModal && (
-        <div onClick={e => e.target===e.currentTarget&&setShowPedidoModal(false)}
-          style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:310, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-          <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:400, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
-            <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 18px" }}>Rastreo del pedido</h3>
-            <div style={{ marginBottom:14 }}>
-              <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>N° Orden de pedido</label>
-              <input type="text" value={pedidoEdit.orden_pedido} onChange={e=>setPedidoEdit(d=>({...d,orden_pedido:e.target.value}))} style={si} placeholder="Ej: OP-2024-0051" autoFocus />
-            </div>
-            <div style={{ marginBottom:4 }}>
-              <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>N° Remito</label>
-              <input type="text" value={pedidoEdit.numero_remito} onChange={e=>setPedidoEdit(d=>({...d,numero_remito:e.target.value}))} style={si} placeholder="Ej: R-0001234" />
-            </div>
-            <div style={{ display:"flex", gap:10, marginTop:20 }}>
-              <button onClick={()=>setShowPedidoModal(false)} style={{ flex:1, padding:"10px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>Cancelar</button>
-              <button onClick={async()=>{ await guardarLista(selected.id,{ orden_pedido: pedidoEdit.orden_pedido, numero_remito: pedidoEdit.numero_remito }); setShowPedidoModal(false); }} disabled={saving}
                 style={{ flex:1, padding:"10px", border:"none", borderRadius:8, background:"#1A2B4A", color:"#fff", cursor:"pointer", fontSize:13, fontWeight:600 }}>Guardar</button>
             </div>
           </div>
@@ -3447,6 +3559,13 @@ export default function App() {
     })();
   }, []);
 
+  const [matAlertCount, setMatAlertCount] = useState(0);
+  // Recalcula el contador de alertas de materiales al entrar y al cambiar de pestaña
+  useEffect(() => {
+    if (!sesion || sesion.rol === "arquitecto" || sesion.rol === "finanzas") return;
+    getMateriales().then(ls => setMatAlertCount(alertasMateriales(ls || [], obras).length)).catch(() => {});
+  }, [sesion, obras, activeTab]);
+
   async function recargarObras() { try { const ob = await getObras(); setObras(ob || []); } catch {} }
   function handleLogin(u) { setSesion(u); if (u.rol === "finanzas") setActiveTab("cobros"); recargarObras(); }
   function handleLogout() { setSesionLocal(null); setSesion(null); }
@@ -3511,6 +3630,10 @@ export default function App() {
               <button onClick={() => setActiveTab("materiales")}
                 style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="materiales" ? "#0F766E" : "transparent", color: activeTab==="materiales" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="materiales" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
                 🪵 Materiales
+                {matAlertCount > 0 && (
+                  <span title={`${matAlertCount} obra(s) con entrega próxima y materiales faltantes`}
+                    style={{ marginLeft:6, background:"#DC2626", color:"#fff", borderRadius:99, padding:"1px 7px", fontSize:10, fontWeight:700 }}>{matAlertCount}</span>
+                )}
               </button>
             )}
           </div>
@@ -3552,7 +3675,7 @@ export default function App() {
         {activeTab === "avance" && canSeeAvanceProduccion && <AvanceModule sesion={sesion} />}
         {activeTab === "avance_obra" && canSeeAvanceObra && <AvanceObraModule sesion={sesion} />}
         {activeTab === "cobros" && canSeeCobros && <CobrosModule sesion={sesion} />}
-        {activeTab === "materiales" && canSeeMateriales && <MaterialesModule sesion={sesion} />}
+        {activeTab === "materiales" && canSeeMateriales && <MaterialesModule sesion={sesion} obras={obras} />}
       </main>
 
       {/* MODALES GLOBALES */}
