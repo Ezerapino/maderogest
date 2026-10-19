@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ─── LOGO ─────────────────────────────────────────────────────────────────────
@@ -86,17 +86,12 @@ async function getUsuarios() { return sbFetch("usuarios?select=id,nombre,email,r
 async function crearUsuario(usuario) { return apiFetch("/api/usuarios", { method: "POST", body: JSON.stringify(usuario) }); }
 async function deleteUsuario(id) { return apiFetch(`/api/usuarios?id=${encodeURIComponent(id)}`, { method: "DELETE" }); }
 
-async function getHistorial(obraId = null) {
-  const filter = obraId ? `obra_id=eq.${obraId}&` : "";
-  return sbFetch(`historial?${filter}order=fecha.desc&limit=100`, { method: "GET" });
-}
 async function agregarHistorial(entrada) { return sbFetch("historial", { method: "POST", body: JSON.stringify(entrada) }); }
 
 async function getAgregados(obraId) { return sbFetch(`agregados?obra_id=eq.${obraId}&order=fecha.desc`, { method: "GET" }); }
 async function insertAgregado(agregado) {
   return sbFetch("agregados", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(agregado) });
 }
-async function deleteAgregado(id) { return sbFetch(`agregados?id=eq.${id}`, { method: "DELETE" }); }
 
 // ─── COBROS API ───────────────────────────────────────────────────────────────
 async function getCobros() { return sbFetch("cobros?select=*&order=created_at.desc"); }
@@ -113,7 +108,6 @@ async function deleteCobro(id) { return sbFetch(`cobros?id=eq.${id}`, { method: 
 async function getMateriales() { return sbFetch("materiales?select=*&order=created_at.desc"); }
 async function insertMaterial(m) { return sbFetch("materiales", { method: "POST", body: JSON.stringify(m) }); }
 async function updateMaterial(id, data) { return sbFetch(`materiales?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
-async function deleteMaterialByObraId(obraId) { return sbFetch(`materiales?obra_id=eq.${obraId}`, { method: "DELETE" }); }
 async function deleteMaterialById(id) { return sbFetch(`materiales?id=eq.${id}`, { method: "DELETE" }); }
 
 // ─── AVANCE DE OBRA API (tabla: obras_avance + avance_dias) ───────────────────
@@ -295,7 +289,7 @@ async function generarPDF(obra) {
   const status = getStatus(dias, obra.estado);
   const sm = STATUS_META[status];
   let agregadosList = [];
-  try { agregadosList = await getAgregados(obra.id); } catch {}
+  try { agregadosList = await getAgregados(obra.id); } catch (e) { console.error("No se pudieron leer los agregados:", e); }
   const mueblesList = normalizarMuebles(obra.muebles || []);
   const totalUnidades = mueblesList.reduce((a, m) => a + (m.cantidad||1), 0);
   const diasLabel = obra.estado === "terminado" ? "Entregada" : dias < 0 ? `Vencida hace ${Math.abs(dias)} días` : dias === 0 ? "¡Entrega HOY!" : `${dias} días para entrega`;
@@ -551,7 +545,7 @@ async function enviarAvisoAhora(tipo) {
   } catch (e) { alert(`No se pudo enviar: ${e.message}`); }
 }
 
-function EntregasModule({ sesion, obras, setObras, recargarObras }) {
+function EntregasModule({ sesion, obras, recargarObras }) {
   const [enviandoAviso, setEnviandoAviso] = useState(false);
   const [filter, setFilter] = useState("todas");
   const [search, setSearch] = useState("");
@@ -606,12 +600,12 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
       await upsertObra(obraFinal);
       await agregarHistorial({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, usuario_id: sesion.id, usuario_nombre: sesion.nombre, accion: existente ? "editó" : "creó", detalle: existente ? "Obra actualizada" : "Obra creada" });
       if (!existente) {
-        try { await insertCobro({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, monto_total: 0, adelanto_cobrado: false, adelanto_monto: 0, adelanto_porcentaje: 0, total_cobrado: false, total_fecha: null, plazo_pago: "", adicionales: [] }); } catch {}
-        try { await insertMaterial({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, items: [], notas: "" }); } catch {}
+        try { await insertCobro({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, monto_total: 0, adelanto_cobrado: false, adelanto_monto: 0, adelanto_porcentaje: 0, total_cobrado: false, total_fecha: null, plazo_pago: "", adicionales: [] }); } catch (e) { console.error("Error creando el cobro de la obra:", e); }
+        try { await insertMaterial({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, items: [], notas: "" }); } catch (e) { console.error("Error creando la lista de materiales de la obra:", e); }
         try { await insertAixaObra({ name: obraFinal.nombre, client: obraFinal.lugar, start_date: null, due_date: obraFinal.fecha || null, description: obraFinal.notas || "", stations: mkStations(), history: [], clarifications: [] }); }
         catch (e) { console.error("Error creando obra en Avance de Producción:", e); alert("La obra se guardó, pero no se pudo crear en Avance de Producción."); }
       } else {
-        try { await updateCobro(obraFinal.id, { obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, updated_at: new Date().toISOString() }); } catch {}
+        try { await updateCobro(obraFinal.id, { obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, updated_at: new Date().toISOString() }); } catch (e) { console.error("Error actualizando el cobro de la obra:", e); }
       }
       await recargarObras();
     } catch { alert("Error al guardar."); return; }
@@ -620,7 +614,7 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
 
   async function eliminarObra(id) {
     if (!confirm("¿Eliminar esta obra?")) return;
-    try { await deleteObra(id); try { await deleteCobroByObraId(id); } catch {} await recargarObras(); } catch { alert("Error al eliminar."); return; }
+    try { await deleteObra(id); try { await deleteCobroByObraId(id); } catch (e) { console.error("Error borrando el cobro de la obra:", e); } await recargarObras(); } catch { alert("Error al eliminar."); return; }
     setDetalle(null);
   }
 
@@ -1487,7 +1481,7 @@ function ModalSimple({ title, onClose, onSave, fields }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // COBROS MODULE
 // ═══════════════════════════════════════════════════════════════════════════════
-function CobrosModule({ sesion }) {
+function CobrosModule() {
   const [cobros, setCobros] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [selected, setSelected] = useState(null);
@@ -1499,8 +1493,6 @@ function CobrosModule({ sesion }) {
   const [nuevaObraData, setNuevaObraData] = useState({ nombre: "", lugar: "" });
   const [savingNueva, setSavingNueva] = useState(false);
 
-  useEffect(() => { recargar(); }, []);
-
   async function recargar() {
     setCargando(true);
     try {
@@ -1511,9 +1503,13 @@ function CobrosModule({ sesion }) {
         const updated = lista.find(x => x.id === selected.id);
         if (updated) setSelected(updated);
       }
-    } catch {}
+    } catch (e) { console.error("Error cargando cobros:", e); }
     setCargando(false);
   }
+
+  // Carga inicial al abrir el módulo
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { recargar(); }, []);
 
   async function guardar(id, datos) {
     setSaving(true);
@@ -2058,7 +2054,7 @@ function ImportarMaterialesIA({ lista, onClose, onAgregar }) {
   function setItem(id, campo, valor) { setItems(xs => xs.map(x => x.id === id ? { ...x, [campo]: valor } : x)); }
 
   async function agregar() {
-    const elegidos = items.filter(i => i.incluir && i.nombre.trim()).map(({ incluir: _incluir, ...it }) => ({ ...it, nombre: it.nombre.trim(), notas: [it.notas, `Importado de ${archivoNombre}`].filter(Boolean).join(" · ") }));
+    const elegidos = items.filter(i => i.incluir && i.nombre.trim()).map(i => ({ ...i, incluir: undefined })).map(it => ({ ...it, nombre: it.nombre.trim(), notas: [it.notas, `Importado de ${archivoNombre}`].filter(Boolean).join(" · ") }));
     if (!elegidos.length) return;
     setGuardando(true);
     try { await onAgregar(elegidos); onClose(); } catch { setGuardando(false); }
@@ -2185,8 +2181,6 @@ function MaterialesModule({ sesion, obras = [] }) {
   const isAdmin = sesion.rol === "admin";
   const puedeImportar = isAdmin || sesion.rol === "operario";
 
-  useEffect(() => { recargar(); }, []);
-
   async function recargar() {
     setCargando(true);
     try {
@@ -2197,9 +2191,13 @@ function MaterialesModule({ sesion, obras = [] }) {
         const upd = lista.find(x => x.id === selected.id);
         if (upd) setSelected(upd);
       }
-    } catch {}
+    } catch (e) { console.error("Error cargando materiales:", e); }
     setCargando(false);
   }
+
+  // Carga inicial al abrir el módulo
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { recargar(); }, []);
 
   async function guardarLista(id, datos) {
     setSaving(true);
@@ -2682,21 +2680,23 @@ function AvanceObraModule({ sesion }) {
   const isAdmin = sesion.rol === "admin";
   const canEdit = isAdmin || sesion.rol === "operario" || sesion.rol === "arquitecto";
 
-  useEffect(() => { loadObras(); loadInformesIds(); }, []);
-
   async function loadInformesIds() {
-    try { const ids = await getInformesFinalesObraIds(); setInformesIds(new Set(ids)); } catch {}
+    try { const ids = await getInformesFinalesObraIds(); setInformesIds(new Set(ids)); } catch (e) { console.error("Error cargando informes finales:", e); }
   }
 
   async function loadObras() {
     setCargando(true);
-    try { const obs = await getObrasAvance(); setObras(obs || []); } catch {}
+    try { const obs = await getObrasAvance(); setObras(obs || []); } catch (e) { console.error("Error cargando obras de avance:", e); }
     setCargando(false);
   }
 
+  // Carga inicial al abrir el módulo (cargando ya arranca en true, el setCargando(true) no re-renderiza)
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadObras(); loadInformesIds(); }, []);
+
   async function loadDias(obraId) {
     setCargandoDias(true);
-    try { const d = await getDiasAvance(obraId); setDias(d || []); } catch {}
+    try { const d = await getDiasAvance(obraId); setDias(d || []); } catch (e) { console.error("Error cargando los días de avance:", e); }
     setCargandoDias(false);
   }
 
@@ -2721,7 +2721,7 @@ function AvanceObraModule({ sesion }) {
     try {
       const ds = await getDiasAvance(id);
       for (const d of (ds || [])) {
-        for (const f of (d.archivos || [])) { try { await deleteFileAvance(f.path); } catch {} }
+        for (const f of (d.archivos || [])) { try { await deleteFileAvance(f.path); } catch { /* si el archivo ya no existe se sigue igual */ } }
         await deleteDiaAvanceById(d.id);
       }
       await deleteObraAvanceById(id);
@@ -2746,7 +2746,7 @@ function AvanceObraModule({ sesion }) {
     if (!confirm("¿Eliminar este registro de día?")) return;
     try {
       const dia = dias.find(d => d.id === id);
-      for (const f of (dia?.archivos || [])) { try { await deleteFileAvance(f.path); } catch {} }
+      for (const f of (dia?.archivos || [])) { try { await deleteFileAvance(f.path); } catch { /* si el archivo ya no existe se sigue igual */ } }
       await deleteDiaAvanceById(id);
       await loadDias(selected.id);
     } catch { alert("Error al eliminar."); }
@@ -2763,7 +2763,7 @@ function AvanceObraModule({ sesion }) {
       }
       await updateDiaAvance(diaId, { archivos });
       await loadDias(selected.id);
-    } catch {}
+    } catch (e) { console.error("Error guardando los archivos del día:", e); }
     setUploadingFiles(s => ({ ...s, [diaId]: false }));
   }
 
@@ -2773,7 +2773,7 @@ function AvanceObraModule({ sesion }) {
       const dia = dias.find(d => d.id === diaId);
       const archivos = [...(dia?.archivos || [])];
       const removed = archivos.splice(fileIdx, 1);
-      try { await deleteFileAvance(removed[0]?.path); } catch {}
+      try { await deleteFileAvance(removed[0]?.path); } catch { /* si el archivo ya no existe se sigue igual */ }
       await updateDiaAvance(diaId, { archivos });
       await loadDias(selected.id);
     } catch { alert("Error al eliminar archivo."); }
@@ -3098,8 +3098,6 @@ function ModalInformeFinalObra({ obra, onClose, onSave }) {
   const [informeId, setInformeId] = useState(null);
   const fileInputRef = useRef(null);
 
-  useEffect(() => { loadInforme(); }, []);
-
   async function loadInforme() {
     setCargando(true);
     try {
@@ -3110,9 +3108,13 @@ function ModalInformeFinalObra({ obra, onClose, onSave }) {
         setArchivos(informe.archivos || []);
         setGuardado(true);
       }
-    } catch {}
+    } catch (e) { console.error("Error cargando el informe final:", e); }
     setCargando(false);
   }
+
+  // Carga inicial al abrir el informe
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadInforme(); }, []);
 
   async function handleSave() {
     setGuardando(true);
@@ -3436,18 +3438,20 @@ function ObrasAceptadasModule({ sesion }) {
   const canEdit = isAdmin || sesion.rol === "operario" || sesion.rol === "arquitecto";
   const canDelete = isAdmin || sesion.rol === "operario";
 
-  useEffect(() => { loadObras(); }, []);
-
   async function loadObras() {
     setCargando(true);
-    try { const obs = await getObrasAceptadas(); setObras(obs || []); } catch {}
+    try { const obs = await getObrasAceptadas(); setObras(obs || []); } catch (e) { console.error("Error cargando obras aceptadas:", e); }
     setCargando(false);
   }
+
+  // Carga inicial al abrir el módulo (cargando ya arranca en true, el setCargando(true) no re-renderiza)
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadObras(); }, []);
 
   async function deleteObra(obra) {
     if (!confirm(`¿Eliminar la obra "${obra.nombre}" y todos sus archivos?`)) return;
     try {
-      for (const f of (obra.archivos || [])) { try { await deleteFileAvance(f.path); } catch {} }
+      for (const f of (obra.archivos || [])) { try { await deleteFileAvance(f.path); } catch { /* si el archivo ya no existe se sigue igual */ } }
       await deleteObraAceptadaById(obra.id);
       setModalObra(null);
       await loadObras();
@@ -3629,7 +3633,7 @@ function ModalObraAceptada({ obra, canEdit, canDelete, onClose, onSave, onDelete
         await updateObraAceptada(obraId, { ...baseData, updated_at: new Date().toISOString() });
       }
       for (const orig of originalArchivos.current) {
-        if (orig.path && !archivos.find(a => a.path === orig.path)) { try { await deleteFileAvance(orig.path); } catch {} }
+        if (orig.path && !archivos.find(a => a.path === orig.path)) { try { await deleteFileAvance(orig.path); } catch { /* si el archivo ya no existe se sigue igual */ } }
       }
       const archivosFinal = [];
       for (const f of archivos) {
@@ -3817,7 +3821,7 @@ export default function App() {
     getMateriales().then(ls => setMatAlertCount(alertasMateriales(ls || [], obras).length)).catch(() => {});
   }, [sesion, obras, activeTab]);
 
-  async function recargarObras() { try { const ob = await getObras(); setObras(ob || []); } catch {} }
+  async function recargarObras() { try { const ob = await getObras(); setObras(ob || []); } catch (e) { console.error("Error cargando obras:", e); } }
   function handleLogin(u) { setSesion(u); if (u.rol === "finanzas") setActiveTab("cobros"); recargarObras(); }
   async function handleLogout() { await cerrarSesion(); setSesion(null); setObras([]); }
 
@@ -3921,11 +3925,11 @@ export default function App() {
 
       {/* MAIN CONTENT */}
       <main style={{ maxWidth:1200, margin:"0 auto", padding:"28px 24px 100px" }}>
-        {activeTab === "entregas" && <EntregasModule sesion={sesion} obras={obras} setObras={setObras} recargarObras={recargarObras} />}
+        {activeTab === "entregas" && <EntregasModule sesion={sesion} obras={obras} recargarObras={recargarObras} />}
         {activeTab === "aceptadas" && <ObrasAceptadasModule sesion={sesion} />}
         {activeTab === "avance" && canSeeAvanceProduccion && <AvanceModule sesion={sesion} />}
         {activeTab === "avance_obra" && canSeeAvanceObra && <AvanceObraModule sesion={sesion} />}
-        {activeTab === "cobros" && canSeeCobros && <CobrosModule sesion={sesion} />}
+        {activeTab === "cobros" && canSeeCobros && <CobrosModule />}
         {activeTab === "materiales" && canSeeMateriales && <MaterialesModule sesion={sesion} obras={obras} />}
       </main>
 
@@ -4023,9 +4027,8 @@ function GestionUsuarios({ onClose }) {
 
 // ─── CONFIG WHATSAPP ──────────────────────────────────────────────────────────
 function ConfigWhatsApp({ obras, onClose }) {
-  const [numero, setNumero] = useState("");
+  const [numero, setNumero] = useState(() => { try { return localStorage.getItem("mg_wa_numero") || ""; } catch { return ""; } });
   const [saved, setSaved] = useState(false);
-  useEffect(() => { const n = localStorage.getItem("mg_wa_numero"); if (n) setNumero(n); }, []);
   function guardar() { localStorage.setItem("mg_wa_numero", numero); setSaved(true); setTimeout(() => setSaved(false), 2000); }
 
   const urgentes = obras.filter(o => o.estado !== "terminado" && diasRestantes(o.fecha) >= 0 && diasRestantes(o.fecha) <= 7).length;
