@@ -32,12 +32,16 @@ function detalle(it) {
 function textoDias(d) { return d < 0 ? `vencida hace ${-d} día${d === -1 ? "" : "s"}` : d === 0 ? "entrega HOY" : `faltan ${d} día${d === 1 ? "" : "s"}`; }
 
 export async function armarResumen(db) {
-  const [{ data: obras, error: e1 }, { data: listas, error: e2 }] = await Promise.all([
-    db.from("obras").select("id, nombre, lugar, fecha, estado"),
+  const [{ data: todas, error: e1 }, { data: todasLasListas, error: e2 }] = await Promise.all([
+    db.from("obras").select("id, nombre, lugar, fecha, estado, archivada"),
     db.from("materiales").select("obra_id, obra_nombre, items"),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
+  // Lo archivado no se avisa
+  const archivadas = new Set(todas.filter(o => o.archivada).map(o => o.id));
+  const obras = todas.filter(o => !o.archivada);
+  const listas = todasLasListas.filter(l => !archivadas.has(l.obra_id));
   const hoy = hoyArgentina();
 
   // Obras sin entregar con fecha dentro de los próximos DIAS_ALERTA días o ya vencida

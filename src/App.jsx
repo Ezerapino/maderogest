@@ -80,6 +80,112 @@ async function upsertObra(obra) {
   return sbFetch("obras", { method: "POST", headers: { "Prefer": "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(obra) });
 }
 async function deleteObra(id) { return sbFetch(`obras?id=eq.${id}`, { method: "DELETE" }); }
+async function patchEntregas(filtro, data) { return sbFetch(`obras?${filtro}`, { method: "PATCH", body: JSON.stringify(data) }); }
+
+// ─── OBRAS (tabla proyectos): agrupan una o varias entregas (tabla obras) ─────
+async function getProyectos() { return sbFetch("proyectos?select=*&order=creado_en.desc"); }
+async function upsertProyecto(p) {
+  return sbFetch("proyectos", { method: "POST", headers: { "Prefer": "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(p) });
+}
+async function patchProyecto(id, data) { return sbFetch(`proyectos?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
+async function deleteProyecto(id) { return sbFetch(`proyectos?id=eq.${id}`, { method: "DELETE" }); }
+
+function nombreEntrega(proyecto, etiqueta) { return etiqueta?.trim() ? `${proyecto.nombre} - ${etiqueta.trim()}` : proyecto.nombre; }
+
+// Qué entregas están activas y cuáles archivadas: lo que pertenece a una entrega archivada
+// no se muestra en ninguna pestaña; lo que no tiene entrega se muestra como "sin vincular".
+function vinculoEntregas(entregas = []) {
+  return {
+    activas: entregas.filter(e => !e.archivada),
+    archivadas: new Set(entregas.filter(e => e.archivada).map(e => e.id)),
+    existentes: new Set(entregas.map(e => e.id)),
+  };
+}
+
+// Registros que acompañan a cada entrega nueva en Cobros, Materiales y Avance de Producción
+async function crearRegistrosEntrega(e) {
+  try { await insertCobro({ obra_id: e.id, obra_nombre: e.nombre, obra_lugar: e.lugar, monto_total: 0, adelanto_cobrado: false, adelanto_monto: 0, adelanto_porcentaje: 0, total_cobrado: false, total_fecha: null, plazo_pago: "", adicionales: [] }); }
+  catch (err) { console.error("Error creando el cobro de la entrega:", err); }
+  try { await insertMaterial({ obra_id: e.id, obra_nombre: e.nombre, obra_lugar: e.lugar, items: [], notas: "" }); }
+  catch (err) { console.error("Error creando la lista de materiales de la entrega:", err); }
+  try { await insertAixaObra({ obra_id: e.id, name: e.nombre, client: e.lugar, start_date: null, due_date: e.fecha || null, description: e.notas || "", stations: mkStations(), history: [], clarifications: [] }); }
+  catch (err) { console.error("Error creando la entrega en Avance de Producción:", err); alert("La entrega se guardó, pero no se pudo crear en Avance de Producción."); }
+}
+
+// Copia nombre, dirección y fecha de la entrega a las otras pestañas
+async function sincronizarEntrega(e) {
+  const patch = (tabla, datos) => sbFetch(`${tabla}?obra_id=eq.${e.id}`, { method: "PATCH", body: JSON.stringify(datos) });
+  const r = await Promise.allSettled([
+    patch("cobros", { obra_nombre: e.nombre, obra_lugar: e.lugar }),
+    patch("materiales", { obra_nombre: e.nombre, obra_lugar: e.lugar }),
+    patch("avance_obras", { name: e.nombre, client: e.lugar, due_date: e.fecha || null }),
+    patch("obras_avance", { nombre: e.nombre, direccion: e.lugar, fecha_entrega: e.fecha || null }),
+  ]);
+  r.filter(x => x.status === "rejected").forEach(x => console.error("Error sincronizando la entrega:", x.reason));
+}
+
+// Crea una obra con su primera entrega (y los registros de las otras pestañas)
+async function crearObraConEntrega({ nombre, lugar, entrega, sesion }) {
+  const ahora = new Date().toISOString();
+  const proyecto = { id: uid(), nombre: nombre.trim(), lugar: (lugar || "").trim(), creado_por: sesion.id, creado_en: ahora, archivada: false };
+  await upsertProyecto(proyecto);
+  const etiqueta = entrega.etiqueta?.trim() || null;
+  const e = {
+    id: uid(), proyecto_id: proyecto.id, etiqueta, nombre: nombreEntrega(proyecto, etiqueta), lugar: proyecto.lugar,
+    fecha: entrega.fecha || null, fecha_inicio: entrega.fecha_inicio || null, estado: entrega.estado || "pendiente",
+    muebles: entrega.muebles || [], notas: entrega.notas || "", archivada: false,
+    creado_por: sesion.id, creado_en: ahora, editado_por: null, editado_en: null,
+  };
+  await upsertObra(e);
+  await agregarHistorial({ obra_id: e.id, obra_nombre: e.nombre, usuario_id: sesion.id, usuario_nombre: sesion.nombre, accion: "creó", detalle: "Obra creada" });
+  await crearRegistrosEntrega(e);
+  return { proyecto, entrega: e };
+}
+
+// Borra todos los archivos de una carpeta del bucket
+async function borrarCarpetaStorage(prefijo) {
+  const r = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${AVANCE_BUCKET}`, {
+    method: "POST", headers: { Authorization: authHeader(), apikey: SUPABASE_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ prefix: prefijo, limit: 1000 }),
+  });
+  if (!r.ok) return;
+  const archivos = (await r.json()).filter(f => f.id).map(f => `${prefijo}/${f.name}`);
+  if (!archivos.length) return;
+  await fetch(`${SUPABASE_URL}/storage/v1/object/${AVANCE_BUCKET}`, {
+    method: "DELETE", headers: { Authorization: authHeader(), apikey: SUPABASE_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ prefixes: archivos }),
+  });
+}
+async function borrarArchivos(lista) {
+  for (const f of (lista || [])) { if (f.path) { try { await deleteFileAvance(f.path); } catch { /* si el archivo ya no existe se sigue igual */ } } }
+}
+
+// Eliminación definitiva de una entrega y de todo lo suyo en las otras pestañas (fotos y archivos incluidos)
+async function eliminarEntregaDefinitiva(id) {
+  for (const a of (await sbFetch(`obras_avance?obra_id=eq.${id}&select=id`)) || []) {
+    for (const d of (await getDiasAvance(a.id)) || []) await borrarArchivos(d.archivos);
+    await sbFetch(`avance_dias?obra_id=eq.${a.id}`, { method: "DELETE" });
+    for (const inf of (await sbFetch(`informes_finales?obra_id=eq.${a.id}`)) || []) await borrarArchivos(inf.archivos);
+    await sbFetch(`informes_finales?obra_id=eq.${a.id}`, { method: "DELETE" });
+    await deleteObraAvanceById(a.id);
+  }
+  for (const m of (await sbFetch(`materiales?obra_id=eq.${id}&select=id`)) || []) await borrarCarpetaStorage(`materiales-import/${m.id}`);
+  await sbFetch(`materiales?obra_id=eq.${id}`, { method: "DELETE" });
+  await sbFetch(`cobros?obra_id=eq.${id}`, { method: "DELETE" });
+  await sbFetch(`avance_obras?obra_id=eq.${id}`, { method: "DELETE" });
+  await sbFetch(`agregados?obra_id=eq.${id}`, { method: "DELETE" });
+  await deleteObra(id);
+}
+
+// Eliminación definitiva de una obra: sus entregas, sus obras aceptadas vinculadas y la obra
+async function eliminarObraDefinitiva(proyectoId, entregaIds) {
+  for (const id of entregaIds) await eliminarEntregaDefinitiva(id);
+  for (const a of (await sbFetch(`obras_aceptadas?proyecto_id=eq.${proyectoId}`)) || []) {
+    await borrarArchivos(a.archivos);
+    await deleteObraAceptadaById(a.id);
+  }
+  await deleteProyecto(proyectoId);
+}
 
 async function getUsuarios() { return sbFetch("usuarios?select=id,nombre,email,rol&order=nombre.asc", { method: "GET" }); }
 // Altas y bajas pasan por el servidor: crean/borran también el usuario de Supabase Auth
@@ -97,7 +203,6 @@ async function insertAgregado(agregado) {
 async function getCobros() { return sbFetch("cobros?select=*&order=created_at.desc"); }
 async function insertCobro(cobro) { return sbFetch("cobros", { method: "POST", body: JSON.stringify(cobro) }); }
 async function updateCobro(id, data) { return sbFetch(`cobros?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
-async function deleteCobroByObraId(obraId) { return sbFetch(`cobros?obra_id=eq.${obraId}`, { method: "DELETE" }); }
 async function deleteCobro(id) { return sbFetch(`cobros?id=eq.${id}`, { method: "DELETE" }); }
 
 // ─── MATERIALES API ───────────────────────────────────────────────────────────
@@ -285,14 +390,14 @@ function daysDelayedAixa(o) { if(!o.due_date)return 0; const t=new Date();t.setH
 
 // ─── PDF GENERATOR ────────────────────────────────────────────────────────────
 async function generarPDF(obra) {
-  const dias = diasRestantes(obra.fecha);
-  const status = getStatus(dias, obra.estado);
+  const dias = obra.fecha ? diasRestantes(obra.fecha) : null;
+  const status = obra.fecha ? getStatus(dias, obra.estado) : (obra.estado === "terminado" ? "done" : "ok");
   const sm = STATUS_META[status];
   let agregadosList = [];
   try { agregadosList = await getAgregados(obra.id); } catch (e) { console.error("No se pudieron leer los agregados:", e); }
   const mueblesList = normalizarMuebles(obra.muebles || []);
   const totalUnidades = mueblesList.reduce((a, m) => a + (m.cantidad||1), 0);
-  const diasLabel = obra.estado === "terminado" ? "Entregada" : dias < 0 ? `Vencida hace ${Math.abs(dias)} días` : dias === 0 ? "¡Entrega HOY!" : `${dias} días para entrega`;
+  const diasLabel = obra.estado === "terminado" ? "Entregada" : dias == null ? "Sin fecha de entrega" : dias < 0 ? `Vencida hace ${Math.abs(dias)} días` : dias === 0 ? "¡Entrega HOY!" : `${dias} días para entrega`;
   const mueblesHTML = mueblesList.map((m) => `<div style="display:flex;align-items:center;padding:10px 12px;border-bottom:1px solid #f1f5f9"><div style="flex:1;font-size:14px;color:#1e293b">${m.nombre}</div><div style="width:90px;font-size:14px;font-weight:bold;color:#1e40af;text-align:center">${m.cantidad > 1 ? m.cantidad : "1"}</div><div style="width:24px;height:24px;border:1.5px solid #1e40af;border-radius:4px;margin-left:12px"></div></div>`).join("");
   const agregadosHTML = agregadosList.length === 0 ? '<p style="color:#94a3b8;font-size:13px">Sin agregados.</p>' :
     agregadosList.map(a => `<div style="display:flex;align-items:center;padding:9px 12px;border-bottom:1px solid #f1f5f9"><div style="flex:1;font-size:14px;color:#1e293b">${a.articulo}</div><div style="width:90px;font-size:14px;font-weight:bold;color:#1e40af;text-align:center">${a.cantidad}${a.unidad ? ` ${a.unidad}` : ""}</div></div>`).join("");
@@ -301,7 +406,7 @@ async function generarPDF(obra) {
 <style>body{font-family:Georgia,serif;color:#1e293b;margin:0;padding:0}.portada{background:#1e293b;color:#e8dcc8;padding:48px 48px 36px}.logo{font-size:28px;font-weight:bold;letter-spacing:2px;color:#fff}.obra-titulo{font-size:26px;margin:20px 0 6px;font-style:italic;color:#e8dcc8}.obra-subtitulo{font-size:13px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase}.cuerpo{padding:36px 48px}.status-badge{display:inline-block;padding:5px 16px;border-radius:20px;font-size:12px;font-weight:bold;letter-spacing:1px;background:${sm.bg};color:${sm.color};border:1px solid ${sm.color};margin-bottom:24px}.grid-datos{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:32px;border-bottom:1px solid #e2e8f0;padding-bottom:28px}.dato-item .label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:4px}.dato-item .valor{font-size:15px;font-weight:bold;color:#1e293b}.seccion-titulo{font-size:11px;text-transform:uppercase;letter-spacing:2px;color:#94a3b8;border-bottom:1px solid #e2e8f0;padding-bottom:8px;margin-bottom:16px;margin-top:28px}.firma-box{margin-top:48px;display:flex;justify-content:space-between}.firma{text-align:center}.firma-linea{width:160px;border-bottom:1px solid #1e293b;margin-bottom:6px;height:36px}.firma-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8}.footer{margin-top:40px;padding-top:16px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:11px;color:#94a3b8}</style></head>
 <body><div class="portada"><div class="logo">Obras Grupo Aixa S.A.</div><div class="obra-titulo">${obra.nombre}</div><div class="obra-subtitulo">Orden de entrega · Obras Grupo Aixa S.A.</div></div>
 <div class="cuerpo"><div class="status-badge">${sm.icon} ${sm.label} — ${diasLabel}</div>
-<div class="grid-datos"><div class="dato-item"><div class="label">📍 Lugar</div><div class="valor">${obra.lugar}</div></div><div class="dato-item"><div class="label">📅 Fecha</div><div class="valor">${formatDate(obra.fecha)}</div></div><div class="dato-item"><div class="label">⚙️ Estado</div><div class="valor">${ESTADO_LABELS[obra.estado]}</div></div></div>
+<div class="grid-datos"><div class="dato-item"><div class="label">📍 Lugar</div><div class="valor">${obra.lugar}</div></div><div class="dato-item"><div class="label">📅 Fecha</div><div class="valor">${obra.fecha ? formatDate(obra.fecha) : "Sin fecha"}</div></div><div class="dato-item"><div class="label">⚙️ Estado</div><div class="valor">${ESTADO_LABELS[obra.estado]}</div></div></div>
 <div class="seccion-titulo">🪵 Muebles — ${mueblesList.length} tipos · ${totalUnidades} unidades</div>${mueblesHTML}
 <div class="seccion-titulo">📦 Agregados — ${agregadosList.length} ítems</div>${agregadosHTML}
 ${obra.notas ? `<div style="background:#f8fafc;border-left:3px solid #1e40af;padding:14px 18px;border-radius:0 8px 8px 0;margin-top:28px;font-size:13px;line-height:1.7">📝 <strong>Notas:</strong> ${obra.notas}</div>` : ""}
@@ -545,94 +650,154 @@ async function enviarAvisoAhora(tipo) {
   } catch (e) { alert(`No se pudo enviar: ${e.message}`); }
 }
 
-function EntregasModule({ sesion, obras, recargarObras }) {
+// Estado de una entrega para las tarjetas (las entregas sin fecha no muestran días)
+function estadoEntrega(e) {
+  if (e.estado === "terminado") return { status: "done", label: "Entregada" };
+  if (!e.fecha) return { status: "ok", label: "Sin fecha" };
+  const d = diasRestantes(e.fecha);
+  return { status: getStatus(d, e.estado), label: d < 0 ? `Vencida hace ${-d} d` : d === 0 ? "Hoy" : `${d} días` };
+}
+const SC_ENTREGA = {
+  urgent: { bg: "#FEF2F2", text: "#DC2626", border: "#FECACA" }, vencida: { bg: "#FEF2F2", text: "#DC2626", border: "#FECACA" },
+  warning: { bg: "#FFFBEB", text: "#D97706", border: "#FDE68A" }, ok: { bg: "#ECFDF5", text: "#059669", border: "#A7F3D0" },
+  done: { bg: "#F8FAFC", text: "#64748B", border: "#E2E8F0" },
+};
+const PRIORIDAD_ESTADO = { vencida: 0, urgent: 1, warning: 2, ok: 3, done: 4 };
+
+function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
   const [enviandoAviso, setEnviandoAviso] = useState(false);
   const [filter, setFilter] = useState("todas");
   const [search, setSearch] = useState("");
   const [mesFilter, setMesFilter] = useState("");
-  const [modalObra, setModalObra] = useState(null);
-  const [detalle, setDetalle] = useState(null);
+  const [modal, setModal] = useState(null); // { modo: "nueva-obra" | "editar-obra" | "nueva-entrega" | "editar-entrega", proyecto, entrega }
+  const [detalleId, setDetalleId] = useState(null);
+  const [verArchivo, setVerArchivo] = useState(false);
+  const [guardando, setGuardando] = useState(false);
 
   const isAdmin = sesion.rol === "admin";
-  const activas = obras.filter(o => o.estado !== "terminado");
-  const urgentes = activas.filter(o => { const d = diasRestantes(o.fecha); return d >= 0 && d <= 7; });
-  const proximas = activas.filter(o => { const d = diasRestantes(o.fecha); return d > 7 && d <= 21; });
-  const terminadas = obras.filter(o => o.estado === "terminado");
+  const puedeArchivar = isAdmin || sesion.rol === "operario";
+  const entregas = obras.filter(o => !o.archivada);
+  const activas = entregas.filter(o => o.estado !== "terminado");
+  const urgentes = activas.filter(o => { if (!o.fecha) return false; const d = diasRestantes(o.fecha); return d >= 0 && d <= 7; });
+  const proximas = activas.filter(o => { if (!o.fecha) return false; const d = diasRestantes(o.fecha); return d > 7 && d <= 21; });
+  const terminadas = entregas.filter(o => o.estado === "terminado");
+  const proyectoDe = e => proyectos.find(p => p.id === e.proyecto_id);
+  const enArchivo = proyectos.filter(p => p.archivada).length + obras.filter(o => o.archivada && !proyectoDe(o)?.archivada).length;
 
-  const obrasFiltradas = obras.filter(o => {
-    // Search filter
+  const hayFiltro = !!(search || mesFilter || filter !== "todas");
+  function coincide(o, p) {
     if (search) {
       const q = search.toLowerCase();
-      if (!o.nombre.toLowerCase().includes(q) && !(o.lugar||"").toLowerCase().includes(q) && !(o.notas||"").toLowerCase().includes(q)) return false;
+      if (![p.nombre, p.lugar, o.nombre, o.etiqueta, o.notas].some(t => (t || "").toLowerCase().includes(q))) return false;
     }
-    // Month filter
-    if (mesFilter) {
-      const fechaEntrega = o.fecha || "";
-      const fechaInicio = o.fecha_inicio || "";
-      if (!fechaEntrega.startsWith(mesFilter) && !fechaInicio.startsWith(mesFilter)) return false;
-    }
-    // Status filter
+    if (mesFilter && !(o.fecha || "").startsWith(mesFilter) && !(o.fecha_inicio || "").startsWith(mesFilter)) return false;
     if (filter === "todas") return true;
-    const d = diasRestantes(o.fecha);
-    const s = getStatus(d, o.estado);
-    if (filter === "urgent") return s === "urgent" || s === "vencida";
-    if (filter === "warning") return s === "warning";
-    if (filter === "ok") return s === "ok";
-    if (filter === "done") return s === "done";
-    return true;
-  }).sort((a, b) => {
-    if (a.estado === "terminado" && b.estado !== "terminado") return 1;
-    if (b.estado === "terminado" && a.estado !== "terminado") return -1;
-    return new Date(a.fecha) - new Date(b.fecha);
-  });
+    const s = estadoEntrega(o).status;
+    return filter === "urgent" ? (s === "urgent" || s === "vencida") : s === filter;
+  }
+  const porFecha = (a, b) => (a.fecha || "9999").localeCompare(b.fecha || "9999");
+  const grupos = proyectos.filter(p => !p.archivada).map(p => {
+    const todas = entregas.filter(e => e.proyecto_id === p.id).sort(porFecha);
+    const visibles = todas.filter(e => coincide(e, p));
+    const peor = visibles.map(e => estadoEntrega(e).status).sort((a, b) => PRIORIDAD_ESTADO[a] - PRIORIDAD_ESTADO[b])[0] || "ok";
+    const proxima = visibles.filter(e => e.estado !== "terminado").map(e => e.fecha || "9999").sort()[0];
+    const ultima = todas.map(e => e.fecha || "").sort().pop() || "";
+    return { p, todas, visibles, peor, proxima, ultima };
+  }).filter(g => g.visibles.length || (!hayFiltro && !g.todas.length))
+    .sort((a, b) => {
+      if (a.proxima && !b.proxima) return -1;
+      if (!a.proxima && b.proxima) return 1;
+      return a.proxima ? a.proxima.localeCompare(b.proxima) : b.ultima.localeCompare(a.ultima);
+    });
+  const entregasVisibles = grupos.reduce((s, g) => s + g.visibles.length, 0);
 
-  async function guardarObra(obra) {
-    const existente = obras.find(o => o.id === obra.id);
-    const obraFinal = {
-      id: obra.id, nombre: obra.nombre, lugar: obra.lugar, fecha: obra.fecha || null, fecha_inicio: obra.fecha_inicio || null, estado: obra.estado,
-      muebles: obra.muebles, notas: obra.notas,
-      creado_por: existente ? obra.creado_por : sesion.id,
-      creado_en: existente ? obra.creado_en : new Date().toISOString(),
-      editado_por: existente ? sesion.id : null,
-      editado_en: existente ? new Date().toISOString() : null,
-    };
+  async function guardar({ obraForm, entregaForm }) {
+    const ahora = new Date().toISOString();
+    setGuardando(true);
     try {
-      await upsertObra(obraFinal);
-      await agregarHistorial({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, usuario_id: sesion.id, usuario_nombre: sesion.nombre, accion: existente ? "editó" : "creó", detalle: existente ? "Obra actualizada" : "Obra creada" });
-      if (!existente) {
-        try { await insertCobro({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, monto_total: 0, adelanto_cobrado: false, adelanto_monto: 0, adelanto_porcentaje: 0, total_cobrado: false, total_fecha: null, plazo_pago: "", adicionales: [] }); } catch (e) { console.error("Error creando el cobro de la obra:", e); }
-        try { await insertMaterial({ obra_id: obraFinal.id, obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, items: [], notas: "" }); } catch (e) { console.error("Error creando la lista de materiales de la obra:", e); }
-        try { await insertAixaObra({ name: obraFinal.nombre, client: obraFinal.lugar, start_date: null, due_date: obraFinal.fecha || null, description: obraFinal.notas || "", stations: mkStations(), history: [], clarifications: [] }); }
-        catch (e) { console.error("Error creando obra en Avance de Producción:", e); alert("La obra se guardó, pero no se pudo crear en Avance de Producción."); }
+      if (modal.modo === "nueva-obra") {
+        await crearObraConEntrega({ nombre: obraForm.nombre, lugar: obraForm.lugar, entrega: entregaForm, sesion });
+      } else if (modal.modo === "editar-obra") {
+        const p = { ...modal.proyecto, nombre: obraForm.nombre.trim(), lugar: obraForm.lugar.trim() };
+        await patchProyecto(p.id, { nombre: p.nombre, lugar: p.lugar });
+        for (const e of obras.filter(x => x.proyecto_id === p.id)) {
+          const upd = { ...e, nombre: nombreEntrega(p, e.etiqueta), lugar: p.lugar };
+          await patchEntregas(`id=eq.${e.id}`, { nombre: upd.nombre, lugar: upd.lugar });
+          await sincronizarEntrega(upd);
+        }
       } else {
-        try { await updateCobro(obraFinal.id, { obra_nombre: obraFinal.nombre, obra_lugar: obraFinal.lugar, updated_at: new Date().toISOString() }); } catch (e) { console.error("Error actualizando el cobro de la obra:", e); }
+        const p = modal.proyecto, existente = modal.entrega;
+        const etiqueta = entregaForm.etiqueta.trim() || null;
+        const e = {
+          ...(existente || {}), id: existente?.id || uid(), proyecto_id: p.id, etiqueta, nombre: nombreEntrega(p, etiqueta), lugar: p.lugar,
+          fecha: entregaForm.fecha || null, fecha_inicio: entregaForm.fecha_inicio || null, estado: entregaForm.estado,
+          muebles: entregaForm.muebles, notas: entregaForm.notas, archivada: existente?.archivada || false,
+          creado_por: existente ? existente.creado_por : sesion.id, creado_en: existente ? existente.creado_en : ahora,
+          editado_por: existente ? sesion.id : null, editado_en: existente ? ahora : null,
+        };
+        if (!existente) {
+          // Si la obra tenía una sola entrega sin etiqueta, pasa a ser la "1ª entrega"
+          const hermanas = entregas.filter(x => x.proyecto_id === p.id);
+          if (hermanas.length === 1 && !hermanas[0].etiqueta) {
+            const primera = { ...hermanas[0], etiqueta: "1ª entrega", nombre: nombreEntrega(p, "1ª entrega") };
+            await patchEntregas(`id=eq.${primera.id}`, { etiqueta: primera.etiqueta, nombre: primera.nombre });
+            await sincronizarEntrega(primera);
+          }
+        }
+        await upsertObra(e);
+        await agregarHistorial({ obra_id: e.id, obra_nombre: e.nombre, usuario_id: sesion.id, usuario_nombre: sesion.nombre, accion: existente ? "editó" : "creó", detalle: existente ? "Entrega actualizada" : "Entrega agregada" });
+        if (existente) await sincronizarEntrega(e);
+        else await crearRegistrosEntrega(e);
       }
       await recargarObras();
-    } catch { alert("Error al guardar."); return; }
-    setModalObra(null); setDetalle(null);
+      setModal(null);
+    } catch (err) { alert(`Error al guardar: ${err.message}`); }
+    setGuardando(false);
   }
 
-  async function eliminarObra(id) {
-    if (!confirm("¿Eliminar esta obra?")) return;
-    try { await deleteObra(id); try { await deleteCobroByObraId(id); } catch (e) { console.error("Error borrando el cobro de la obra:", e); } await recargarObras(); } catch { alert("Error al eliminar."); return; }
-    setDetalle(null);
-  }
-
-  async function marcarEntregada(id) {
-    const obra = obras.find(o => o.id === id);
+  async function marcarEntregada(e) {
     try {
-      await upsertObra({ ...obra, estado:"terminado", editado_por: sesion.id, editado_en: new Date().toISOString() });
+      await upsertObra({ ...e, estado: "terminado", editado_por: sesion.id, editado_en: new Date().toISOString() });
       await recargarObras();
     } catch { alert("Error al actualizar."); return; }
-    setDetalle(null);
+    setDetalleId(null);
   }
+
+  async function archivarObra(p) {
+    const suyas = entregas.filter(e => e.proyecto_id === p.id);
+    if (!confirm(`¿Archivar la obra "${p.nombre}"${suyas.length > 1 ? ` con sus ${suyas.length} entregas` : ""}?\n\nDeja de verse en Entregas y en todas las pestañas (Producción, Avance de Obra, Cobros, Materiales y Obras Aceptadas). Desde "Archivo" la podés recuperar o eliminar definitivamente.`)) return;
+    const ahora = new Date().toISOString();
+    try {
+      await patchEntregas(`proyecto_id=eq.${p.id}&archivada=is.false`, { archivada: true, archivada_en: ahora });
+      await patchProyecto(p.id, { archivada: true, archivada_en: ahora });
+      await Promise.allSettled(suyas.map(e => agregarHistorial({ obra_id: e.id, obra_nombre: e.nombre, usuario_id: sesion.id, usuario_nombre: sesion.nombre, accion: "archivó", detalle: "Obra archivada" })));
+      await recargarObras();
+    } catch (err) { alert(`No se pudo archivar: ${err.message}`); return; }
+    setDetalleId(null);
+  }
+
+  async function archivarEntrega(e) {
+    const p = proyectoDe(e);
+    if (p && entregas.filter(x => x.proyecto_id === p.id).length <= 1) return archivarObra(p);
+    if (!confirm(`¿Archivar la entrega "${e.nombre}"?\n\nDeja de verse en todas las pestañas. Desde "Archivo" la podés recuperar o eliminar definitivamente.`)) return;
+    try {
+      await patchEntregas(`id=eq.${e.id}`, { archivada: true, archivada_en: new Date().toISOString() });
+      await agregarHistorial({ obra_id: e.id, obra_nombre: e.nombre, usuario_id: sesion.id, usuario_nombre: sesion.nombre, accion: "archivó", detalle: "Entrega archivada" });
+      await recargarObras();
+    } catch (err) { alert(`No se pudo archivar: ${err.message}`); return; }
+    setDetalleId(null);
+  }
+
+  const detalle = detalleId ? obras.find(o => o.id === detalleId) : null;
+  const btnSm = { flex:1, padding:"6px 0", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:7, color:"#475569", fontSize:11, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" };
+  const btnIcono = { padding:"4px 8px", fontSize:12, border:"1px solid #E2E8F0", borderRadius:6, background:"#F8FAFC", color:"#64748B", cursor:"pointer" };
 
   return (
     <div>
       {/* STATS */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:32 }}>
         {[
-          { num: activas.length, label:"En curso", color:"#2563EB", border:"#DBEAFE" },
+          { num: activas.length, label:"Entregas en curso", color:"#2563EB", border:"#DBEAFE" },
           { num: urgentes.length, label:"Urgentes", color:"#DC2626", border:"#FECACA" },
           { num: proximas.length, label:"Próximas", color:"#D97706", border:"#FDE68A" },
           { num: terminadas.length, label:"Entregadas", color:"#059669", border:"#A7F3D0" },
@@ -646,7 +811,7 @@ function EntregasModule({ sesion, obras, recargarObras }) {
 
       {/* FILTROS + BÚSQUEDA */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, flexWrap:"wrap", gap:12 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
           <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Obras — Entregas</h2>
           {isAdmin && (
             <button disabled={enviandoAviso} title="El aviso sale solo los lunes y jueves a las 8:00. Este botón lo manda ahora."
@@ -655,6 +820,10 @@ function EntregasModule({ sesion, obras, recargarObras }) {
               {enviandoAviso ? "Enviando..." : "📧 Enviar aviso de entregas ahora"}
             </button>
           )}
+          <button onClick={() => setVerArchivo(true)} title="Obras y entregas archivadas"
+            style={{ padding:"6px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+            🗄 Archivo{enArchivo ? ` (${enArchivo})` : ""}
+          </button>
         </div>
         <div style={{ display:"flex", gap:4, background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:10, padding:4 }}>
           {[
@@ -677,87 +846,106 @@ function EntregasModule({ sesion, obras, recargarObras }) {
         <input type="month" value={mesFilter} onChange={e => setMesFilter(e.target.value)}
           style={{ padding:"9px 12px", background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" }} />
         {mesFilter && <button onClick={() => setMesFilter("")} style={{ padding:"6px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#64748B", fontSize:12, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Limpiar mes</button>}
-        {(search || mesFilter) && <span style={{ fontSize:12, color:"#94A3B8" }}>{obrasFiltradas.length} resultado{obrasFiltradas.length !== 1 ? "s" : ""}</span>}
+        {hayFiltro && <span style={{ fontSize:12, color:"#94A3B8" }}>{grupos.length} obra{grupos.length !== 1 ? "s" : ""} · {entregasVisibles} entrega{entregasVisibles !== 1 ? "s" : ""}</span>}
       </div>
 
-      {/* GRID */}
-      {obrasFiltradas.length === 0 ? (
+      {/* GRID DE OBRAS */}
+      {grupos.length === 0 ? (
         <div style={{ textAlign:"center", padding:"80px 20px", background:"#ffffff", borderRadius:16, border:"1px solid #E8ECF0" }}>
           <div style={{ fontSize:13, color:"#94A3B8" }}>No hay obras en esta categoría</div>
         </div>
       ) : (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))", gap:16 }}>
-          {obrasFiltradas.map((o, idx) => {
-            const d = diasRestantes(o.fecha);
-            const status = getStatus(d, o.estado);
-            const sm = STATUS_META[status];
-            const sc = { urgent:{bg:"#FEF2F2",text:"#DC2626",border:"#FECACA"}, vencida:{bg:"#FEF2F2",text:"#DC2626",border:"#FECACA"}, warning:{bg:"#FFFBEB",text:"#D97706",border:"#FDE68A"}, ok:{bg:"#ECFDF5",text:"#059669",border:"#A7F3D0"}, done:{bg:"#F8FAFC",text:"#64748B",border:"#E2E8F0"} }[status] || {bg:"#ECFDF5",text:"#059669",border:"#A7F3D0"};
-            const diasLabel = o.estado === "terminado" ? "Entregada" : d < 0 ? "Vencida" : d === 0 ? "Hoy" : `${d} días`;
-            return (
-              <div key={o.id} className="obra-card" onClick={() => setDetalle(o)}
-                style={{ background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:14, overflow:"hidden", cursor:"pointer", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
-                <div style={{ height:4, background:sm.color }} />
-                <div style={{ padding:"18px 18px 16px" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
-                    <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", flex:1, lineHeight:1.35, paddingRight:10 }}>{o.nombre}</div>
-                    <div style={{ padding:"3px 10px", borderRadius:6, background:sc.bg, color:sc.text, fontSize:11, fontWeight:700, border:`1px solid ${sc.border}`, whiteSpace:"nowrap", flexShrink:0 }}>{diasLabel}</div>
-                  </div>
-                  <div style={{ fontSize:12, color:"#64748B", marginBottom:4 }}>📍 {o.lugar}</div>
-                  <div style={{ fontSize:12, color:"#64748B", marginBottom:4, display:"flex", gap:12 }}>
-                    {o.fecha_inicio && <span>🔨 Inicio: {formatDate(o.fecha_inicio)}</span>}
-                    <span>📅 Entrega: {formatDate(o.fecha)}</span>
-                  </div>
-                  {(o.muebles||[]).length > 0 && (
-                    <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:14 }}>
-                      {normalizarMuebles(o.muebles).slice(0,3).map((m,i) => (
-                        <div key={i} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:4, padding:"2px 8px", fontSize:11, color:"#475569" }}>
-                          {m.nombre}{m.cantidad > 1 ? ` ×${m.cantidad}` : ""}
-                        </div>
-                      ))}
-                      {(o.muebles||[]).length > 3 && <div style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:4, padding:"2px 8px", fontSize:11, color:"#94A3B8" }}>+{(o.muebles||[]).length - 3}</div>}
-                    </div>
-                  )}
-                  <div onClick={e => e.stopPropagation()} style={{ display:"flex", gap:6, paddingTop:12, borderTop:"1px solid #F1F5F9" }}>
-                    <button onClick={() => setModalObra(o)} style={{ flex:1, padding:"7px 0", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Editar</button>
-                    <button onClick={() => generarPDF(o)} style={{ flex:1, padding:"7px 0", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>PDF</button>
-                    {o.estado !== "terminado" && (
-                      <button onClick={() => marcarEntregada(o.id)} style={{ flex:1, padding:"7px 0", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:8, color:"#059669", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Entregar</button>
-                    )}
-                    {(isAdmin || sesion.rol === "operario") && (
-                      <button onClick={() => eliminarObra(o.id)} style={{ padding:"7px 10px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:12, cursor:"pointer" }}>✕</button>
-                    )}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))", gap:16, alignItems:"start" }}>
+          {grupos.map(({ p, todas, visibles, peor }, idx) => (
+            <div key={p.id} className="obra-card"
+              style={{ background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:14, overflow:"hidden", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
+              <div style={{ height:4, background: STATUS_META[peor].color }} />
+              <div style={{ padding:"16px 16px 14px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10, marginBottom:4 }}>
+                  <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", lineHeight:1.35 }}>{p.nombre}</div>
+                  <div style={{ display:"flex", gap:4, flexShrink:0 }}>
+                    <button title="Editar obra" onClick={() => setModal({ modo:"editar-obra", proyecto:p })} style={btnIcono}>✎</button>
+                    {puedeArchivar && <button title="Archivar obra" onClick={() => archivarObra(p)} style={{ ...btnIcono, border:"1px solid #FECACA", background:"#FEF2F2", color:"#DC2626" }}>🗄</button>}
                   </div>
                 </div>
+                {p.lugar && <div style={{ fontSize:12, color:"#64748B", marginBottom:10 }}>📍 {p.lugar}</div>}
+                <div style={{ fontSize:11, color:"#94A3B8", fontWeight:600, letterSpacing:0.4, marginBottom:6 }}>
+                  {todas.length} ENTREGA{todas.length !== 1 ? "S" : ""}{hayFiltro && visibles.length < todas.length ? ` · MOSTRANDO ${visibles.length}` : ""}
+                </div>
+                <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                  {visibles.map(e => {
+                    const est = estadoEntrega(e);
+                    const sc = SC_ENTREGA[est.status];
+                    const muebles = normalizarMuebles(e.muebles || []);
+                    return (
+                      <div key={e.id} onClick={() => setDetalleId(e.id)}
+                        style={{ border:`1px solid ${sc.border}`, background:"#FAFBFC", borderRadius:10, padding:"9px 11px", cursor:"pointer" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8 }}>
+                          <div style={{ fontSize:13, fontWeight:600, color:"#1A2B4A" }}>{e.etiqueta || "Entrega"}</div>
+                          <span style={{ padding:"2px 8px", borderRadius:6, background:sc.bg, color:sc.text, fontSize:11, fontWeight:700, border:`1px solid ${sc.border}`, whiteSpace:"nowrap" }}>{est.label}</span>
+                        </div>
+                        <div style={{ fontSize:12, color:"#64748B", marginTop:3, display:"flex", gap:10, flexWrap:"wrap" }}>
+                          {e.fecha_inicio && <span>🔨 {formatDate(e.fecha_inicio)}</span>}
+                          <span>📅 {e.fecha ? formatDate(e.fecha) : "Sin fecha"}</span>
+                        </div>
+                        {muebles.length > 0 && (
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:6 }}>
+                            {muebles.slice(0, 3).map((m, i) => (
+                              <div key={i} style={{ background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:4, padding:"2px 8px", fontSize:11, color:"#475569" }}>{m.nombre}{m.cantidad > 1 ? ` ×${m.cantidad}` : ""}</div>
+                            ))}
+                            {muebles.length > 3 && <div style={{ background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:4, padding:"2px 8px", fontSize:11, color:"#94A3B8" }}>+{muebles.length - 3}</div>}
+                          </div>
+                        )}
+                        <div onClick={ev => ev.stopPropagation()} style={{ display:"flex", gap:5, marginTop:8 }}>
+                          <button onClick={() => setModal({ modo:"editar-entrega", proyecto:p, entrega:e })} style={btnSm}>Editar</button>
+                          <button onClick={() => generarPDF(e)} style={btnSm}>PDF</button>
+                          {e.estado !== "terminado" && <button onClick={() => marcarEntregada(e)} style={{ ...btnSm, background:"#ECFDF5", border:"1px solid #A7F3D0", color:"#059669" }}>Entregar</button>}
+                          {puedeArchivar && <button title="Archivar entrega" onClick={() => archivarEntrega(e)} style={{ ...btnSm, flex:"0 0 auto", padding:"6px 9px", background:"#FEF2F2", border:"1px solid #FECACA", color:"#DC2626" }}>🗄</button>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {!todas.length && <div style={{ fontSize:12, color:"#94A3B8" }}>Sin entregas activas</div>}
+                </div>
+                <button onClick={() => setModal({ modo:"nueva-entrega", proyecto:p, etiquetaSugerida: todas.length ? `${todas.length + 1}ª entrega` : "" })}
+                  style={{ width:"100%", marginTop:10, padding:"8px 0", background:"#ffffff", border:"1px dashed #CBD5E1", borderRadius:8, color:"#2563EB", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
+                  + Agregar entrega
+                </button>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
 
       {/* FAB */}
-      <button onClick={() => setModalObra("nueva")}
+      <button onClick={() => setModal({ modo:"nueva-obra" })}
         style={{ position:"fixed", bottom:28, right:24, height:48, padding:"0 22px", borderRadius:12, background:"#1A2B4A", border:"none", fontSize:13, fontWeight:600, color:"#ffffff", boxShadow:"0 4px 20px rgba(26,43,74,0.35)", cursor:"pointer", zIndex:200, display:"flex", alignItems:"center", gap:8, fontFamily:"'Inter', sans-serif" }}
         onMouseEnter={e => { e.currentTarget.style.background="#2563EB"; }}
         onMouseLeave={e => { e.currentTarget.style.background="#1A2B4A"; }}>
         + Nueva obra
       </button>
 
-      {/* Modal Obra */}
-      {modalObra && <ModalObraEntrega obra={modalObra === "nueva" ? null : modalObra} onClose={() => setModalObra(null)} onSave={guardarObra} />}
+      {modal && <ModalObraEntrega {...modal} guardando={guardando} onClose={() => setModal(null)} onSave={guardar} />}
 
-      {/* Detalle */}
-      {detalle && <DetalleObraEntrega obra={obras.find(o => o.id === detalle.id) || detalle} sesion={sesion} rol={sesion.rol}
-        onClose={() => setDetalle(null)} onEdit={() => { setModalObra(obras.find(o => o.id === detalle.id)); setDetalle(null); }}
-        onDelete={() => eliminarObra(detalle.id)} onEntregada={() => marcarEntregada(detalle.id)} />}
+      {detalle && <DetalleObraEntrega obra={detalle} sesion={sesion} rol={sesion.rol}
+        onClose={() => setDetalleId(null)}
+        onEdit={() => { setModal({ modo:"editar-entrega", proyecto: proyectoDe(detalle), entrega: detalle }); setDetalleId(null); }}
+        onDelete={() => archivarEntrega(detalle)} onEntregada={() => marcarEntregada(detalle)} />}
+
+      {verArchivo && <ArchivoObras obras={obras} proyectos={proyectos} sesion={sesion} onClose={() => setVerArchivo(false)} onCambio={recargarObras} />}
     </div>
   );
 }
 
-// ─── MODAL OBRA (Entregas) ────────────────────────────────────────────────────
-function ModalObraEntrega({ obra, onClose, onSave }) {
+// ─── MODAL OBRA / ENTREGA (Entregas) ──────────────────────────────────────────
+// nueva-obra: datos de la obra + su primera entrega · editar-obra: solo la obra · nueva/editar-entrega: solo la entrega
+function ModalObraEntrega({ modo, proyecto, entrega, etiquetaSugerida = "", guardando, onClose, onSave }) {
+  const conObra = modo === "nueva-obra" || modo === "editar-obra";
+  const conEntrega = modo !== "editar-obra";
+  const [obraForm, setObraForm] = useState({ nombre: proyecto?.nombre || "", lugar: proyecto?.lugar || "" });
   const [form, setForm] = useState({
-    nombre: obra?.nombre || "", lugar: obra?.lugar || "", fecha_inicio: obra?.fecha_inicio || "", fecha: obra?.fecha || "",
-    estado: obra?.estado || "pendiente", muebles: normalizarMuebles(obra?.muebles), notas: obra?.notas || "",
+    etiqueta: entrega ? (entrega.etiqueta || "") : etiquetaSugerida, fecha_inicio: entrega?.fecha_inicio || "", fecha: entrega?.fecha || "",
+    estado: entrega?.estado || "pendiente", muebles: normalizarMuebles(entrega?.muebles), notas: entrega?.notas || "",
   });
   const [muebleInput, setMuebleInput] = useState("");
   const [cantInput, setCantInput] = useState("1");
@@ -768,76 +956,179 @@ function ModalObraEntrega({ obra, onClose, onSave }) {
 
   function handleSave() {
     const e = {};
-    if (!form.nombre.trim()) e.nombre = "Requerido";
-    if (!form.lugar.trim()) e.lugar = "Requerido";
+    if (conObra && !obraForm.nombre.trim()) e.nombre = "Requerido";
+    if (conObra && !obraForm.lugar.trim()) e.lugar = "Requerido";
     setErrors(e);
     if (Object.keys(e).length > 0) return;
-    onSave({ ...obra, ...form, id: obra?.id || uid(), creadoEn: obra?.creadoEn || new Date().toISOString() });
+    onSave({ obraForm: conObra ? obraForm : null, entregaForm: conEntrega ? form : null });
   }
 
-  const inp = (label, key, type="text", ph="") => (
+  const campoInput = { width:"100%", padding:"10px 13px", background:"#F8FAFC", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:14, outline:"none", boxSizing:"border-box" };
+  const label = { display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 };
+  const inpObra = (texto, key, ph) => (
     <div style={{ marginBottom:16 }}>
-      <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>{label}</label>
-      <input type={type} value={form[key]} placeholder={ph}
-        onChange={e => { setForm(f => ({...f, [key]: e.target.value})); setErrors(er => ({...er,[key]:""})); }}
-        style={{ width:"100%", padding:"10px 13px", background:"#F8FAFC", border:`1px solid ${errors[key] ? "#FCA5A5" : "#E2E8F0"}`, borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:14, outline:"none", boxSizing:"border-box" }} />
+      <label style={label}>{texto}</label>
+      <input value={obraForm[key]} placeholder={ph}
+        onChange={e => { setObraForm(f => ({...f, [key]: e.target.value})); setErrors(er => ({...er,[key]:""})); }}
+        style={{ ...campoInput, border:`1px solid ${errors[key] ? "#FCA5A5" : "#E2E8F0"}` }} />
       {errors[key] && <div style={{ color:"#DC2626", fontSize:11, marginTop:4 }}>{errors[key]}</div>}
     </div>
   );
-
+  const inpEntrega = (texto, key, type="text", ph="") => (
+    <div style={{ marginBottom:16 }}>
+      <label style={label}>{texto}</label>
+      <input type={type} value={form[key]} placeholder={ph} onChange={e => setForm(f => ({...f, [key]: e.target.value}))} style={{ ...campoInput, border:"1px solid #E2E8F0" }} />
+    </div>
+  );
   const modalInp = { padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" };
+  const titulo = { "nueva-obra":"Nueva obra", "editar-obra":"Editar obra", "nueva-entrega":"Nueva entrega", "editar-entrega":"Editar entrega" }[modo];
 
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
       <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:540, maxHeight:"90vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
         <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, background:"#ffffff", borderRadius:"14px 14px 0 0", zIndex:1 }}>
-          <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{obra ? "Editar obra" : "Nueva obra"}</h2>
+          <div>
+            <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{titulo}</h2>
+            {!conObra && proyecto && <div style={{ fontSize:12, color:"#64748B", marginTop:3 }}>Obra: {proyecto.nombre}</div>}
+          </div>
           <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
         </div>
         <div style={{ padding:"24px" }}>
-          {inp("Nombre de la obra", "nombre", "text", "Ej: Departamento Flores")}
-          {inp("Dirección", "lugar", "text", "Calle, número, barrio...")}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-            {inp("Fecha de inicio / pedido", "fecha_inicio", "date")}
-            {inp("Fecha de entrega", "fecha", "date")}
-          </div>
-          <div style={{ marginBottom:16 }}>
-            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Estado</label>
-            <select value={form.estado} onChange={e => setForm(f => ({...f, estado: e.target.value}))} style={{ ...modalInp, width:"100%" }}>
-              <option value="pendiente">Pendiente</option>
-              <option value="en_proceso">En proceso</option>
-              <option value="terminado">Terminado</option>
-            </select>
-          </div>
-          <div style={{ marginBottom:16 }}>
-            <label style={{ fontSize:12, fontWeight:600, color:"#475569", marginBottom:10, display:"block" }}>Muebles</label>
-            <div style={{ display:"flex", gap:8, marginBottom:8 }}>
-              <input value={muebleInput} placeholder="Nombre del mueble" onChange={e => setMuebleInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addMueble(); }}} style={{ ...modalInp, flex:1 }} />
-              <input value={cantInput} type="number" min="1" placeholder="Cant." onChange={e => setCantInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addMueble(); }}} style={{ ...modalInp, width:70, textAlign:"center", fontWeight:600, color:"#2563EB" }} />
-              <button onClick={addMueble} style={{ padding:"10px 16px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#ffffff", fontSize:16, cursor:"pointer", fontWeight:600 }}>+</button>
+          {conObra && (<>
+            {inpObra("Nombre de la obra", "nombre", "Ej: BBVA Flores")}
+            {inpObra("Dirección", "lugar", "Calle, número, barrio...")}
+            {modo === "editar-obra" && <div style={{ fontSize:12, color:"#64748B", marginBottom:20 }}>El nombre y la dirección se actualizan en todas las entregas y pestañas de esta obra.</div>}
+          </>)}
+          {modo === "nueva-obra" && <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", letterSpacing:0.5, margin:"4px 0 12px", paddingTop:14, borderTop:"1px solid #F1F5F9" }}>PRIMERA ENTREGA</div>}
+          {conEntrega && (<>
+            {inpEntrega("Nombre de la entrega (opcional)", "etiqueta", "text", "Ej: 1ª entrega, Planta baja, Mobiliario de cajas...")}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              {inpEntrega("Fecha de inicio / pedido", "fecha_inicio", "date")}
+              {inpEntrega("Fecha de entrega", "fecha", "date")}
             </div>
-            {form.muebles.length > 0 && (
-              <div style={{ border:"1px solid #E2E8F0", borderRadius:10, overflow:"hidden" }}>
-                {form.muebles.map((m, i) => (
-                  <div key={i} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 12px", borderBottom: i < form.muebles.length-1 ? "1px solid #F1F5F9" : "none", background:"#FAFBFC" }}>
-                    <span style={{ flex:1, fontSize:13, color:"#1A2B4A" }}>{m.nombre}</span>
-                    <span style={{ fontSize:13, fontWeight:700, color:"#2563EB" }}>×{m.cantidad}</span>
-                    <button onClick={() => rmMueble(i)} style={{ background:"none", border:"none", color:"#CBD5E1", cursor:"pointer", fontSize:16, padding:"0 2px" }}
-                      onMouseEnter={e => e.currentTarget.style.color="#EF4444"} onMouseLeave={e => e.currentTarget.style.color="#CBD5E1"}>✕</button>
-                  </div>
-                ))}
+            <div style={{ marginBottom:16 }}>
+              <label style={label}>Estado</label>
+              <select value={form.estado} onChange={e => setForm(f => ({...f, estado: e.target.value}))} style={{ ...modalInp, width:"100%" }}>
+                <option value="pendiente">Pendiente</option>
+                <option value="en_proceso">En proceso</option>
+                <option value="terminado">Terminado</option>
+              </select>
+            </div>
+            <div style={{ marginBottom:16 }}>
+              <label style={{ ...label, marginBottom:10 }}>Muebles de esta entrega</label>
+              <div style={{ display:"flex", gap:8, marginBottom:8 }}>
+                <input value={muebleInput} placeholder="Nombre del mueble" onChange={e => setMuebleInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addMueble(); }}} style={{ ...modalInp, flex:1 }} />
+                <input value={cantInput} type="number" min="1" placeholder="Cant." onChange={e => setCantInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addMueble(); }}} style={{ ...modalInp, width:70, textAlign:"center", fontWeight:600, color:"#2563EB" }} />
+                <button onClick={addMueble} style={{ padding:"10px 16px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#ffffff", fontSize:16, cursor:"pointer", fontWeight:600 }}>+</button>
               </div>
-            )}
+              {form.muebles.length > 0 && (
+                <div style={{ border:"1px solid #E2E8F0", borderRadius:10, overflow:"hidden" }}>
+                  {form.muebles.map((m, i) => (
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 12px", borderBottom: i < form.muebles.length-1 ? "1px solid #F1F5F9" : "none", background:"#FAFBFC" }}>
+                      <span style={{ flex:1, fontSize:13, color:"#1A2B4A" }}>{m.nombre}</span>
+                      <span style={{ fontSize:13, fontWeight:700, color:"#2563EB" }}>×{m.cantidad}</span>
+                      <button onClick={() => rmMueble(i)} style={{ background:"none", border:"none", color:"#CBD5E1", cursor:"pointer", fontSize:16, padding:"0 2px" }}
+                        onMouseEnter={e => e.currentTarget.style.color="#EF4444"} onMouseLeave={e => e.currentTarget.style.color="#CBD5E1"}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ marginBottom:24 }}>
+              <label style={label}>Notas</label>
+              <textarea value={form.notas} rows={3} placeholder="Observaciones..." onChange={e => setForm(f => ({...f, notas: e.target.value}))}
+                style={{ ...campoInput, border:"1px solid #E2E8F0", resize:"vertical" }} />
+            </div>
+          </>)}
+          <button onClick={handleSave} disabled={guardando} style={{ width:"100%", padding:"12px", background: guardando ? "#94A3B8" : "#1A2B4A", border:"none", borderRadius:8, fontFamily:"'Inter', sans-serif", fontSize:14, fontWeight:600, color:"#ffffff", cursor: guardando ? "not-allowed" : "pointer" }}>
+            {guardando ? "Guardando..." : modo === "editar-obra" ? "Guardar obra" : modo === "nueva-obra" ? "Crear obra" : "Guardar entrega"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ARCHIVO (obras y entregas archivadas) ────────────────────────────────────
+function ArchivoObras({ obras, proyectos, sesion, onClose, onCambio }) {
+  const [trabajando, setTrabajando] = useState(null);
+  const isAdmin = sesion.rol === "admin";
+  const obrasArchivadas = proyectos.filter(p => p.archivada)
+    .map(p => ({ p, entregas: obras.filter(e => e.proyecto_id === p.id) }))
+    .sort((a, b) => (b.p.archivada_en || "").localeCompare(a.p.archivada_en || ""));
+  const entregasArchivadas = obras.filter(e => e.archivada && !proyectos.find(p => p.id === e.proyecto_id)?.archivada)
+    .sort((a, b) => (b.archivada_en || "").localeCompare(a.archivada_en || ""));
+  const fechaArch = iso => iso ? new Date(iso).toLocaleDateString("es-AR") : "";
+
+  async function hacer(id, accion) {
+    setTrabajando(id);
+    try { await accion(); await onCambio(); }
+    catch (e) { alert(`No se pudo completar: ${e.message}`); }
+    setTrabajando(null);
+  }
+  const restaurarObra = ({ p }) => hacer(p.id, async () => {
+    await patchEntregas(`proyecto_id=eq.${p.id}`, { archivada: false, archivada_en: null });
+    await patchProyecto(p.id, { archivada: false, archivada_en: null });
+  });
+  const restaurarEntrega = e => hacer(e.id, () => patchEntregas(`id=eq.${e.id}`, { archivada: false, archivada_en: null }));
+  function eliminarObra({ p, entregas }) {
+    if (!confirm(`¿Eliminar DEFINITIVAMENTE la obra "${p.nombre}"?\n\nSe borran sus ${entregas.length} entrega(s) y todo lo vinculado en las otras pestañas: cobros, materiales, avance de producción, avance de obra (con fotos e informes) y obras aceptadas.\n\nNo se puede deshacer.`)) return;
+    hacer(p.id, () => eliminarObraDefinitiva(p.id, entregas.map(e => e.id)));
+  }
+  function eliminarEntrega(e) {
+    if (!confirm(`¿Eliminar DEFINITIVAMENTE la entrega "${e.nombre}"?\n\nSe borra también su cobro, sus materiales, su avance de producción y su avance de obra (con fotos e informes).\n\nNo se puede deshacer.`)) return;
+    hacer(e.id, () => eliminarEntregaDefinitiva(e.id));
+  }
+
+  const fila = { display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, padding:"12px 14px", border:"1px solid #E2E8F0", borderRadius:10, marginBottom:8, background:"#FAFBFC" };
+  const btn = { padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif", whiteSpace:"nowrap" };
+  const botones = (id, restaurar, eliminar) => (
+    <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+      {trabajando === id ? <span style={{ fontSize:12, color:"#94A3B8" }}>Procesando...</span> : (<>
+        <button onClick={restaurar} disabled={!!trabajando} style={{ ...btn, background:"#ECFDF5", border:"1px solid #A7F3D0", color:"#059669" }}>↩ Restaurar</button>
+        {isAdmin && <button onClick={eliminar} disabled={!!trabajando} style={{ ...btn, background:"#FEF2F2", border:"1px solid #FECACA", color:"#DC2626" }}>Eliminar definitivamente</button>}
+      </>)}
+    </div>
+  );
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && !trabajando && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:640, maxHeight:"90vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+        <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, background:"#ffffff", zIndex:1 }}>
+          <div>
+            <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>🗄 Archivo</h2>
+            <div style={{ fontSize:12, color:"#64748B", marginTop:3 }}>Lo archivado no se ve en ninguna pestaña. Restaurarlo lo vuelve a mostrar en todas.</div>
           </div>
-          <div style={{ marginBottom:24 }}>
-            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Notas</label>
-            <textarea value={form.notas} rows={3} placeholder="Observaciones..." onChange={e => setForm(f => ({...f, notas: e.target.value}))}
-              style={{ width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:14, outline:"none", resize:"vertical", boxSizing:"border-box" }} />
-          </div>
-          <button onClick={handleSave} style={{ width:"100%", padding:"12px", background:"#1A2B4A", border:"none", borderRadius:8, fontFamily:"'Inter', sans-serif", fontSize:14, fontWeight:600, color:"#ffffff", cursor:"pointer" }}
-            onMouseEnter={e => e.currentTarget.style.background="#2563EB"} onMouseLeave={e => e.currentTarget.style.background="#1A2B4A"}>Guardar obra</button>
+          <button onClick={onClose} disabled={!!trabajando} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
+        </div>
+        <div style={{ padding:"20px 24px" }}>
+          <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", letterSpacing:0.5, marginBottom:10 }}>OBRAS ARCHIVADAS ({obrasArchivadas.length})</div>
+          {obrasArchivadas.length === 0 && <div style={{ fontSize:13, color:"#94A3B8", marginBottom:16 }}>No hay obras archivadas.</div>}
+          {obrasArchivadas.map(g => (
+            <div key={g.p.id} style={fila}>
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontSize:14, fontWeight:600, color:"#1A2B4A" }}>{g.p.nombre}</div>
+                <div style={{ fontSize:12, color:"#64748B" }}>
+                  {g.p.lugar ? `📍 ${g.p.lugar} · ` : ""}{g.entregas.length} entrega{g.entregas.length !== 1 ? "s" : ""}{g.p.archivada_en ? ` · archivada el ${fechaArch(g.p.archivada_en)}` : ""}
+                </div>
+              </div>
+              {botones(g.p.id, () => restaurarObra(g), () => eliminarObra(g))}
+            </div>
+          ))}
+          <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", letterSpacing:0.5, margin:"20px 0 10px" }}>ENTREGAS ARCHIVADAS DE OBRAS ACTIVAS ({entregasArchivadas.length})</div>
+          {entregasArchivadas.length === 0 && <div style={{ fontSize:13, color:"#94A3B8" }}>No hay entregas archivadas sueltas.</div>}
+          {entregasArchivadas.map(e => (
+            <div key={e.id} style={fila}>
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontSize:14, fontWeight:600, color:"#1A2B4A" }}>{e.nombre}</div>
+                <div style={{ fontSize:12, color:"#64748B" }}>📅 {e.fecha ? formatDate(e.fecha) : "Sin fecha"}{e.archivada_en ? ` · archivada el ${fechaArch(e.archivada_en)}` : ""}</div>
+              </div>
+              {botones(e.id, () => restaurarEntrega(e), () => eliminarEntrega(e))}
+            </div>
+          ))}
+          {!isAdmin && <div style={{ fontSize:12, color:"#94A3B8", marginTop:16 }}>Solo un administrador puede eliminar definitivamente.</div>}
         </div>
       </div>
     </div>
@@ -846,10 +1137,10 @@ function ModalObraEntrega({ obra, onClose, onSave }) {
 
 // ─── DETALLE OBRA (Entregas) ──────────────────────────────────────────────────
 function DetalleObraEntrega({ obra, onClose, onEdit, onDelete, onEntregada, rol, sesion }) {
-  const dias = diasRestantes(obra.fecha);
-  const status = getStatus(dias, obra.estado);
+  const dias = obra.fecha ? diasRestantes(obra.fecha) : null;
+  const status = obra.fecha ? getStatus(dias, obra.estado) : (obra.estado === "terminado" ? "done" : "ok");
   const sc = { urgent:{bg:"#FEF2F2",text:"#DC2626",border:"#FECACA",label:"Urgente"}, vencida:{bg:"#FEF2F2",text:"#DC2626",border:"#FECACA",label:"Vencida"}, warning:{bg:"#FFFBEB",text:"#D97706",border:"#FDE68A",label:"Próxima"}, ok:{bg:"#ECFDF5",text:"#059669",border:"#A7F3D0",label:"A tiempo"}, done:{bg:"#F8FAFC",text:"#64748B",border:"#E2E8F0",label:"Entregada"} }[status] || {bg:"#ECFDF5",text:"#059669",border:"#A7F3D0",label:"OK"};
-  const diasLabel = obra.estado === "terminado" ? "Entregada" : dias < 0 ? `Vencida hace ${Math.abs(dias)} días` : dias === 0 ? "Entrega hoy" : `${dias} días para entrega`;
+  const diasLabel = obra.estado === "terminado" ? "Entregada" : dias == null ? "Sin fecha de entrega" : dias < 0 ? `Vencida hace ${Math.abs(dias)} días` : dias === 0 ? "Entrega hoy" : `${dias} días para entrega`;
 
   const [agregados, setAgregados] = useState([]);
   const [showAddAgr, setShowAddAgr] = useState(false);
@@ -885,7 +1176,7 @@ function DetalleObraEntrega({ obra, onClose, onEdit, onDelete, onEntregada, rol,
         </div>
         <div style={{ padding:"20px 24px 36px" }}>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
-            {[{ label:"Lugar", val: obra.lugar }, { label:"Inicio", val: obra.fecha_inicio ? formatDate(obra.fecha_inicio) : "—" }, { label:"Entrega", val: formatDate(obra.fecha) }, { label:"Estado", val: ESTADO_LABELS[obra.estado] }, { label:"Muebles", val: `${normalizarMuebles(obra.muebles||[]).reduce((a,m)=>a+(m.cantidad||1),0)} unidades` }].map(d => (
+            {[{ label:"Lugar", val: obra.lugar }, { label:"Inicio", val: obra.fecha_inicio ? formatDate(obra.fecha_inicio) : "—" }, { label:"Entrega", val: obra.fecha ? formatDate(obra.fecha) : "Sin fecha" }, { label:"Estado", val: ESTADO_LABELS[obra.estado] }, { label:"Muebles", val: `${normalizarMuebles(obra.muebles||[]).reduce((a,m)=>a+(m.cantidad||1),0)} unidades` }].map(d => (
               <div key={d.label} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:10, padding:"12px 14px" }}>
                 <div style={{ fontSize:11, color:"#94A3B8", fontWeight:600, marginBottom:4 }}>{d.label.toUpperCase()}</div>
                 <div style={{ fontSize:13, color:"#1A2B4A", fontWeight:500 }}>{d.val}</div>
@@ -946,7 +1237,7 @@ function DetalleObraEntrega({ obra, onClose, onEdit, onDelete, onEntregada, rol,
             <button onClick={onEdit} style={{ padding:"9px 18px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Editar</button>
             <button onClick={() => generarPDF(obra)} style={{ padding:"9px 18px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>PDF</button>
             {obra.estado !== "terminado" && <button onClick={onEntregada} style={{ padding:"9px 18px", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:8, color:"#059669", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Entregada</button>}
-            {(rol === "admin" || rol === "operario") && <button onClick={onDelete} style={{ padding:"9px 18px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Eliminar</button>}
+            {(rol === "admin" || rol === "operario") && <button onClick={onDelete} style={{ padding:"9px 18px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>🗄 Archivar</button>}
           </div>
         </div>
       </div>
@@ -958,8 +1249,12 @@ function DetalleObraEntrega({ obra, onClose, onEdit, onDelete, onEntregada, rol,
 // ═══════════════════════════════════════════════════════════════════════════════
 // AVANCE DE OBRA MODULE (Aixaobra)
 // ═══════════════════════════════════════════════════════════════════════════════
-function AvanceModule({ sesion }) {
-  const [aixaObras, setAixaObras] = useState([]);
+function AvanceModule({ sesion, entregas = [] }) {
+  const [aixaObrasTodas, setAixaObras] = useState([]);
+  const [showElegirEntrega, setShowElegirEntrega] = useState(false);
+  const { activas, archivadas, existentes } = vinculoEntregas(entregas);
+  // Lo de entregas archivadas no se muestra
+  const aixaObras = aixaObrasTodas.filter(o => !archivadas.has(o.obra_id));
   const [aixaUsers, setAixaUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedObra, setSelectedObra] = useState(null);
@@ -1011,20 +1306,25 @@ function AvanceModule({ sesion }) {
   const done = aixaObras.filter(o => obraProgressAixa(o) === 100).length;
   const delayed = aixaObras.filter(o => isDelayedAixa(o)).length;
 
-  async function saveObra(name, client, start_date, due_date, description) {
+  // Nombre, cliente y fecha de entrega vienen de la pestaña Entregas; acá se edita el inicio y la descripción
+  async function saveObra({ name, client, start_date, due_date, description }) {
     setLoading(true);
     try {
-      if (editingObra) {
-        const o = aixaObras.find(x => x.id === editingObra);
-        const hist = [...(o.history||[])];
-        hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Obra editada`, time: new Date().toISOString() });
-        await updateAixaObra(editingObra, { name, client, start_date: start_date||null, due_date: due_date||null, description, history: hist });
-      } else {
-        await insertAixaObra({ name, client, start_date: start_date||null, due_date: due_date||null, description, stations: mkStations(), history: [], clarifications: [] });
-      }
+      const o = aixaObras.find(x => x.id === editingObra);
+      const hist = [...(o.history||[])];
+      hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Obra editada`, time: new Date().toISOString() });
+      const datos = existentes.has(o.obra_id)
+        ? { start_date: start_date||null, description }
+        : { name, client, start_date: start_date||null, due_date: due_date||null, description };
+      await updateAixaObra(editingObra, { ...datos, history: hist });
       await recargar();
     } catch { alert("Error al guardar"); }
     setLoading(false); setShowObraModal(false); setEditingObra(null);
+  }
+
+  async function agregarEntrega(e) {
+    await insertAixaObra({ obra_id: e.id, name: e.nombre, client: e.lugar, start_date: null, due_date: e.fecha || null, description: e.notas || "", stations: mkStations(), history: [], clarifications: [] });
+    await recargar();
   }
 
   async function delObra(id) {
@@ -1364,7 +1664,7 @@ function AvanceModule({ sesion }) {
             <option value="done">Completadas</option>
             <option value="delayed">Con demora</option>
           </select>
-          {(isAdmin || sesion.rol === "operario") && <button onClick={() => { setEditingObra(null); setShowObraModal(true); }} style={{ padding:"8px 18px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#ffffff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>+ Nueva obra</button>}
+          {(isAdmin || sesion.rol === "operario") && <button onClick={() => setShowElegirEntrega(true)} title="Las entregas nuevas se agregan solas al crearlas en Entregas" style={{ padding:"8px 18px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#ffffff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>+ Agregar entrega</button>}
         </div>
       </div>
 
@@ -1389,7 +1689,8 @@ function AvanceModule({ sesion }) {
                 {(isAdmin || sesion.rol === "operario") && (
                   <div onClick={e => e.stopPropagation()} style={{ position:"absolute", top:10, right:10, display:"flex", gap:4 }}>
                     <button onClick={() => { setEditingObra(o.id); setShowObraModal(true); }} style={{ padding:"4px 8px", fontSize:11, border:"1px solid #E2E8F0", borderRadius:5, background:"#F8FAFC", color:"#64748B", cursor:"pointer" }}>✎</button>
-                    <button onClick={() => delObra(o.id)} style={{ padding:"4px 8px", fontSize:11, border:"1px solid #FECACA", borderRadius:5, background:"#FEF2F2", color:"#DC2626", cursor:"pointer" }}>✕</button>
+                    {/* Las obras vinculadas se archivan o eliminan desde Entregas */}
+                    {!existentes.has(o.obra_id) && <button onClick={() => delObra(o.id)} style={{ padding:"4px 8px", fontSize:11, border:"1px solid #FECACA", borderRadius:5, background:"#FEF2F2", color:"#DC2626", cursor:"pointer" }}>✕</button>}
                   </div>
                 )}
                 <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", textTransform:"uppercase", marginBottom:3, paddingRight:60 }}>{o.name}</div>
@@ -1412,19 +1713,67 @@ function AvanceModule({ sesion }) {
       )}
 
       {/* Obra modal */}
-      {showObraModal && <ModalSimple title={editingObra ? "Editar Obra" : "Nueva Obra"} onClose={() => { setShowObraModal(false); setEditingObra(null); }}
-        onSave={(d) => saveObra(d.name, d.client, d.start_date, d.due_date, d.description)}
-        fields={[
-          { key:"name", label:"Nombre de la obra", type:"text", required:true, initial: editingObra ? aixaObras.find(x=>x.id===editingObra)?.name : "" },
-          { key:"client", label:"Cliente", type:"text", initial: editingObra ? aixaObras.find(x=>x.id===editingObra)?.client : "" },
-          { key:"start_date", label:"Fecha inicio", type:"date", initial: editingObra ? (aixaObras.find(x=>x.id===editingObra)?.start_date||"").split('T')[0] : "" },
-          { key:"due_date", label:"Fecha entrega", type:"date", initial: editingObra ? (aixaObras.find(x=>x.id===editingObra)?.due_date||"").split('T')[0] : "" },
-          { key:"description", label:"Descripción", type:"textarea", initial: editingObra ? aixaObras.find(x=>x.id===editingObra)?.description : "" },
-        ]} />}
+      {showObraModal && editingObra && (() => {
+        const o = aixaObras.find(x => x.id === editingObra);
+        if (!o) return null;
+        const vinculada = existentes.has(o.obra_id);
+        return <ModalSimple title={vinculada ? `Editar — ${o.name}` : "Editar Obra"} onClose={() => { setShowObraModal(false); setEditingObra(null); }}
+          onSave={saveObra}
+          fields={[
+            ...(vinculada ? [] : [
+              { key:"name", label:"Nombre de la obra", type:"text", required:true, initial: o.name },
+              { key:"client", label:"Cliente", type:"text", initial: o.client },
+            ]),
+            { key:"start_date", label:"Fecha inicio", type:"date", initial: (o.start_date||"").split('T')[0] },
+            ...(vinculada ? [] : [{ key:"due_date", label:"Fecha entrega", type:"date", initial: (o.due_date||"").split('T')[0] }]),
+            { key:"description", label:"Descripción", type:"textarea", initial: o.description },
+          ]} />;
+      })()}
+
+      {showElegirEntrega && <ModalElegirEntrega titulo="Agregar entrega a Avance de Producción"
+        entregas={activas.filter(e => !aixaObrasTodas.some(a => a.obra_id === e.id))}
+        onClose={() => setShowElegirEntrega(false)} onElegir={agregarEntrega} />}
     </div>
   );
 }
 
+
+// Elegir una entrega de la pestaña Entregas (para crear su registro en otra pestaña)
+function ModalElegirEntrega({ titulo, entregas, color = "#1A2B4A", onClose, onElegir }) {
+  const [id, setId] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const opciones = [...entregas].sort((a, b) => (a.fecha || "9999").localeCompare(b.fecha || "9999"));
+  async function elegir() {
+    const e = opciones.find(x => x.id === id);
+    if (!e) return;
+    setGuardando(true);
+    try { await onElegir(e); onClose(); }
+    catch (err) { alert(`No se pudo agregar: ${err.message}`); }
+    setGuardando(false);
+  }
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:440, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+        <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 6px" }}>{titulo}</h3>
+        <p style={{ fontSize:12, color:"#64748B", margin:"0 0 16px" }}>Todas las pestañas usan las obras de Entregas. Las obras y entregas nuevas se crean en la pestaña Entregas.</p>
+        {opciones.length === 0 ? (
+          <div style={{ fontSize:13, color:"#94A3B8", marginBottom:8 }}>Todas las entregas activas ya están en esta pestaña.</div>
+        ) : (
+          <select value={id} onChange={e => setId(e.target.value)} autoFocus
+            style={{ width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" }}>
+            <option value="">— Elegí la entrega —</option>
+            {opciones.map(e => <option key={e.id} value={e.id}>{e.nombre}{e.fecha ? ` — ${formatDate(e.fecha)}` : ""}</option>)}
+          </select>
+        )}
+        <div style={{ display:"flex", gap:10, marginTop:20 }}>
+          <button onClick={onClose} style={{ flex:1, padding:"10px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>Cancelar</button>
+          <button onClick={elegir} disabled={!id || guardando}
+            style={{ flex:1, padding:"10px", border:"none", borderRadius:8, background: !id || guardando ? "#94A3B8" : color, color:"#fff", cursor: !id || guardando ? "not-allowed" : "pointer", fontSize:13, fontWeight:600 }}>{guardando ? "Agregando..." : "Agregar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GENERIC MODAL
@@ -1481,8 +1830,11 @@ function ModalSimple({ title, onClose, onSave, fields }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // COBROS MODULE
 // ═══════════════════════════════════════════════════════════════════════════════
-function CobrosModule() {
-  const [cobros, setCobros] = useState([]);
+function CobrosModule({ entregas = [] }) {
+  const [cobrosTodos, setCobros] = useState([]);
+  const { activas, archivadas, existentes } = vinculoEntregas(entregas);
+  // Lo de entregas archivadas no se muestra
+  const cobros = cobrosTodos.filter(c => !archivadas.has(c.obra_id));
   const [cargando, setCargando] = useState(true);
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(null);
@@ -1490,8 +1842,6 @@ function CobrosModule() {
   const [editingAdicionalId, setEditingAdicionalId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [showNuevaObra, setShowNuevaObra] = useState(false);
-  const [nuevaObraData, setNuevaObraData] = useState({ nombre: "", lugar: "" });
-  const [savingNueva, setSavingNueva] = useState(false);
 
   async function recargar() {
     setCargando(true);
@@ -1561,16 +1911,9 @@ function CobrosModule() {
     } catch { alert("Error al eliminar."); }
   }
 
-  async function crearObraCobro() {
-    if (!nuevaObraData.nombre.trim()) { alert("Ingresá el nombre de la obra."); return; }
-    setSavingNueva(true);
-    try {
-      await insertCobro({ obra_id: uid(), obra_nombre: nuevaObraData.nombre.trim(), obra_lugar: nuevaObraData.lugar.trim(), monto_total: 0, adelanto_cobrado: false, adelanto_monto: 0, adelanto_porcentaje: 0, total_cobrado: false, total_fecha: null, plazo_pago: "", adicionales: [] });
-      await recargar();
-      setShowNuevaObra(false);
-      setNuevaObraData({ nombre: "", lugar: "" });
-    } catch { alert("Error al crear la obra."); }
-    setSavingNueva(false);
+  async function crearCobroEntrega(e) {
+    await insertCobro({ obra_id: e.id, obra_nombre: e.nombre, obra_lugar: e.lugar, monto_total: 0, adelanto_cobrado: false, adelanto_monto: 0, adelanto_porcentaje: 0, total_cobrado: false, total_fecha: null, plazo_pago: "", adicionales: [] });
+    await recargar();
   }
 
   const fmtMonto = (n) => (n != null && n !== "" && Number(n) !== 0) ? `$${Number(n).toLocaleString("es-AR")}` : "—";
@@ -1601,9 +1944,9 @@ function CobrosModule() {
 
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
         <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Cobros por obra</h2>
-        <button onClick={() => { setNuevaObraData({ nombre:"", lugar:"" }); setShowNuevaObra(true); }}
+        <button onClick={() => setShowNuevaObra(true)} title="Las entregas nuevas se agregan solas al crearlas en Entregas"
           style={{ padding:"9px 18px", background:"#7C3AED", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
-          + Nueva obra
+          + Agregar entrega
         </button>
       </div>
 
@@ -1662,11 +2005,12 @@ function CobrosModule() {
                 {selected.obra_lugar && <div style={{ fontSize:12, color:"#94A3B8", marginTop:3 }}>📍 {selected.obra_lugar}</div>}
               </div>
               <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                <button onClick={() => eliminarCobro(selected.id)}
+                {/* Los cobros de una entrega se archivan o eliminan desde Entregas */}
+                {!existentes.has(selected.obra_id) && <button onClick={() => eliminarCobro(selected.id)}
                   style={{ background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, padding:"6px 12px", color:"#DC2626", fontSize:12, fontWeight:600, cursor:"pointer" }}
                   onMouseEnter={e=>e.currentTarget.style.background="#FEE2E2"} onMouseLeave={e=>e.currentTarget.style.background="#FEF2F2"}>
                   🗑 Eliminar
-                </button>
+                </button>}
                 <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16, flexShrink:0 }}>✕</button>
               </div>
             </div>
@@ -1844,29 +2188,10 @@ function CobrosModule() {
         </div>
       )}
 
-      {/* MODAL: NUEVA OBRA */}
-      {showNuevaObra && (
-        <div onClick={e => e.target === e.currentTarget && setShowNuevaObra(false)} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-          <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:400, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
-            <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 18px" }}>Nueva obra en Cobros</h3>
-            <div style={{ marginBottom:14 }}>
-              <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Nombre de la obra *</label>
-              <input type="text" value={nuevaObraData.nombre} onChange={e => setNuevaObraData(d => ({ ...d, nombre: e.target.value }))} style={si} placeholder="Ej: Remodelación Cocina" autoFocus
-                onKeyDown={e => e.key === "Enter" && crearObraCobro()} />
-            </div>
-            <div style={{ marginBottom:4 }}>
-              <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Lugar / Cliente</label>
-              <input type="text" value={nuevaObraData.lugar} onChange={e => setNuevaObraData(d => ({ ...d, lugar: e.target.value }))} style={si} placeholder="Ej: Av. Corrientes 1234"
-                onKeyDown={e => e.key === "Enter" && crearObraCobro()} />
-            </div>
-            <div style={{ display:"flex", gap:10, marginTop:20 }}>
-              <button onClick={() => setShowNuevaObra(false)} style={{ flex:1, padding:"10px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>Cancelar</button>
-              <button onClick={crearObraCobro} disabled={savingNueva}
-                style={{ flex:1, padding:"10px", border:"none", borderRadius:8, background: savingNueva ? "#94A3B8" : "#7C3AED", color:"#fff", cursor: savingNueva ? "not-allowed" : "pointer", fontSize:13, fontWeight:600 }}>{savingNueva ? "Creando..." : "Crear obra"}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* MODAL: AGREGAR ENTREGA */}
+      {showNuevaObra && <ModalElegirEntrega titulo="Agregar entrega a Cobros" color="#7C3AED"
+        entregas={activas.filter(e => !cobrosTodos.some(c => c.obra_id === e.id))}
+        onClose={() => setShowNuevaObra(false)} onElegir={crearCobroEntrega} />}
     </div>
   );
 }
@@ -2163,8 +2488,11 @@ function ImportarMaterialesIA({ lista, onClose, onAgregar }) {
   );
 }
 
-function MaterialesModule({ sesion, obras = [] }) {
-  const [listas, setListas] = useState([]);
+function MaterialesModule({ sesion, entregas = [] }) {
+  const [listasTodas, setListas] = useState([]);
+  const { activas: obras, archivadas, existentes } = vinculoEntregas(entregas);
+  // Lo de entregas archivadas no se muestra
+  const listas = listasTodas.filter(l => !archivadas.has(l.obra_id));
   const [cargando, setCargando] = useState(true);
   const [selected, setSelected] = useState(null);
   const [showItemModal, setShowItemModal] = useState(false);
@@ -2172,8 +2500,6 @@ function MaterialesModule({ sesion, obras = [] }) {
   const [itemData, setItemData] = useState({});
   const [saving, setSaving] = useState(false);
   const [showNuevaObra, setShowNuevaObra] = useState(false);
-  const [nuevaObraData, setNuevaObraData] = useState({ nombre:"", lugar:"" });
-  const [savingNueva, setSavingNueva] = useState(false);
   const [showNotasModal, setShowNotasModal] = useState(false);
   const [notasEdit, setNotasEdit] = useState("");
   const [showImportarIA, setShowImportarIA] = useState(false);
@@ -2254,16 +2580,9 @@ function MaterialesModule({ sesion, obras = [] }) {
     } catch { alert("Error al eliminar."); }
   }
 
-  async function crearObraMateriales() {
-    if (!nuevaObraData.nombre.trim()) { alert("Ingresá el nombre de la obra."); return; }
-    setSavingNueva(true);
-    try {
-      await insertMaterial({ obra_id: uid(), obra_nombre: nuevaObraData.nombre.trim(), obra_lugar: nuevaObraData.lugar.trim(), items: [], notas: "" });
-      await recargar();
-      setShowNuevaObra(false);
-      setNuevaObraData({ nombre:"", lugar:"" });
-    } catch { alert("Error al crear."); }
-    setSavingNueva(false);
+  async function crearListaEntrega(e) {
+    await insertMaterial({ obra_id: e.id, obra_nombre: e.nombre, obra_lugar: e.lugar, items: [], notas: "" });
+    await recargar();
   }
 
   async function agregarItemsImportados(nuevos) {
@@ -2354,9 +2673,9 @@ function MaterialesModule({ sesion, obras = [] }) {
             {enviandoResumen ? "Enviando..." : "📧 Enviar aviso de materiales ahora"}
           </button>
         )}
-        <button onClick={() => { setNuevaObraData({ nombre:"", lugar:"" }); setShowNuevaObra(true); }}
+        <button onClick={() => setShowNuevaObra(true)} title="Las entregas nuevas se agregan solas al crearlas en Entregas"
           style={{ padding:"9px 18px", background:"#0F766E", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer" }}>
-          + Nueva obra
+          + Agregar entrega
         </button>
       </div>
 
@@ -2444,11 +2763,12 @@ function MaterialesModule({ sesion, obras = [] }) {
                       style={{ padding:"7px 14px", background:"#F5F3FF", border:"1px solid #DDD6FE", borderRadius:8, color:"#7C3AED", fontSize:12, fontWeight:600, cursor:"pointer" }}>✨ Cargar con Claude</button>}
                     <button onClick={() => abrirItemModal()}
                       style={{ padding:"7px 14px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>+ Agregar</button>
-                    <button onClick={() => eliminarMaterial(selected.id)}
+                    {/* Los materiales de una entrega se archivan o eliminan desde Entregas */}
+                    {!existentes.has(selected.obra_id) && <button onClick={() => eliminarMaterial(selected.id)}
                       style={{ padding:"7px 12px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:12, fontWeight:600, cursor:"pointer" }}
                       onMouseEnter={e=>e.currentTarget.style.background="#FEE2E2"} onMouseLeave={e=>e.currentTarget.style.background="#FEF2F2"}>
                       🗑 Eliminar
-                    </button>
+                    </button>}
                     <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
                   </div>
                 </div>
@@ -2633,28 +2953,10 @@ function MaterialesModule({ sesion, obras = [] }) {
         </div>
       )}
 
-      {/* MODAL: NUEVA OBRA */}
-      {showNuevaObra && (
-        <div onClick={e => e.target===e.currentTarget&&setShowNuevaObra(false)}
-          style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-          <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:400, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
-            <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 18px" }}>Nueva obra en Materiales</h3>
-            <div style={{ marginBottom:14 }}>
-              <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Nombre de la obra *</label>
-              <input type="text" value={nuevaObraData.nombre} onChange={e=>setNuevaObraData(d=>({...d,nombre:e.target.value}))} style={si} placeholder="Ej: Dormitorio principal" autoFocus onKeyDown={e=>e.key==="Enter"&&crearObraMateriales()} />
-            </div>
-            <div style={{ marginBottom:4 }}>
-              <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Lugar / Cliente</label>
-              <input type="text" value={nuevaObraData.lugar} onChange={e=>setNuevaObraData(d=>({...d,lugar:e.target.value}))} style={si} placeholder="Ej: Av. Rivadavia 800" onKeyDown={e=>e.key==="Enter"&&crearObraMateriales()} />
-            </div>
-            <div style={{ display:"flex", gap:10, marginTop:20 }}>
-              <button onClick={()=>setShowNuevaObra(false)} style={{ flex:1, padding:"10px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>Cancelar</button>
-              <button onClick={crearObraMateriales} disabled={savingNueva}
-                style={{ flex:1, padding:"10px", border:"none", borderRadius:8, background:savingNueva?"#94A3B8":"#0F766E", color:"#fff", cursor:savingNueva?"not-allowed":"pointer", fontSize:13, fontWeight:600 }}>{savingNueva?"Creando...":"Crear obra"}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* MODAL: AGREGAR ENTREGA */}
+      {showNuevaObra && <ModalElegirEntrega titulo="Agregar entrega a Materiales" color="#0F766E"
+        entregas={obras.filter(e => !listasTodas.some(l => l.obra_id === e.id))}
+        onClose={() => setShowNuevaObra(false)} onElegir={crearListaEntrega} />}
     </div>
   );
 }
@@ -2662,8 +2964,11 @@ function MaterialesModule({ sesion, obras = [] }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // AVANCE DE OBRA MODULE (nuevo — con días y fotos)
 // ═══════════════════════════════════════════════════════════════════════════════
-function AvanceObraModule({ sesion }) {
-  const [obras, setObras] = useState([]);
+function AvanceObraModule({ sesion, entregas = [] }) {
+  const [obrasTodas, setObras] = useState([]);
+  const { activas, archivadas } = vinculoEntregas(entregas);
+  // Lo de entregas archivadas no se muestra
+  const obras = obrasTodas.filter(o => !archivadas.has(o.obra_id));
   const [cargando, setCargando] = useState(true);
   const [selected, setSelected] = useState(null);
   const [dias, setDias] = useState([]);
@@ -2819,7 +3124,7 @@ function AvanceObraModule({ sesion }) {
         {canEdit && (
           <button onClick={() => { setEditingObra(null); setShowObraModal(true); }}
             style={{ padding:"8px 18px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
-            + Nueva obra
+            + Agregar entrega
           </button>
         )}
       </div>
@@ -2978,26 +3283,40 @@ function AvanceObraModule({ sesion }) {
         </div>
       )}
 
-      {showObraModal && <ModalObraAvance obra={editingObra} onClose={() => { setShowObraModal(false); setEditingObra(null); }} onSave={saveObra} />}
+      {showObraModal && <ModalObraAvance obra={editingObra}
+        entregas={activas.filter(e => e.id === editingObra?.obra_id || !obrasTodas.some(o => o.obra_id === e.id))}
+        onClose={() => { setShowObraModal(false); setEditingObra(null); }} onSave={saveObra} />}
       {showDiaModal && <ModalDiaAvance dia={editingDia} onClose={() => { setShowDiaModal(false); setEditingDia(null); }} onSave={saveDia} />}
       {showInformeFinal && informeFinalObra && <ModalInformeFinalObra obra={informeFinalObra} onClose={() => { setShowInformeFinal(false); setInformeFinalObra(null); }} onSave={() => loadInformesIds()} />}
     </div>
   );
 }
 
-function ModalObraAvance({ obra, onClose, onSave }) {
+// La obra de Avance de Obra se elige de las entregas: nombre, dirección y fecha vienen de Entregas
+function ModalObraAvance({ obra, entregas = [], onClose, onSave }) {
+  const [obraId, setObraId] = useState(obra?.obra_id || "");
   const [form, setForm] = useState({ nombre: obra?.nombre || "", direccion: obra?.direccion || "", fecha_entrega: obra?.fecha_entrega || "" });
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const si = { width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:14, outline:"none", boxSizing:"border-box" };
+  const vinculada = !!obraId;
+  const opciones = [...entregas].sort((a, b) => (a.fecha || "9999").localeCompare(b.fecha || "9999"));
+
+  function elegirEntrega(id) {
+    setObraId(id);
+    const e = entregas.find(x => x.id === id);
+    if (e) setForm({ nombre: e.nombre, direccion: e.lugar || "", fecha_entrega: e.fecha || "" });
+    setErrors({});
+  }
 
   async function handleSave() {
     const e = {};
+    if (!obra && !obraId) e.entrega = "Elegí la entrega";
     if (!form.nombre.trim()) e.nombre = "Requerido";
     setErrors(e);
     if (Object.keys(e).length > 0) return;
     setSaving(true);
-    await onSave({ nombre: form.nombre.trim(), direccion: form.direccion.trim(), fecha_entrega: form.fecha_entrega || null });
+    await onSave({ ...(obraId ? { obra_id: obraId } : {}), nombre: form.nombre.trim(), direccion: form.direccion.trim(), fecha_entrega: form.fecha_entrega || null });
     setSaving(false);
   }
 
@@ -3005,22 +3324,34 @@ function ModalObraAvance({ obra, onClose, onSave }) {
     <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
       <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:460, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
         <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{obra ? "Editar obra" : "Nueva obra"}</h2>
+          <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{obra ? "Editar obra" : "Agregar entrega a Avance de Obra"}</h2>
           <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
         </div>
         <div style={{ padding:"24px" }}>
+          {(!obra || !obra.obra_id) && (
+            <div style={{ marginBottom:16 }}>
+              <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Entrega {obra ? "(vincular)" : "*"}</label>
+              <select value={obraId} onChange={e => elegirEntrega(e.target.value)} autoFocus style={{ ...si, borderColor: errors.entrega ? "#FCA5A5" : "#E2E8F0" }}>
+                <option value="">— Elegí la entrega de la pestaña Entregas —</option>
+                {opciones.map(e => <option key={e.id} value={e.id}>{e.nombre}{e.fecha ? ` — ${formatDate(e.fecha)}` : ""}</option>)}
+              </select>
+              {errors.entrega && <div style={{ color:"#DC2626", fontSize:11, marginTop:4 }}>{errors.entrega}</div>}
+              {!opciones.length && <div style={{ color:"#94A3B8", fontSize:11, marginTop:4 }}>Todas las entregas activas ya tienen su avance de obra.</div>}
+            </div>
+          )}
+          {vinculada && <div style={{ fontSize:12, color:"#64748B", marginBottom:16 }}>El nombre, la dirección y la fecha se toman de Entregas y se editan desde ahí.</div>}
           <div style={{ marginBottom:16 }}>
             <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Nombre de la obra *</label>
-            <input style={{ ...si, borderColor: errors.nombre ? "#FCA5A5" : "#E2E8F0" }} value={form.nombre} onChange={e => { setForm(f=>({...f, nombre:e.target.value})); setErrors(er=>({...er,nombre:""})); }} placeholder="Ej: Remodelación Cocina" autoFocus />
+            <input disabled={vinculada} style={{ ...si, borderColor: errors.nombre ? "#FCA5A5" : "#E2E8F0", opacity: vinculada ? 0.7 : 1 }} value={form.nombre} onChange={e => { setForm(f=>({...f, nombre:e.target.value})); setErrors(er=>({...er,nombre:""})); }} placeholder="Ej: Remodelación Cocina" />
             {errors.nombre && <div style={{ color:"#DC2626", fontSize:11, marginTop:4 }}>{errors.nombre}</div>}
           </div>
           <div style={{ marginBottom:16 }}>
             <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Dirección</label>
-            <input style={si} value={form.direccion} onChange={e => setForm(f=>({...f, direccion:e.target.value}))} placeholder="Calle, número, barrio..." />
+            <input disabled={vinculada} style={{ ...si, opacity: vinculada ? 0.7 : 1 }} value={form.direccion} onChange={e => setForm(f=>({...f, direccion:e.target.value}))} placeholder="Calle, número, barrio..." />
           </div>
           <div style={{ marginBottom:24 }}>
             <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Fecha de entrega de la obra</label>
-            <input type="date" style={si} value={form.fecha_entrega} onChange={e => setForm(f=>({...f, fecha_entrega:e.target.value}))} />
+            <input disabled={vinculada} type="date" style={{ ...si, opacity: vinculada ? 0.7 : 1 }} value={form.fecha_entrega} onChange={e => setForm(f=>({...f, fecha_entrega:e.target.value}))} />
           </div>
           <div style={{ display:"flex", gap:10 }}>
             <button onClick={onClose} style={{ flex:1, padding:"11px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>Cancelar</button>
@@ -3427,16 +3758,37 @@ function formatFileSizeAceptada(bytes) {
 const IMG_RE_ACEPTADA = /\.(jpe?g|png|gif|webp|bmp)$/i;
 function esImagenAceptada(f) { return (f.type || "").startsWith("image/") || IMG_RE_ACEPTADA.test(f.name || ""); }
 
-function ObrasAceptadasModule({ sesion }) {
-  const [obras, setObras] = useState([]);
+function ObrasAceptadasModule({ sesion, proyectos = [], recargarObras }) {
+  const [obrasTodas, setObras] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [search, setSearch] = useState("");
   const [mesFilter, setMesFilter] = useState("");
   const [modalObra, setModalObra] = useState(null);
+  const [pasando, setPasando] = useState(null);
 
   const isAdmin = sesion.rol === "admin";
   const canEdit = isAdmin || sesion.rol === "operario" || sesion.rol === "arquitecto";
   const canDelete = isAdmin || sesion.rol === "operario";
+  // Las vinculadas a una obra archivada no se muestran
+  const proyectosArchivados = new Set(proyectos.filter(p => p.archivada).map(p => p.id));
+  const obras = obrasTodas.filter(o => !proyectosArchivados.has(o.proyecto_id));
+  const proyectosActivos = proyectos.filter(p => !p.archivada).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const obraEnEntregas = o => proyectos.find(p => p.id === o.proyecto_id);
+
+  // Crea la obra en Entregas (con una primera entrega) y la deja vinculada
+  async function pasarAEntregas(o) {
+    if (!confirm(`¿Crear "${o.nombre}" como obra nueva en Entregas?\n\nSe crea con una primera entrega${o.fecha_entrega_aprox ? ` para el ${formatDate(o.fecha_entrega_aprox)}` : ""} y queda vinculada a esta obra aceptada. Los muebles se completan después en Entregas.`)) return;
+    setPasando(o.id);
+    try {
+      const { proyecto } = await crearObraConEntrega({
+        nombre: o.nombre, lugar: o.direccion || "", sesion,
+        entrega: { fecha: o.fecha_entrega_aprox, notas: o.descripcion || "", estado: "pendiente", muebles: [] },
+      });
+      await updateObraAceptada(o.id, { proyecto_id: proyecto.id, updated_at: new Date().toISOString() });
+      await Promise.all([loadObras(), recargarObras()]);
+    } catch (e) { alert(`No se pudo crear la obra en Entregas: ${e.message}`); }
+    setPasando(null);
+  }
 
   async function loadObras() {
     setCargando(true);
@@ -3444,8 +3796,7 @@ function ObrasAceptadasModule({ sesion }) {
     setCargando(false);
   }
 
-  // Carga inicial al abrir el módulo (cargando ya arranca en true, el setCargando(true) no re-renderiza)
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // Carga inicial al abrir el módulo
   useEffect(() => { loadObras(); }, []);
 
   async function deleteObra(obra) {
@@ -3553,8 +3904,17 @@ function ObrasAceptadasModule({ sesion }) {
                     </div>
                   );
                 })()}
+                {obraEnEntregas(o) && (
+                  <div style={{ fontSize:11, color:"#059669", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:6, padding:"4px 9px", marginBottom:12, display:"inline-block" }}>📦 En Entregas: {obraEnEntregas(o).nombre}</div>
+                )}
                 <div onClick={e => e.stopPropagation()} style={{ display:"flex", gap:6, paddingTop:12, borderTop:"1px solid #F1F5F9" }}>
                   <button onClick={() => setModalObra(o)} style={{ flex:1, padding:"7px 0", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>{canEdit ? "Editar" : "Ver"}</button>
+                  {canEdit && !obraEnEntregas(o) && (
+                    <button onClick={() => pasarAEntregas(o)} disabled={pasando === o.id} title="Crear esta obra en la pestaña Entregas"
+                      style={{ flex:1, padding:"7px 0", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:8, color:"#2563EB", fontSize:12, fontWeight:600, cursor: pasando === o.id ? "not-allowed" : "pointer", fontFamily:"'Inter', sans-serif" }}>
+                      {pasando === o.id ? "Creando..." : "📦 Pasar a Entregas"}
+                    </button>
+                  )}
                   {canDelete && <button onClick={() => deleteObra(o)} style={{ padding:"7px 10px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:12, cursor:"pointer" }}>✕</button>}
                 </div>
               </div>
@@ -3566,6 +3926,7 @@ function ObrasAceptadasModule({ sesion }) {
       {modalObra && (
         <ModalObraAceptada
           obra={modalObra === "nueva" ? null : modalObra}
+          proyectos={proyectosActivos}
           canEdit={canEdit}
           canDelete={canDelete}
           onClose={() => setModalObra(null)}
@@ -3577,11 +3938,11 @@ function ObrasAceptadasModule({ sesion }) {
   );
 }
 
-function ModalObraAceptada({ obra, canEdit, canDelete, onClose, onSave, onDelete }) {
+function ModalObraAceptada({ obra, proyectos = [], canEdit, canDelete, onClose, onSave, onDelete }) {
   const [form, setForm] = useState({
     nombre: obra?.nombre || "", direccion: obra?.direccion || "", cliente: obra?.cliente || "",
     fecha_aceptacion: obra?.fecha_aceptacion || "", fecha_entrega_aprox: obra?.fecha_entrega_aprox || "",
-    descripcion: obra?.descripcion || "",
+    descripcion: obra?.descripcion || "", proyecto_id: obra?.proyecto_id || "",
   });
   const [archivos, setArchivos] = useState(obra?.archivos || []);
   const [dragging, setDragging] = useState(false);
@@ -3624,7 +3985,7 @@ function ModalObraAceptada({ obra, canEdit, canDelete, onClose, onSave, onDelete
       const baseData = {
         nombre: form.nombre.trim(), direccion: form.direccion.trim(), cliente: form.cliente.trim(),
         fecha_aceptacion: form.fecha_aceptacion || null, fecha_entrega_aprox: form.fecha_entrega_aprox || null,
-        descripcion: form.descripcion.trim(),
+        descripcion: form.descripcion.trim(), proyecto_id: form.proyecto_id || null,
       };
       if (!obraId) {
         const inserted = await insertObraAceptada({ ...baseData, archivos: [] });
@@ -3693,6 +4054,14 @@ function ModalObraAceptada({ obra, canEdit, canDelete, onClose, onSave, onDelete
               <textarea style={{ ...inp, minHeight:110, resize:"vertical", lineHeight:1.5 }} value={form.descripcion}
                 onChange={e => setForm(f => ({...f, descripcion:e.target.value}))}
                 placeholder={"Qué hay que hacer, materiales necesarios, items a fabricar y entregar...\nEj:\n- 2 bajo mesadas melamina blanca 18mm\n- 1 placard 3 puertas"} />
+            </div>
+            <div style={{ marginBottom:16 }}>
+              <label style={lbl}>Obra en Entregas</label>
+              <select style={inp} value={form.proyecto_id} onChange={e => setForm(f => ({...f, proyecto_id:e.target.value}))}>
+                <option value="">— Todavía no está en Entregas —</option>
+                {proyectos.map(p => <option key={p.id} value={p.id}>{p.nombre}{p.lugar ? ` — ${p.lugar}` : ""}</option>)}
+              </select>
+              <div style={{ fontSize:11, color:"#94A3B8", marginTop:4 }}>Si la obra ya existe en Entregas, elegila para que quede vinculada (si se archiva allá, se archiva acá).</div>
             </div>
           </fieldset>
 
@@ -3792,21 +4161,37 @@ function ModalObraAceptada({ obra, canEdit, canDelete, onClose, onSave, onDelete
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function App() {
   const [sesion, setSesion] = useState(null);
-  const [obras, setObras] = useState([]);
+  const [obras, setObras] = useState([]); // entregas (incluidas las archivadas)
+  const [proyectos, setProyectos] = useState([]); // obras que agrupan entregas
   const [cargando, setCargando] = useState(true);
   const [activeTab, setActiveTab] = useState("entregas");
   const [showUsuarios, setShowUsuarios] = useState(false);
   const [showWA, setShowWA] = useState(false);
 
+  async function recargarObras() {
+    try {
+      let [ob, pr] = await Promise.all([getObras(), getProyectos()]);
+      ob = ob || []; pr = pr || [];
+      // Entregas sin obra (por ejemplo, cargadas antes de este cambio): se les crea su obra
+      const sueltas = ob.filter(o => !o.proyecto_id || !pr.some(p => p.id === o.proyecto_id));
+      if (sueltas.length) {
+        for (const o of sueltas) {
+          const p = { id: uid(), nombre: o.nombre, lugar: o.lugar || "", creado_por: o.creado_por || null, creado_en: o.creado_en || new Date().toISOString(), archivada: !!o.archivada };
+          await upsertProyecto(p);
+          await patchEntregas(`id=eq.${o.id}`, { proyecto_id: p.id });
+        }
+        [ob, pr] = await Promise.all([getObras(), getProyectos()]);
+      }
+      setObras(ob || []); setProyectos(pr || []);
+    } catch (e) { console.error("Error cargando obras:", e); }
+  }
+
   useEffect(() => {
     (async () => {
       try {
         const s = await getSesion();
-        if (s) {
-          setSesion(s);
-          const ob = await getObras(); setObras(ob || []);
-        }
-      } catch { setObras([]); }
+        if (s) { setSesion(s); await recargarObras(); }
+      } catch (e) { console.error("Error iniciando la sesión:", e); }
       setCargando(false);
     })();
     // Si la sesión vence o se cierra en otra pestaña, volver al login
@@ -3818,12 +4203,13 @@ export default function App() {
   // Recalcula el contador de alertas de materiales al entrar y al cambiar de pestaña
   useEffect(() => {
     if (!sesion || sesion.rol === "arquitecto" || sesion.rol === "finanzas") return;
-    getMateriales().then(ls => setMatAlertCount(alertasMateriales(ls || [], obras).length)).catch(() => {});
+    const { activas, archivadas } = vinculoEntregas(obras);
+    getMateriales().then(ls => setMatAlertCount(alertasMateriales((ls || []).filter(l => !archivadas.has(l.obra_id)), activas).length)).catch(() => {});
   }, [sesion, obras, activeTab]);
 
-  async function recargarObras() { try { const ob = await getObras(); setObras(ob || []); } catch (e) { console.error("Error cargando obras:", e); } }
   function handleLogin(u) { setSesion(u); if (u.rol === "finanzas") setActiveTab("cobros"); recargarObras(); }
-  async function handleLogout() { await cerrarSesion(); setSesion(null); setObras([]); }
+  async function handleLogout() { await cerrarSesion(); setSesion(null); setObras([]); setProyectos([]); }
+  const entregasActivas = obras.filter(o => !o.archivada);
 
   const isAdmin = sesion?.rol === "admin";
   const isFinanzas = sesion?.rol === "finanzas";
@@ -3832,7 +4218,7 @@ export default function App() {
   const canSeeAvanceProduccion = !isArquitecto && !isFinanzas;
   const canSeeAvanceObra = !isFinanzas;
   const canSeeMateriales = !isArquitecto && !isFinanzas;
-  const activas = obras.filter(o => o.estado !== "terminado");
+  const activas = entregasActivas.filter(o => o.estado !== "terminado");
   const urgentes = activas.filter(o => { const d = diasRestantes(o.fecha); return d >= 0 && d <= 7; });
   const proximas = activas.filter(o => { const d = diasRestantes(o.fecha); return d > 7 && d <= 21; });
   const alertCount = urgentes.length + proximas.length;
@@ -3925,17 +4311,17 @@ export default function App() {
 
       {/* MAIN CONTENT */}
       <main style={{ maxWidth:1200, margin:"0 auto", padding:"28px 24px 100px" }}>
-        {activeTab === "entregas" && <EntregasModule sesion={sesion} obras={obras} recargarObras={recargarObras} />}
-        {activeTab === "aceptadas" && <ObrasAceptadasModule sesion={sesion} />}
-        {activeTab === "avance" && canSeeAvanceProduccion && <AvanceModule sesion={sesion} />}
-        {activeTab === "avance_obra" && canSeeAvanceObra && <AvanceObraModule sesion={sesion} />}
-        {activeTab === "cobros" && canSeeCobros && <CobrosModule />}
-        {activeTab === "materiales" && canSeeMateriales && <MaterialesModule sesion={sesion} obras={obras} />}
+        {activeTab === "entregas" && <EntregasModule sesion={sesion} obras={obras} proyectos={proyectos} recargarObras={recargarObras} />}
+        {activeTab === "aceptadas" && <ObrasAceptadasModule sesion={sesion} proyectos={proyectos} recargarObras={recargarObras} />}
+        {activeTab === "avance" && canSeeAvanceProduccion && <AvanceModule sesion={sesion} entregas={obras} />}
+        {activeTab === "avance_obra" && canSeeAvanceObra && <AvanceObraModule sesion={sesion} entregas={obras} />}
+        {activeTab === "cobros" && canSeeCobros && <CobrosModule entregas={obras} />}
+        {activeTab === "materiales" && canSeeMateriales && <MaterialesModule sesion={sesion} entregas={obras} />}
       </main>
 
       {/* MODALES GLOBALES */}
       {showUsuarios && isAdmin && <GestionUsuarios onClose={() => setShowUsuarios(false)} />}
-      {showWA && <ConfigWhatsApp obras={obras} onClose={() => setShowWA(false)} />}
+      {showWA && <ConfigWhatsApp obras={entregasActivas} onClose={() => setShowWA(false)} />}
     </div>
   );
 }
