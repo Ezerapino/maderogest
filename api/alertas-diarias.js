@@ -2,8 +2,12 @@
 // materiales, y obras con la entrega vencida. Lo dispara el cron de Vercel (ver vercel.json).
 // Un admin también puede llamarlo desde la app: ?preview=1 devuelve el resumen sin mandarlo.
 //
-// Variables en Vercel: RESEND_API_KEY, ALERTAS_EMAILS (separados por coma),
-// ALERTAS_REMITENTE (ej. "MaderoGest <alertas@grupoaixa.com>"), CRON_SECRET.
+// Variables en Vercel: ALERTAS_EMAILS (separados por coma), CRON_SECRET y una forma de envío:
+//  - SMTP del hosting (preferido, Hostmar rechaza como spam lo que llega por Resend):
+//    SMTP_USER (la casilla, ej. alertas@grupoaixa.com.ar), SMTP_PASSWORD,
+//    opcionales SMTP_HOST (c207.ferozo.com) y SMTP_PORT (465).
+//  - Resend: RESEND_API_KEY y ALERTAS_REMITENTE (ej. "MaderoGest <alertas@grupoaixa.com.ar>").
+import nodemailer from "nodemailer";
 import { adminClient, getCaller, httpError, sendError } from "./_lib.js";
 
 const DIAS_ALERTA = 10;
@@ -96,18 +100,37 @@ function armarTexto({ hoy, conFaltantes, vencidasSinFaltantes }) {
 }
 
 async function enviarEmail(asunto, html, text) {
-  const key = (process.env.RESEND_API_KEY || "").trim();
   const destinos = (process.env.ALERTAS_EMAILS || "").split(",").map(s => s.trim()).filter(Boolean);
-  const remitente = (process.env.ALERTAS_REMITENTE || "MaderoGest <onboarding@resend.dev>").trim();
-  if (!key) throw httpError(500, "Falta configurar RESEND_API_KEY en Vercel.");
   if (!destinos.length) throw httpError(500, "Falta configurar ALERTAS_EMAILS en Vercel.");
+
+  const smtpUser = (process.env.SMTP_USER || "").trim();
+  if (smtpUser) {
+    const transporte = nodemailer.createTransport({
+      host: (process.env.SMTP_HOST || "c207.ferozo.com").trim(),
+      port: Number(process.env.SMTP_PORT || 465),
+      secure: Number(process.env.SMTP_PORT || 465) === 465,
+      auth: { user: smtpUser, pass: process.env.SMTP_PASSWORD || "" },
+    });
+    try {
+      // El remitente tiene que ser la misma casilla con la que se autentica
+      await transporte.sendMail({ from: `MaderoGest <${smtpUser}>`, to: destinos, subject: asunto, html, text });
+    } catch (e) {
+      const auth = e.responseCode === 535 || e.code === "EAUTH";
+      throw httpError(502, auth ? "El servidor de correo rechazó el usuario o la contraseña (revisá SMTP_USER y SMTP_PASSWORD en Vercel)." : `No se pudo enviar por el correo del hosting: ${e.response || e.message}`);
+    }
+    return { destinos: destinos.length, via: "smtp" };
+  }
+
+  const key = (process.env.RESEND_API_KEY || "").trim();
+  const remitente = (process.env.ALERTAS_REMITENTE || "MaderoGest <onboarding@resend.dev>").trim();
+  if (!key) throw httpError(500, "Falta configurar SMTP_USER/SMTP_PASSWORD (o RESEND_API_KEY) en Vercel.");
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ from: remitente, to: destinos, subject: asunto, html, text }),
   });
   if (!r.ok) throw httpError(502, `Resend rechazó el envío: ${await r.text()}`);
-  return { destinos: destinos.length };
+  return { destinos: destinos.length, via: "resend" };
 }
 
 export default async function handler(req, res) {
