@@ -543,7 +543,16 @@ function Login({ onLogin }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ENTREGAS MODULE (MaderoGest) — Simplified inline component
 // ═══════════════════════════════════════════════════════════════════════════════
+// Manda ahora el aviso por email ("entregas" o "materiales") que también sale automáticamente
+async function enviarAvisoAhora(tipo) {
+  try {
+    const r = await apiFetch(`/api/alertas-diarias?tipo=${tipo}`);
+    alert(r.enviado ? `Aviso enviado a ${r.destinos} destinatario(s).` : (r.motivo || "No había nada para avisar."));
+  } catch (e) { alert(`No se pudo enviar: ${e.message}`); }
+}
+
 function EntregasModule({ sesion, obras, setObras, recargarObras }) {
+  const [enviandoAviso, setEnviandoAviso] = useState(false);
   const [filter, setFilter] = useState("todas");
   const [search, setSearch] = useState("");
   const [mesFilter, setMesFilter] = useState("");
@@ -643,7 +652,16 @@ function EntregasModule({ sesion, obras, setObras, recargarObras }) {
 
       {/* FILTROS + BÚSQUEDA */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, flexWrap:"wrap", gap:12 }}>
-        <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Obras — Entregas</h2>
+        <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+          <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Obras — Entregas</h2>
+          {isAdmin && (
+            <button disabled={enviandoAviso} title="El aviso sale solo los lunes y jueves a las 8:00. Este botón lo manda ahora."
+              onClick={async () => { setEnviandoAviso(true); await enviarAvisoAhora("entregas"); setEnviandoAviso(false); }}
+              style={{ padding:"6px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:600, cursor: enviandoAviso ? "not-allowed" : "pointer" }}>
+              {enviandoAviso ? "Enviando..." : "📧 Enviar aviso de entregas ahora"}
+            </button>
+          )}
+        </div>
         <div style={{ display:"flex", gap:4, background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:10, padding:4 }}>
           {[
             { key:"todas", label:"Todas" }, { key:"urgent", label:"Urgentes" }, { key:"warning", label:"Próximas" }, { key:"ok", label:"A tiempo" }, { key:"done", label:"Entregadas" },
@@ -2257,10 +2275,7 @@ function MaterialesModule({ sesion, obras = [] }) {
 
   async function enviarResumenAhora() {
     setEnviandoResumen(true);
-    try {
-      const r = await apiFetch("/api/alertas-diarias");
-      alert(r.enviado ? `Resumen enviado a ${r.destinos} destinatario(s).` : (r.motivo || "No había nada para avisar."));
-    } catch (e) { alert(`No se pudo enviar: ${e.message}`); }
+    await enviarAvisoAhora("materiales");
     setEnviandoResumen(false);
   }
 
@@ -2336,9 +2351,9 @@ function MaterialesModule({ sesion, obras = [] }) {
         <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Materiales por obra</h2>
         <div style={{ flex:1 }} />
         {isAdmin && (
-          <button onClick={enviarResumenAhora} disabled={enviandoResumen} title="Manda ahora el email de alertas a la lista configurada"
+          <button onClick={enviarResumenAhora} disabled={enviandoResumen} title="El aviso de materiales faltantes sale solo todos los días a las 8:00 cuando hay algo para avisar. Este botón lo manda ahora."
             style={{ padding:"9px 14px", marginRight:8, background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:600, cursor: enviandoResumen ? "not-allowed" : "pointer" }}>
-            {enviandoResumen ? "Enviando..." : "📧 Enviar resumen ahora"}
+            {enviandoResumen ? "Enviando..." : "📧 Enviar aviso de materiales ahora"}
           </button>
         )}
         <button onClick={() => { setNuevaObraData({ nombre:"", lugar:"" }); setShowNuevaObra(true); }}
