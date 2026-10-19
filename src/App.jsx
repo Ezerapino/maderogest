@@ -655,7 +655,7 @@ function estadoEntrega(e) {
   if (e.estado === "terminado") return { status: "done", label: "Entregada" };
   if (!e.fecha) return { status: "ok", label: "Sin fecha" };
   const d = diasRestantes(e.fecha);
-  return { status: getStatus(d, e.estado), label: d < 0 ? `Vencida hace ${-d} d` : d === 0 ? "Hoy" : `${d} días` };
+  return { status: getStatus(d, e.estado), label: d < 0 ? `Vencida hace ${-d} d` : d === 0 ? "Hoy" : `${d} día${d !== 1 ? "s" : ""}` };
 }
 const SC_ENTREGA = {
   urgent: { bg: "#FEF2F2", text: "#DC2626", border: "#FECACA" }, vencida: { bg: "#FEF2F2", text: "#DC2626", border: "#FECACA" },
