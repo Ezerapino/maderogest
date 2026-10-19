@@ -74,7 +74,28 @@ function armarHtml({ hoy, conFaltantes, vencidasSinFaltantes }) {
     </div></div>`;
 }
 
-async function enviarEmail(asunto, html) {
+// Versión en texto plano: los filtros antispam penalizan los mails que son solo HTML
+function armarTexto({ hoy, conFaltantes, vencidasSinFaltantes }) {
+  const l = [`Obras Grupo Aixa S.A. - MaderoGest`, `Resumen diario - ${fmtFecha(hoy)}`, ""];
+  if (conFaltantes.length) {
+    l.push(`ENTREGAS EN ${DIAS_ALERTA} DIAS O MENOS CON MATERIALES FALTANTES (${conFaltantes.length})`, "");
+    for (const { obra, dias, faltaPedir, faltaRecibir } of conFaltantes) {
+      l.push(`- ${obra.nombre}${obra.lugar && obra.lugar !== "-" ? ` (${obra.lugar})` : ""}: entrega ${fmtFecha(obra.fecha)}, ${textoDias(dias)}`);
+      if (faltaPedir.length) l.push(`  Falta pedir: ${faltaPedir.map(detalle).join("; ")}`);
+      if (faltaRecibir.length) l.push(`  Falta recibir: ${faltaRecibir.map(i => detalle(i) + (i.proveedor ? ` - ${i.proveedor}` : "")).join("; ")}`);
+      l.push("");
+    }
+  }
+  if (vencidasSinFaltantes.length) {
+    l.push(`ENTREGAS VENCIDAS SIN MARCAR COMO ENTREGADAS (${vencidasSinFaltantes.length})`, "");
+    for (const v of vencidasSinFaltantes) l.push(`- ${v.obra.nombre}: ${fmtFecha(v.obra.fecha)} (${textoDias(v.dias)})`);
+    l.push("");
+  }
+  l.push(`Abrir MaderoGest: ${APP_URL}`);
+  return l.join("\n");
+}
+
+async function enviarEmail(asunto, html, text) {
   const key = (process.env.RESEND_API_KEY || "").trim();
   const destinos = (process.env.ALERTAS_EMAILS || "").split(",").map(s => s.trim()).filter(Boolean);
   const remitente = (process.env.ALERTAS_REMITENTE || "MaderoGest <onboarding@resend.dev>").trim();
@@ -83,7 +104,7 @@ async function enviarEmail(asunto, html) {
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: remitente, to: destinos, subject: asunto, html }),
+    body: JSON.stringify({ from: remitente, to: destinos, subject: asunto, html, text }),
   });
   if (!r.ok) throw httpError(502, `Resend rechazó el envío: ${await r.text()}`);
   return { destinos: destinos.length };
@@ -98,13 +119,13 @@ export default async function handler(req, res) {
     const resumen = await armarResumen(adminClient());
     const total = resumen.conFaltantes.length + resumen.vencidasSinFaltantes.length;
     const asunto = resumen.conFaltantes.length
-      ? `⚠ ${resumen.conFaltantes.length} obra${resumen.conFaltantes.length !== 1 ? "s" : ""} con entrega próxima y materiales faltantes`
-      : `⏰ ${resumen.vencidasSinFaltantes.length} entrega${resumen.vencidasSinFaltantes.length !== 1 ? "s" : ""} vencida${resumen.vencidasSinFaltantes.length !== 1 ? "s" : ""}`;
+      ? `MaderoGest: ${resumen.conFaltantes.length} obra${resumen.conFaltantes.length !== 1 ? "s" : ""} con entrega próxima y materiales faltantes`
+      : `MaderoGest: ${resumen.vencidasSinFaltantes.length} entrega${resumen.vencidasSinFaltantes.length !== 1 ? "s" : ""} vencida${resumen.vencidasSinFaltantes.length !== 1 ? "s" : ""}`;
     const html = armarHtml(resumen);
 
     if (req.query?.preview === "1") return res.status(200).json({ total, asunto, html });
     if (!total) return res.status(200).json({ enviado: false, motivo: "No hay alertas hoy." });
-    const envio = await enviarEmail(asunto, html);
+    const envio = await enviarEmail(asunto, html, armarTexto(resumen));
     res.status(200).json({ enviado: true, total, ...envio });
   } catch (e) { sendError(res, e); }
 }
