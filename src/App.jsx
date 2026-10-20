@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ─── LOGO ─────────────────────────────────────────────────────────────────────
-const LOGO_AIXA = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgNDgiIHdpZHRoPSIxMjAiIGhlaWdodD0iNDgiPgogIDxyZWN0IHdpZHRoPSIxMjAiIGhlaWdodD0iNDgiIHJ4PSI2IiBmaWxsPSIjMUEyQjRBIi8+CiAgPGxpbmUgeDE9IjgiIHkxPSI0OCIgeDI9IjE2IiB5Mj0iMCIgc3Ryb2tlPSIjMDU5NjY5IiBzdHJva2Utd2lkdGg9IjMuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgPGxpbmUgeDE9IjE0IiB5MT0iNDgiIHgyPSIyMiIgeTI9IjAiIHN0cm9rZT0iI0YwQzA0MCIgc3Ryb2tlLXdpZHRoPSIzLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDxsaW5lIHgxPSIyMCIgeTE9IjQ4IiB4Mj0iMjgiIHkyPSIwIiBzdHJva2U9IiMyNTYzRUIiIHN0cm9rZS13aWR0aD0iMy41IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICA8dGV4dCB4PSI2OCIgeT0iMzIiIGZvbnQtZmFtaWx5PSInU2Vnb2UgVUknLCdIZWx2ZXRpY2EgTmV1ZScsQXJpYWwsc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMiIgZm9udC13ZWlnaHQ9IjgwMCIgZmlsbD0iI0ZGRkZGRiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgbGV0dGVyLXNwYWNpbmc9IjMiPkFJWEE8L3RleHQ+Cjwvc3ZnPg==";
+const LOGO_AIXA = "/logo-aixa.png";
 
 // ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
 // MaderoGest Supabase (Entregas)
@@ -603,7 +603,7 @@ function Login({ onLogin }) {
     <div style={{ minHeight:"100vh", background:"#F4F6F9", display:"flex", alignItems:"center", justifyContent:"center", padding:"40px 24px" }}>
       <div style={{ width:"100%", maxWidth:380 }}>
         <div style={{ marginBottom:36, textAlign:"center" }}>
-          <img src={LOGO_AIXA} alt="Obras Grupo Aixa S.A." style={{ height:48, marginBottom:16 }} />
+          <img src={LOGO_AIXA} alt="Obras Grupo Aixa S.A." style={{ height:72, borderRadius:8, marginBottom:16 }} />
           <p style={{ fontSize:13, color:"#94A3B8", margin:0, letterSpacing:0.5 }}>Sistema integral de gestión de obras</p>
         </div>
         <div style={{ marginBottom:22 }}>
@@ -4335,7 +4335,7 @@ export default function App() {
 
   if (cargando) return (
     <div style={{ minHeight:"100vh", background:"#F4F6F9", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:12 }}>
-      <img src={LOGO_AIXA} alt="Aixa" style={{ height:40, opacity:0.7 }} />
+      <img src={LOGO_AIXA} alt="Aixa" style={{ height:56, borderRadius:6, opacity:0.7 }} />
       <div style={{ fontFamily:"'Inter', sans-serif", color:"#94A3B8", fontSize:13 }}>Cargando...</div>
     </div>
   );
@@ -4347,7 +4347,7 @@ export default function App() {
       {/* HEADER */}
       <header style={{ position:"sticky", top:0, zIndex:100, background:"#ffffff", borderBottom:"1px solid #E8ECF0", padding:"0 24px", height:60, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
         <div style={{ display:"flex", alignItems:"center", gap:16 }}>
-          <img src={LOGO_AIXA} alt="Obras Grupo Aixa S.A." style={{ height:36 }} />
+          <img src={LOGO_AIXA} alt="Obras Grupo Aixa S.A." style={{ height:40, borderRadius:6 }} />
 
           {/* TABS */}
           <div style={{ display:"flex", gap:2, background:"#F1F5F9", borderRadius:10, padding:3 }}>
