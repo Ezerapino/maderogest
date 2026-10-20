@@ -673,9 +673,11 @@ function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
   const [detalleId, setDetalleId] = useState(null);
   const [verArchivo, setVerArchivo] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [informeIA, setInformeIA] = useState(null);
 
   const isAdmin = sesion.rol === "admin";
   const puedeArchivar = isAdmin || sesion.rol === "operario";
+  const puedeInformeIA = ["admin", "operario", "finanzas"].includes(sesion.rol);
   const entregas = obras.filter(o => !o.archivada);
   const activas = entregas.filter(o => o.estado !== "terminado");
   const urgentes = activas.filter(o => { if (!o.fecha) return false; const d = diasRestantes(o.fecha); return d >= 0 && d <= 7; });
@@ -864,6 +866,7 @@ function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10, marginBottom:4 }}>
                   <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", lineHeight:1.35 }}>{p.nombre}</div>
                   <div style={{ display:"flex", gap:4, flexShrink:0 }}>
+                    {puedeInformeIA && <button title="Informe de la obra con IA" onClick={() => setInformeIA(p)} style={{ ...btnIcono, border:"1px solid #DDD6FE", background:"#F5F3FF", color:"#7C3AED" }}>✨</button>}
                     <button title="Editar obra" onClick={() => setModal({ modo:"editar-obra", proyecto:p })} style={btnIcono}>✎</button>
                     {puedeArchivar && <button title="Archivar obra" onClick={() => archivarObra(p)} style={{ ...btnIcono, border:"1px solid #FECACA", background:"#FEF2F2", color:"#DC2626" }}>🗄</button>}
                   </div>
@@ -933,6 +936,8 @@ function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
         onDelete={() => archivarEntrega(detalle)} onEntregada={() => marcarEntregada(detalle)} />}
 
       {verArchivo && <ArchivoObras obras={obras} proyectos={proyectos} sesion={sesion} onClose={() => setVerArchivo(false)} onCambio={recargarObras} />}
+
+      {informeIA && <ModalInformeIA proyecto={informeIA} onClose={() => setInformeIA(null)} />}
     </div>
   );
 }
@@ -1737,6 +1742,107 @@ function AvanceModule({ sesion, entregas = [] }) {
   );
 }
 
+
+// Botón "Enviar por mail": sale de la casilla de alertas a la lista fija de avisos; si se escriben
+// destinatarios, van como "Para" y la lista fija en copia. enviar(para) devuelve la respuesta del servidor.
+function EnviarPorMail({ enviar, deshabilitado, motivo, estiloBoton }) {
+  const [abierto, setAbierto] = useState(false);
+  const [para, setPara] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [resultado, setResultado] = useState(null);
+  async function mandar() {
+    setEnviando(true); setResultado(null);
+    try {
+      const r = await enviar(para.trim());
+      setResultado({ ok: true, texto: `Enviado a ${r.destinos} destinatario(s)${r.adjuntos ? ` con ${r.adjuntos} archivo(s) adjunto(s)` : ""}.` });
+      setPara("");
+    } catch (e) { setResultado({ ok: false, texto: e.message }); }
+    setEnviando(false);
+  }
+  const cerrar = () => { if (!enviando) { setAbierto(false); setResultado(null); } };
+  return (
+    <>
+      <button onClick={() => setAbierto(true)} disabled={deshabilitado} title={deshabilitado ? motivo : "Enviar desde la casilla de alertas"}
+        style={{ ...estiloBoton, opacity: deshabilitado ? 0.5 : 1, cursor: deshabilitado ? "not-allowed" : "pointer" }}>📧 Enviar por mail</button>
+      {abierto && (
+        <div onClick={e => e.target === e.currentTarget && cerrar()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", zIndex:900, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:440, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.25)", fontFamily:"'Inter', sans-serif", textTransform:"none", letterSpacing:0 }}>
+            <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 6px" }}>📧 Enviar por mail</h3>
+            <p style={{ fontSize:12, color:"#64748B", margin:"0 0 14px", lineHeight:1.5 }}>Sale de la casilla de alertas a la lista de avisos. Si agregás destinatarios (por ejemplo el cliente o el arquitecto), les llega a ellos y la lista va en copia.</p>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Para (opcional)</label>
+            <input value={para} onChange={e => setPara(e.target.value)} placeholder="cliente@empresa.com, otro@empresa.com" disabled={enviando}
+              style={{ width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontSize:13, outline:"none", boxSizing:"border-box" }} />
+            {resultado && <div style={{ marginTop:12, padding:"9px 12px", borderRadius:8, fontSize:12, background: resultado.ok ? "#ECFDF5" : "#FEF2F2", color: resultado.ok ? "#059669" : "#DC2626", border:`1px solid ${resultado.ok ? "#A7F3D0" : "#FECACA"}` }}>{resultado.texto}</div>}
+            <div style={{ display:"flex", gap:10, marginTop:18 }}>
+              <button onClick={cerrar} disabled={enviando} style={{ flex:1, padding:"10px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC", color:"#64748B", cursor:"pointer", fontSize:13 }}>{resultado?.ok ? "Cerrar" : "Cancelar"}</button>
+              <button onClick={mandar} disabled={enviando}
+                style={{ flex:1, padding:"10px", border:"none", borderRadius:8, background: enviando ? "#94A3B8" : "#0F766E", color:"#fff", cursor: enviando ? "not-allowed" : "pointer", fontSize:13, fontWeight:600 }}>{enviando ? "Enviando..." : "Enviar"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// Informe general de una obra hecho con Claude (desde Entregas): se puede regenerar, imprimir y mandar por mail
+function ModalInformeIA({ proyecto, onClose }) {
+  const [resultado, setResultado] = useState(null);
+  const [error, setError] = useState("");
+  const [cargando, setCargando] = useState(true);
+
+  async function generar() {
+    try {
+      const r = await apiFetch("/api/informe-obra", { method: "POST", body: JSON.stringify({ proyectoId: proyecto.id, accion: "generar" }) });
+      setResultado(r);
+    } catch (e) { setError(e.message); }
+    setCargando(false);
+  }
+  function regenerar() { setCargando(true); setError(""); setResultado(null); generar(); }
+
+  // Se genera al abrir
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { generar(); }, []);
+
+  function imprimir() {
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Informe de obra – ${proyecto.nombre}</title>
+      <style>body{font-family:'Segoe UI',Arial,sans-serif;color:#1E293B;max-width:860px;margin:0 auto;padding:28px}@media print{body{padding:0}}</style></head><body>
+      <div style="background:#1A2B4A;color:#fff;padding:20px 24px;border-radius:10px;margin-bottom:18px"><div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:.7">Obras Grupo Aixa S.A.</div>
+      <div style="font-size:22px;font-weight:800;margin-top:4px">Informe de obra — ${proyecto.nombre.replace(/</g, "&lt;")}</div>${proyecto.lugar ? `<div style="font-size:13px;opacity:.8">${proyecto.lugar.replace(/</g, "&lt;")}</div>` : ""}</div>
+      ${resultado.html}</body></html>`);
+    win.document.close();
+    setTimeout(() => win.print(), 500);
+  }
+
+  const btn = { padding:"9px 16px", borderRadius:8, fontSize:13, fontWeight:600, fontFamily:"'Inter', sans-serif", border:"1px solid #E2E8F0", background:"#F8FAFC", color:"#475569", cursor:"pointer" };
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:600, display:"flex", alignItems:"flex-start", justifyContent:"center", padding:"24px 16px", overflowY:"auto" }}>
+      <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:820, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+        <div style={{ padding:"18px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, position:"sticky", top:0, background:"#fff", borderRadius:"14px 14px 0 0", zIndex:1 }}>
+          <div>
+            <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>✨ Informe de obra — {proyecto.nombre}</h2>
+            <div style={{ fontSize:12, color:"#64748B", marginTop:3 }}>Hecho por Claude con todo lo cargado en las pestañas{resultado?.generado ? ` · ${resultado.generado}` : ""}{resultado && !resultado.incluyeCobros ? " · sin datos de cobros (tu usuario no los ve)" : ""}</div>
+          </div>
+          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16, flexShrink:0 }}>✕</button>
+        </div>
+        <div style={{ padding:"20px 24px" }}>
+          {cargando && <div style={{ textAlign:"center", padding:"60px 0", color:"#64748B", fontSize:14 }}>✨ Claude está revisando la obra y armando el informe...<div style={{ fontSize:12, color:"#94A3B8", marginTop:6 }}>Puede tardar hasta un minuto.</div></div>}
+          {error && <div style={{ padding:"12px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:13 }}>{error}</div>}
+          {resultado && <div dangerouslySetInnerHTML={{ __html: resultado.html }} />}
+          <div style={{ display:"flex", gap:8, justifyContent:"flex-end", flexWrap:"wrap", marginTop:20, paddingTop:16, borderTop:"1px solid #F1F5F9" }}>
+            <button onClick={regenerar} disabled={cargando} style={{ ...btn, cursor: cargando ? "not-allowed" : "pointer" }}>↻ Volver a generar</button>
+            <button onClick={imprimir} disabled={!resultado} style={{ ...btn, opacity: resultado ? 1 : 0.5 }}>🖨 PDF</button>
+            <EnviarPorMail deshabilitado={!resultado} motivo="Esperá a que termine el informe"
+              estiloBoton={{ ...btn, background:"#0F766E", border:"none", color:"#fff" }}
+              enviar={para => apiFetch("/api/informe-obra", { method: "POST", body: JSON.stringify({ proyectoId: proyecto.id, accion: "enviar", informe: resultado.informe, generado: resultado.generado, para }) })} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Elegir una entrega de la pestaña Entregas (para crear su registro en otra pestaña)
 function ModalElegirEntrega({ titulo, entregas, color = "#1A2B4A", onClose, onElegir }) {
@@ -3729,6 +3835,10 @@ body{font-family:'Archivo',sans-serif;background:var(--bg);color:var(--text);lin
                 onMouseEnter={e => e.currentTarget.style.background="#003d6d"} onMouseLeave={e => e.currentTarget.style.background="#004e89"}>
                 📄 Exportar PDF
               </button>
+              {/* Se manda lo guardado: con cambios sin guardar, primero hay que guardar */}
+              <EnviarPorMail deshabilitado={!guardado || !informeId} motivo="Guardá el informe antes de enviarlo"
+                estiloBoton={{ padding:"14px 24px", border:"none", borderRadius:2, background:"#0F766E", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, textTransform:"uppercase", letterSpacing:.5, boxShadow:"0 4px 12px rgba(15,118,110,.3)" }}
+                enviar={para => apiFetch("/api/enviar-informe-final", { method: "POST", body: JSON.stringify({ obraAvanceId: obra.id, para }) })} />
             </div>
           </div>
         </div>

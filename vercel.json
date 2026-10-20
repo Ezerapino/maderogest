@@ -1,6 +1,8 @@
 {
   "functions": {
-    "api/extraer-materiales.js": { "maxDuration": 300 }
+    "api/extraer-materiales.js": { "maxDuration": 300 },
+    "api/informe-obra.js": { "maxDuration": 300 },
+    "api/enviar-informe-final.js": { "maxDuration": 60 }
   },
   "crons": [
     { "path": "/api/alertas-diarias?tipo=entregas", "schedule": "0 11 * * 1,4" },
