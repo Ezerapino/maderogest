@@ -65,8 +65,19 @@ async function sbFetch(path, options = {}) {
 // ─── AVANCE API (same Supabase, table: avance_obras) ──────────────────────────
 async function getAixaObras() { return sbFetch("avance_obras?select=*&order=created_at.desc"); }
 async function insertAixaObra(obra) { return sbFetch("avance_obras", { method: "POST", body: JSON.stringify(obra) }); }
-async function updateAixaObra(id, data) { return sbFetch(`avance_obras?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
 async function deleteAixaObraApi(id) { return sbFetch(`avance_obras?id=eq.${id}`, { method: "DELETE" }); }
+
+// Trae la fila tal como está ahora en la base, le aplica el cambio y la guarda. Las listas
+// (estaciones, historial, ítems, adicionales) se arman así sobre lo último guardado y no
+// sobre lo que la pantalla cargó al abrirse, para no pisar lo que guardó otra persona.
+async function modificarFila(tabla, id, cambio) {
+  const [actual] = await sbFetch(`${tabla}?id=eq.${id}&select=*`);
+  if (!actual) throw new Error("El registro ya no existe. Recargá la página.");
+  const datos = cambio(JSON.parse(JSON.stringify(actual)));
+  if (!datos) return actual;
+  const [guardada] = await sbFetch(`${tabla}?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(datos) });
+  return guardada;
+}
 // Users for avance also come from the same "usuarios" table
 async function getAixaUsers() { return getUsuarios(); }
 
@@ -202,7 +213,6 @@ async function insertAgregado(agregado) {
 // ─── COBROS API ───────────────────────────────────────────────────────────────
 async function getCobros() { return sbFetch("cobros?select=*&order=created_at.desc"); }
 async function insertCobro(cobro) { return sbFetch("cobros", { method: "POST", body: JSON.stringify(cobro) }); }
-async function updateCobro(id, data) { return sbFetch(`cobros?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
 async function deleteCobro(id) { return sbFetch(`cobros?id=eq.${id}`, { method: "DELETE" }); }
 
 // ─── MATERIALES API ───────────────────────────────────────────────────────────
@@ -212,7 +222,6 @@ async function deleteCobro(id) { return sbFetch(`cobros?id=eq.${id}`, { method: 
 // created_at (timestamptz default now()), updated_at (timestamptz default now())
 async function getMateriales() { return sbFetch("materiales?select=*&order=created_at.desc"); }
 async function insertMaterial(m) { return sbFetch("materiales", { method: "POST", body: JSON.stringify(m) }); }
-async function updateMaterial(id, data) { return sbFetch(`materiales?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
 async function deleteMaterialById(id) { return sbFetch(`materiales?id=eq.${id}`, { method: "DELETE" }); }
 
 // ─── AVANCE DE OBRA API (tabla: obras_avance + avance_dias) ───────────────────
@@ -1315,13 +1324,14 @@ function AvanceModule({ sesion, entregas = [] }) {
   async function saveObra({ name, client, start_date, due_date, description }) {
     setLoading(true);
     try {
-      const o = aixaObras.find(x => x.id === editingObra);
-      const hist = [...(o.history||[])];
-      hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Obra editada`, time: new Date().toISOString() });
-      const datos = existentes.has(o.obra_id)
-        ? { start_date: start_date||null, description }
-        : { name, client, start_date: start_date||null, due_date: due_date||null, description };
-      await updateAixaObra(editingObra, { ...datos, history: hist });
+      await modificarFila("avance_obras", editingObra, o => {
+        const hist = o.history || [];
+        hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Obra editada`, time: new Date().toISOString() });
+        const datos = existentes.has(o.obra_id)
+          ? { start_date: start_date||null, description }
+          : { name, client, start_date: start_date||null, due_date: due_date||null, description };
+        return { ...datos, history: hist };
+      });
       await recargar();
     } catch { alert("Error al guardar"); }
     setLoading(false); setShowObraModal(false); setEditingObra(null);
@@ -1341,25 +1351,33 @@ function AvanceModule({ sesion, entregas = [] }) {
 
   async function saveStation(stationIdx, { status, start_date, end_date, start_time, end_time, duration_min, operario, note }) {
     if (!obra) return;
-    const stations = JSON.parse(JSON.stringify(obra.stations || []));
-    const s = stations[stationIdx];
-    const old = s.status;
-    s.status = status; s.start_date = start_date || null; s.end_date = end_date || null; s.note = note;
-    s.start_time = start_time || null; s.end_time = end_time || null; s.operario = operario?.trim() || null;
-    // Manual duration wins; otherwise derive it from the start/end times
-    s.duration_manual = duration_min !== "" && duration_min != null;
-    s.duration_min = s.duration_manual ? Math.max(0, Math.round(Number(duration_min))) : calcDurMinAixa(s.start_date, s.end_date, s.start_time, s.end_time);
-    const hist = JSON.parse(JSON.stringify(obra.history || []));
-    hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Estación "${s.name}": "${old}" → "${status}"${s.operario ? ' · Operario: '+s.operario : ''}${s.duration_min != null ? ' · '+fmtDurAixa(s.duration_min) : ''}${note ? ' — '+note : ''}`, time: new Date().toISOString() });
+    const nombre = obra.stations?.[stationIdx]?.name;
     setLoading(true);
-    try { await updateAixaObra(selectedObra, { stations, history: hist }); await recargar(); } catch { alert("Error"); }
+    let guardada = null;
+    try {
+      guardada = await modificarFila("avance_obras", selectedObra, o => {
+        const stations = o.stations || [];
+        // Se busca por nombre por si otra persona agregó o borró estaciones mientras tanto
+        const s = stations.find(x => x.name === nombre) || stations[stationIdx];
+        if (!s) throw new Error(`La estación "${nombre}" ya no existe.`);
+        const old = s.status;
+        s.status = status; s.start_date = start_date || null; s.end_date = end_date || null; s.note = note;
+        s.start_time = start_time || null; s.end_time = end_time || null; s.operario = operario?.trim() || null;
+        // Manual duration wins; otherwise derive it from the start/end times
+        s.duration_manual = duration_min !== "" && duration_min != null;
+        s.duration_min = s.duration_manual ? Math.max(0, Math.round(Number(duration_min))) : calcDurMinAixa(s.start_date, s.end_date, s.start_time, s.end_time);
+        const hist = o.history || [];
+        hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Estación "${s.name}": "${old}" → "${status}"${s.operario ? ' · Operario: '+s.operario : ''}${s.duration_min != null ? ' · '+fmtDurAixa(s.duration_min) : ''}${note ? ' — '+note : ''}`, time: new Date().toISOString() });
+        return { stations, history: hist };
+      });
+      await recargar();
+    } catch (e) { alert(`No se pudo guardar la estación. ${e.message || ""}`); }
     setLoading(false); setShowStationModal(false);
     // If all stations are now done, offer completion report
-    if (stations.every(s => s.status === 'done')) {
+    if (guardada?.stations?.length && guardada.stations.every(s => s.status === 'done')) {
       setTimeout(() => {
         if (confirm("🎉 ¡Todas las estaciones completadas!\n¿Deseas generar el informe de cierre de obra?")) {
-          const updatedObra = { ...obra, stations, history: hist };
-          generarInformeCierre(updatedObra);
+          generarInformeCierre(guardada);
         }
       }, 400);
     }
@@ -1367,54 +1385,80 @@ function AvanceModule({ sesion, entregas = [] }) {
 
   async function addStation(name) {
     if (!obra || !name.trim()) return;
-    const stations = JSON.parse(JSON.stringify(obra.stations || []));
-    stations.push({ id: stations.length, name: name.trim(), status: 'pending', start_date: null, end_date: null, note: '' });
-    const hist = JSON.parse(JSON.stringify(obra.history || []));
-    hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Nueva estación agregada: "${name.trim()}"`, time: new Date().toISOString() });
     setLoading(true);
-    try { await updateAixaObra(selectedObra, { stations, history: hist }); await recargar(); setNewStationName(""); } catch { alert("Error"); }
+    try {
+      await modificarFila("avance_obras", selectedObra, o => {
+        const stations = o.stations || [];
+        stations.push({ id: stations.length, name: name.trim(), status: 'pending', start_date: null, end_date: null, note: '' });
+        const hist = o.history || [];
+        hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Nueva estación agregada: "${name.trim()}"`, time: new Date().toISOString() });
+        return { stations, history: hist };
+      });
+      await recargar(); setNewStationName("");
+    } catch (e) { alert(`No se pudo agregar la estación. ${e.message || ""}`); }
     setLoading(false);
   }
 
   async function deleteStation(idx) {
     if (!obra) return;
-    const stations = JSON.parse(JSON.stringify(obra.stations || []));
-    const removed = stations.splice(idx, 1);
-    if (!confirm(`¿Eliminar la estación "${removed[0]?.name}"?`)) return;
-    // Re-index ids
-    stations.forEach((s, i) => s.id = i);
-    const hist = JSON.parse(JSON.stringify(obra.history || []));
-    hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Estación eliminada: "${removed[0]?.name}"`, time: new Date().toISOString() });
+    const nombre = obra.stations?.[idx]?.name;
+    if (!confirm(`¿Eliminar la estación "${nombre}"?`)) return;
     setLoading(true);
-    try { await updateAixaObra(selectedObra, { stations, history: hist }); await recargar(); } catch { alert("Error"); }
+    try {
+      await modificarFila("avance_obras", selectedObra, o => {
+        const stations = (o.stations || []).filter(s => s.name !== nombre);
+        if (stations.length === (o.stations || []).length) return null; // ya la borró otra persona
+        // Re-index ids
+        stations.forEach((s, i) => s.id = i);
+        const hist = o.history || [];
+        hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Estación eliminada: "${nombre}"`, time: new Date().toISOString() });
+        return { stations, history: hist };
+      });
+      await recargar();
+    } catch (e) { alert(`No se pudo eliminar la estación. ${e.message || ""}`); }
     setLoading(false);
   }
 
   async function saveClarif(title, station, responsible, detail) {
     if (!obra) return;
-    const clarifications = JSON.parse(JSON.stringify(obra.clarifications || []));
-    const hist = JSON.parse(JSON.stringify(obra.history || []));
-    if (editingClarif !== null) {
-      clarifications[editingClarif] = { ...clarifications[editingClarif], title, station, responsible, detail, edited: true, edited_at: new Date().toISOString() };
-      hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Aclaración editada: "${title}"`, time: new Date().toISOString() });
-    } else {
-      clarifications.unshift({ title, station, responsible, detail, author: sesion.nombre, time: new Date().toISOString() });
-      hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Nueva aclaración: "${title}"`, time: new Date().toISOString() });
-    }
+    // Las aclaraciones se identifican por su fecha de creación, que no cambia aunque otra persona agregue o borre
+    const creada = editingClarif !== null ? obra.clarifications?.[editingClarif]?.time : null;
     setLoading(true);
-    try { await updateAixaObra(selectedObra, { clarifications, history: hist }); await recargar(); } catch { alert("Error"); }
+    try {
+      await modificarFila("avance_obras", selectedObra, o => {
+        const clarifications = o.clarifications || [];
+        const hist = o.history || [];
+        if (editingClarif !== null) {
+          const i = clarifications.findIndex(c => c.time === creada);
+          if (i < 0) throw new Error("Otra persona eliminó esta aclaración.");
+          clarifications[i] = { ...clarifications[i], title, station, responsible, detail, edited: true, edited_at: new Date().toISOString() };
+          hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Aclaración editada: "${title}"`, time: new Date().toISOString() });
+        } else {
+          clarifications.unshift({ title, station, responsible, detail, author: sesion.nombre, time: new Date().toISOString() });
+          hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Nueva aclaración: "${title}"`, time: new Date().toISOString() });
+        }
+        return { clarifications, history: hist };
+      });
+      await recargar();
+    } catch (e) { alert(`No se pudo guardar la aclaración. ${e.message || ""}`); }
     setLoading(false); setShowClarifModal(false); setEditingClarif(null);
   }
 
   async function deleteClarif(idx) {
     if (!confirm("¿Eliminar esta aclaración?")) return;
     if (!obra) return;
-    const clarifications = JSON.parse(JSON.stringify(obra.clarifications || []));
-    const removed = clarifications.splice(idx, 1);
-    const hist = JSON.parse(JSON.stringify(obra.history || []));
-    hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Aclaración eliminada: "${removed[0]?.title}"`, time: new Date().toISOString() });
+    const { time: creada, title } = obra.clarifications?.[idx] || {};
     setLoading(true);
-    try { await updateAixaObra(selectedObra, { clarifications, history: hist }); await recargar(); } catch { alert("Error"); }
+    try {
+      await modificarFila("avance_obras", selectedObra, o => {
+        const clarifications = (o.clarifications || []).filter(c => c.time !== creada);
+        if (clarifications.length === (o.clarifications || []).length) return null; // ya la borró otra persona
+        const hist = o.history || [];
+        hist.unshift({ user: sesion.nombre, role: sesion.rol, action: `Aclaración eliminada: "${title}"`, time: new Date().toISOString() });
+        return { clarifications, history: hist };
+      });
+      await recargar();
+    } catch (e) { alert(`No se pudo eliminar la aclaración. ${e.message || ""}`); }
     setLoading(false);
   }
 
@@ -1967,10 +2011,11 @@ function CobrosModule({ entregas = [] }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { recargar(); }, []);
 
+  // datos puede ser un objeto o una función que recibe el cobro recién leído de la base
   async function guardar(id, datos) {
     setSaving(true);
     try {
-      await updateCobro(id, { ...datos, updated_at: new Date().toISOString() });
+      await modificarFila("cobros", id, fila => ({ ...(typeof datos === "function" ? datos(fila) : datos), updated_at: new Date().toISOString() }));
       const c = await getCobros();
       const lista = c || [];
       setCobros(lista);
@@ -1979,33 +2024,31 @@ function CobrosModule({ entregas = [] }) {
       setShowModal(null);
       setEditData({});
       setEditingAdicionalId(null);
-    } catch { alert("Error al guardar."); }
+    } catch (e) { alert(`Error al guardar. ${e.message || ""}`); }
     setSaving(false);
   }
 
   async function agregarAdicional() {
     if (!editData.descripcion) { alert("Completá la descripción."); return; }
-    const adics = [...(selected.adicionales || [])];
-    if (editingAdicionalId) {
-      const idx = adics.findIndex(a => a.id === editingAdicionalId);
-      if (idx >= 0) adics[idx] = { ...adics[idx], descripcion: editData.descripcion, monto: parseFloat(editData.monto) || 0 };
-    } else {
-      adics.push({ id: uid(), descripcion: editData.descripcion, monto: parseFloat(editData.monto) || 0, cobrado: false });
-    }
-    await guardar(selected.id, { adicionales: adics });
+    await guardar(selected.id, c => {
+      const adics = c.adicionales || [];
+      if (editingAdicionalId) {
+        const idx = adics.findIndex(a => a.id === editingAdicionalId);
+        if (idx >= 0) adics[idx] = { ...adics[idx], descripcion: editData.descripcion, monto: parseFloat(editData.monto) || 0 };
+      } else {
+        adics.push({ id: uid(), descripcion: editData.descripcion, monto: parseFloat(editData.monto) || 0, cobrado: false });
+      }
+      return { adicionales: adics };
+    });
   }
 
   async function eliminarAdicional(cobroId, adicionalId) {
     if (!confirm("¿Eliminar este adicional?")) return;
-    const cobro = cobros.find(c => c.id === cobroId);
-    const adics = (cobro.adicionales || []).filter(a => a.id !== adicionalId);
-    await guardar(cobroId, { adicionales: adics });
+    await guardar(cobroId, c => ({ adicionales: (c.adicionales || []).filter(a => a.id !== adicionalId) }));
   }
 
   async function toggleAdicionalCobrado(cobroId, adicionalId) {
-    const cobro = cobros.find(c => c.id === cobroId);
-    const adics = (cobro.adicionales || []).map(a => a.id === adicionalId ? { ...a, cobrado: !a.cobrado } : a);
-    await guardar(cobroId, { adicionales: adics });
+    await guardar(cobroId, c => ({ adicionales: (c.adicionales || []).map(a => a.id === adicionalId ? { ...a, cobrado: !a.cobrado } : a) }));
   }
 
   async function eliminarCobro(id) {
@@ -2631,16 +2674,17 @@ function MaterialesModule({ sesion, entregas = [] }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { recargar(); }, []);
 
+  // datos puede ser un objeto o una función que recibe la lista recién leída de la base
   async function guardarLista(id, datos) {
     setSaving(true);
     try {
-      await updateMaterial(id, { ...datos, updated_at: new Date().toISOString() });
+      await modificarFila("materiales", id, fila => ({ ...(typeof datos === "function" ? datos(fila) : datos), updated_at: new Date().toISOString() }));
       const d = await getMateriales();
       const lista = d || [];
       setListas(lista);
       const upd = lista.find(x => x.id === id);
       if (upd) setSelected(upd);
-    } catch { alert("Error al guardar."); }
+    } catch (e) { alert(`Error al guardar. ${e.message || ""}`); }
     setSaving(false);
   }
 
@@ -2653,14 +2697,16 @@ function MaterialesModule({ sesion, entregas = [] }) {
   async function guardarItem() {
     if (!itemData.nombre?.trim()) { alert("Ingresá una descripción."); return; }
     setSaving(true);
-    const items = JSON.parse(JSON.stringify(selected.items || []));
-    if (editingItem) {
-      const idx = items.findIndex(i => i.id === editingItem);
-      if (idx >= 0) items[idx] = { ...items[idx], ...itemData };
-    } else {
-      items.push({ id: uid(), ...itemData });
-    }
-    await guardarLista(selected.id, { items });
+    await guardarLista(selected.id, l => {
+      const items = l.items || [];
+      if (editingItem) {
+        const idx = items.findIndex(i => i.id === editingItem);
+        if (idx >= 0) items[idx] = { ...items[idx], ...itemData };
+      } else {
+        items.push({ id: uid(), ...itemData });
+      }
+      return { items };
+    });
     setShowItemModal(false);
     setEditingItem(null);
     setSaving(false);
@@ -2668,13 +2714,11 @@ function MaterialesModule({ sesion, entregas = [] }) {
 
   async function eliminarItem(itemId) {
     if (!confirm("¿Eliminar este material?")) return;
-    const items = (selected.items || []).filter(i => i.id !== itemId);
-    await guardarLista(selected.id, { items });
+    await guardarLista(selected.id, l => ({ items: (l.items || []).filter(i => i.id !== itemId) }));
   }
 
   async function cambiarEstadoItem(itemId, nuevoEstado) {
-    const items = (selected.items || []).map(i => i.id === itemId ? { ...i, estado: nuevoEstado } : i);
-    await guardarLista(selected.id, { items });
+    await guardarLista(selected.id, l => ({ items: (l.items || []).map(i => i.id === itemId ? { ...i, estado: nuevoEstado } : i) }));
   }
 
   async function eliminarMaterial(id) {
@@ -2692,8 +2736,7 @@ function MaterialesModule({ sesion, entregas = [] }) {
   }
 
   async function agregarItemsImportados(nuevos) {
-    const items = [...(selected.items || []), ...nuevos];
-    await guardarLista(selected.id, { items });
+    await guardarLista(selected.id, l => ({ items: [...(l.items || []), ...nuevos] }));
   }
 
   async function enviarResumenAhora() {
