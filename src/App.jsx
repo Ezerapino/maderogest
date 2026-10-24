@@ -120,7 +120,7 @@ async function crearRegistrosEntrega(e) {
   try { await insertMaterial({ obra_id: e.id, obra_nombre: e.nombre, obra_lugar: e.lugar, items: [], notas: "" }); }
   catch (err) { console.error("Error creando la lista de materiales de la entrega:", err); }
   try { await insertAixaObra({ obra_id: e.id, name: e.nombre, client: e.lugar, start_date: null, due_date: e.fecha || null, description: e.notas || "", stations: mkStations(), history: [], clarifications: [] }); }
-  catch (err) { console.error("Error creando la entrega en Avance de Producción:", err); alert("La entrega se guardó, pero no se pudo crear en Avance de Producción."); }
+  catch (err) { console.error("Error creando la entrega en Avance de Producción:", err); avisar("La entrega se guardó, pero no se pudo crear en Avance de Producción.", { tipo: "error" }); }
 }
 
 // Copia nombre, dirección y fecha de la entrega a las otras pestañas
@@ -366,6 +366,87 @@ function getStatus(dias, estado) {
 function formatDate(d) { if (!d) return ""; const [y,m,dia] = d.split("-"); return `${dia}/${m}/${y}`; }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
+// ─── AVISOS Y CONFIRMACIONES (reemplazan alert y confirm del navegador) ──────
+// avisar() muestra un aviso abajo que se cierra solo; con `deshacer` suma un botón para revertir.
+// confirmar() abre una ventana propia y devuelve una promesa con true/false.
+let mostrarAviso = null;
+let pedirConfirmacion = null;
+function avisar(texto, { tipo = "info", deshacer } = {}) {
+  if (mostrarAviso) mostrarAviso({ id: uid(), texto, tipo, deshacer });
+  else window.alert(texto);
+}
+function confirmar(texto, { boton = "Eliminar", peligro = true } = {}) {
+  if (!pedirConfirmacion) return Promise.resolve(window.confirm(texto));
+  return new Promise(resolver => pedirConfirmacion({ texto, boton, peligro, resolver }));
+}
+
+const AVISO_COLORES = {
+  ok:    { fondo: "#ECFDF5", borde: "#A7F3D0", texto: "#065F46", icono: "✓" },
+  error: { fondo: "#FEF2F2", borde: "#FECACA", texto: "#991B1B", icono: "!" },
+  aviso: { fondo: "#FFFBEB", borde: "#FDE68A", texto: "#92400E", icono: "!" },
+  info:  { fondo: "#EFF6FF", borde: "#BFDBFE", texto: "#1E3A8A", icono: "i" },
+};
+
+function Avisos() {
+  const [avisos, setAvisos] = useState([]);
+  const [pregunta, setPregunta] = useState(null);
+
+  useEffect(() => {
+    mostrarAviso = a => {
+      setAvisos(prev => [...prev.slice(-3), a]);
+      // Los errores y los que se pueden deshacer quedan más tiempo a la vista
+      const ms = a.deshacer ? 8000 : a.tipo === "error" ? 7000 : 4000;
+      setTimeout(() => setAvisos(prev => prev.filter(x => x.id !== a.id)), ms);
+    };
+    pedirConfirmacion = setPregunta;
+    return () => { mostrarAviso = null; pedirConfirmacion = null; };
+  }, []);
+
+  function cerrar(id) { setAvisos(prev => prev.filter(x => x.id !== id)); }
+  function responder(si) { pregunta?.resolver(si); setPregunta(null); }
+
+  // Escape cancela; Enter activa el botón que tiene el foco (de entrada, el de confirmar)
+  useEffect(() => {
+    if (!pregunta) return;
+    const tecla = e => { if (e.key === "Escape") { pregunta.resolver(false); setPregunta(null); } };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, [pregunta]);
+
+  const fuente = "'Inter', sans-serif";
+  return (
+    <>
+      <div style={{ position:"fixed", bottom:16, left:16, right:16, zIndex:2000, display:"flex", flexDirection:"column", alignItems:"center", gap:8, pointerEvents:"none" }}>
+        {avisos.map(a => {
+          const c = AVISO_COLORES[a.tipo] || AVISO_COLORES.info;
+          return (
+            <div key={a.id} role={a.tipo === "error" ? "alert" : "status"} style={{ pointerEvents:"auto", width:"100%", maxWidth:440, display:"flex", alignItems:"center", gap:10, padding:"11px 12px 11px 14px", background:c.fondo, border:`1px solid ${c.borde}`, borderRadius:10, boxShadow:"0 6px 20px rgba(15,23,42,0.12)", fontFamily:fuente, color:c.texto, fontSize:13, lineHeight:1.4 }}>
+              <span style={{ flexShrink:0, width:20, height:20, borderRadius:"50%", background:c.texto, color:c.fondo, fontSize:12, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>{c.icono}</span>
+              <span style={{ flex:1, whiteSpace:"pre-line" }}>{a.texto}</span>
+              {a.deshacer && (
+                <button onClick={() => { cerrar(a.id); a.deshacer(); }} style={{ flexShrink:0, padding:"5px 10px", background:"transparent", border:`1px solid ${c.texto}`, borderRadius:6, color:c.texto, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:fuente }}>Deshacer</button>
+              )}
+              <button onClick={() => cerrar(a.id)} aria-label="Cerrar aviso" style={{ flexShrink:0, background:"none", border:"none", color:c.texto, fontSize:18, lineHeight:1, cursor:"pointer", padding:"0 2px", opacity:0.6 }}>×</button>
+            </div>
+          );
+        })}
+      </div>
+
+      {pregunta && (
+        <div onClick={() => responder(false)} style={{ position:"fixed", inset:0, zIndex:2100, background:"rgba(15,23,42,0.45)", display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" style={{ width:"100%", maxWidth:420, background:"#fff", borderRadius:14, padding:22, boxShadow:"0 20px 50px rgba(15,23,42,0.25)", fontFamily:fuente, color:"#1A2B4A" }}>
+            <div style={{ fontSize:14, lineHeight:1.55, whiteSpace:"pre-line" }}>{pregunta.texto}</div>
+            <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:20 }}>
+              <button onClick={() => responder(false)} style={{ padding:"9px 16px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:fuente }}>Cancelar</button>
+              <button autoFocus onClick={() => responder(true)} style={{ padding:"9px 16px", background:pregunta.peligro ? "#DC2626" : "#1A2B4A", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:fuente }}>{pregunta.boton}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 const ESTADO_LABELS = { pendiente: "Pendiente", en_proceso: "En proceso", terminado: "Terminado" };
 const STATUS_META = {
   urgent:  { color: "#e05555", bg: "rgba(224,85,85,0.13)", label: "URGENTE", icon: "🚨" },
@@ -431,7 +512,7 @@ function enviarWhatsApp(obras, numero) {
   const urgentes = activas.filter(o => diasRestantes(o.fecha) <= 7 && diasRestantes(o.fecha) >= 0);
   const proximas = activas.filter(o => diasRestantes(o.fecha) > 7 && diasRestantes(o.fecha) <= 21);
   const vencidas = activas.filter(o => diasRestantes(o.fecha) < 0);
-  if (urgentes.length === 0 && proximas.length === 0 && vencidas.length === 0) { alert("No hay obras con fechas próximas."); return; }
+  if (urgentes.length === 0 && proximas.length === 0 && vencidas.length === 0) { avisar("No hay obras con fechas próximas.", { tipo: "aviso" }); return; }
   let msg = `*OBRAS GRUPO AIXA S.A.*\nResumen de entregas\n${"—".repeat(30)}\n\n`;
   if (vencidas.length > 0) { msg += `*VENCIDAS (${vencidas.length})*\n`; vencidas.forEach(o => { msg += `- *${o.nombre}* — ${o.lugar} — Vencida hace ${Math.abs(diasRestantes(o.fecha))} días\n`; }); msg += "\n"; }
   if (urgentes.length > 0) { msg += `*URGENTES (${urgentes.length})*\n`; urgentes.forEach(o => { const d = diasRestantes(o.fecha); msg += `- *${o.nombre}* — ${o.lugar} — ${d === 0 ? "*HOY*" : `en ${d} días`}\n`; }); msg += "\n"; }
@@ -655,8 +736,8 @@ function Login({ onLogin }) {
 async function enviarAvisoAhora(tipo) {
   try {
     const r = await apiFetch(`/api/alertas-diarias?tipo=${tipo}`);
-    alert(r.enviado ? `Aviso enviado a ${r.destinos} destinatario(s).` : (r.motivo || "No había nada para avisar."));
-  } catch (e) { alert(`No se pudo enviar: ${e.message}`); }
+    avisar(r.enviado ? `Aviso enviado a ${r.destinos} destinatario(s).` : (r.motivo || "No había nada para avisar."), { tipo: r.enviado ? "ok" : "info" });
+  } catch (e) { avisar(`No se pudo enviar: ${e.message}`, { tipo: "error" }); }
 }
 
 // Estado de una entrega para las tarjetas (las entregas sin fecha no muestran días)
@@ -762,7 +843,7 @@ function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
       }
       await recargarObras();
       setModal(null);
-    } catch (err) { alert(`Error al guardar: ${err.message}`); }
+    } catch (err) { avisar(`Error al guardar: ${err.message}`, { tipo: "error" }); }
     setGuardando(false);
   }
 
@@ -770,33 +851,47 @@ function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
     try {
       await upsertObra({ ...e, estado: "terminado", editado_por: sesion.id, editado_en: new Date().toISOString() });
       await recargarObras();
-    } catch { alert("Error al actualizar."); return; }
+    } catch { avisar("Error al actualizar.", { tipo: "error" }); return; }
     setDetalleId(null);
   }
 
   async function archivarObra(p) {
     const suyas = entregas.filter(e => e.proyecto_id === p.id);
-    if (!confirm(`¿Archivar la obra "${p.nombre}"${suyas.length > 1 ? ` con sus ${suyas.length} entregas` : ""}?\n\nDeja de verse en Entregas y en todas las pestañas (Producción, Avance de Obra, Cobros, Materiales y Obras Aceptadas). Desde "Archivo" la podés recuperar o eliminar definitivamente.`)) return;
     const ahora = new Date().toISOString();
     try {
       await patchEntregas(`proyecto_id=eq.${p.id}&archivada=is.false`, { archivada: true, archivada_en: ahora });
       await patchProyecto(p.id, { archivada: true, archivada_en: ahora });
       await Promise.allSettled(suyas.map(e => agregarHistorial({ obra_id: e.id, obra_nombre: e.nombre, usuario_id: sesion.id, usuario_nombre: sesion.nombre, accion: "archivó", detalle: "Obra archivada" })));
       await recargarObras();
-    } catch (err) { alert(`No se pudo archivar: ${err.message}`); return; }
+    } catch (err) { avisar(`No se pudo archivar: ${err.message}`, { tipo: "error" }); return; }
     setDetalleId(null);
+    // Deshacer devuelve solo las entregas que se archivaron recién (las que ya estaban archivadas siguen así)
+    avisar(`Obra "${p.nombre}" archivada. Queda en "Archivo".`, { tipo: "ok", deshacer: async () => {
+      try {
+        await patchEntregas(`proyecto_id=eq.${p.id}&archivada_en=eq.${encodeURIComponent(ahora)}`, { archivada: false, archivada_en: null });
+        await patchProyecto(p.id, { archivada: false, archivada_en: null });
+        await recargarObras();
+        avisar(`Obra "${p.nombre}" restaurada.`, { tipo: "ok" });
+      } catch (err) { avisar(`No se pudo deshacer: ${err.message}. Restaurala desde "Archivo".`, { tipo: "error" }); }
+    } });
   }
 
   async function archivarEntrega(e) {
     const p = proyectoDe(e);
     if (p && entregas.filter(x => x.proyecto_id === p.id).length <= 1) return archivarObra(p);
-    if (!confirm(`¿Archivar la entrega "${e.nombre}"?\n\nDeja de verse en todas las pestañas. Desde "Archivo" la podés recuperar o eliminar definitivamente.`)) return;
     try {
       await patchEntregas(`id=eq.${e.id}`, { archivada: true, archivada_en: new Date().toISOString() });
       await agregarHistorial({ obra_id: e.id, obra_nombre: e.nombre, usuario_id: sesion.id, usuario_nombre: sesion.nombre, accion: "archivó", detalle: "Entrega archivada" });
       await recargarObras();
-    } catch (err) { alert(`No se pudo archivar: ${err.message}`); return; }
+    } catch (err) { avisar(`No se pudo archivar: ${err.message}`, { tipo: "error" }); return; }
     setDetalleId(null);
+    avisar(`Entrega "${e.nombre}" archivada. Queda en "Archivo".`, { tipo: "ok", deshacer: async () => {
+      try {
+        await patchEntregas(`id=eq.${e.id}`, { archivada: false, archivada_en: null });
+        await recargarObras();
+        avisar(`Entrega "${e.nombre}" restaurada.`, { tipo: "ok" });
+      } catch (err) { avisar(`No se pudo deshacer: ${err.message}. Restaurala desde "Archivo".`, { tipo: "error" }); }
+    } });
   }
 
   const detalle = detalleId ? obras.find(o => o.id === detalleId) : null;
@@ -1079,7 +1174,7 @@ function ArchivoObras({ obras, proyectos, sesion, onClose, onCambio }) {
   async function hacer(id, accion) {
     setTrabajando(id);
     try { await accion(); await onCambio(); }
-    catch (e) { alert(`No se pudo completar: ${e.message}`); }
+    catch (e) { avisar(`No se pudo completar: ${e.message}`, { tipo: "error" }); }
     setTrabajando(null);
   }
   const restaurarObra = ({ p }) => hacer(p.id, async () => {
@@ -1087,12 +1182,12 @@ function ArchivoObras({ obras, proyectos, sesion, onClose, onCambio }) {
     await patchProyecto(p.id, { archivada: false, archivada_en: null });
   });
   const restaurarEntrega = e => hacer(e.id, () => patchEntregas(`id=eq.${e.id}`, { archivada: false, archivada_en: null }));
-  function eliminarObra({ p, entregas }) {
-    if (!confirm(`¿Eliminar DEFINITIVAMENTE la obra "${p.nombre}"?\n\nSe borran sus ${entregas.length} entrega(s) y todo lo vinculado en las otras pestañas: cobros, materiales, avance de producción, avance de obra (con fotos e informes) y obras aceptadas.\n\nNo se puede deshacer.`)) return;
+  async function eliminarObra({ p, entregas }) {
+    if (!await confirmar(`¿Eliminar DEFINITIVAMENTE la obra "${p.nombre}"?\n\nSe borran sus ${entregas.length} entrega(s) y todo lo vinculado en las otras pestañas: cobros, materiales, avance de producción, avance de obra (con fotos e informes) y obras aceptadas.\n\nNo se puede deshacer.`, { boton: "Eliminar definitivamente" })) return;
     hacer(p.id, () => eliminarObraDefinitiva(p.id, entregas.map(e => e.id)));
   }
-  function eliminarEntrega(e) {
-    if (!confirm(`¿Eliminar DEFINITIVAMENTE la entrega "${e.nombre}"?\n\nSe borra también su cobro, sus materiales, su avance de producción y su avance de obra (con fotos e informes).\n\nNo se puede deshacer.`)) return;
+  async function eliminarEntrega(e) {
+    if (!await confirmar(`¿Eliminar DEFINITIVAMENTE la entrega "${e.nombre}"?\n\nSe borra también su cobro, sus materiales, su avance de producción y su avance de obra (con fotos e informes).\n\nNo se puede deshacer.`, { boton: "Eliminar definitivamente" })) return;
     hacer(e.id, () => eliminarEntregaDefinitiva(e.id));
   }
 
@@ -1171,7 +1266,7 @@ function DetalleObraEntrega({ obra, onClose, onEdit, onDelete, onEntregada, rol,
       setAgregados(a => [nuevo, ...a]);
       setAgrForm({ articulo:"", cantidad:"1", unidad:"" });
       setShowAddAgr(false);
-    } catch { alert("Error al guardar."); }
+    } catch { avisar("Error al guardar.", { tipo: "error" }); }
     setGuardandoAgr(false);
   }
 
@@ -1293,14 +1388,14 @@ function AvanceModule({ sesion, entregas = [] }) {
         const [obs, users] = await Promise.all([getAixaObras(), getAixaUsers()]);
         setAixaObras(obs || []);
         setAixaUsers(users || []);
-      } catch (e) { console.error("Error cargando Avance de Producción:", e); alert("No se pudieron cargar las obras de Avance de Producción."); }
+      } catch (e) { console.error("Error cargando Avance de Producción:", e); avisar("No se pudieron cargar las obras de Avance de Producción.", { tipo: "error" }); }
       setLoading(false);
     })();
   }, []);
 
   async function recargar() {
     try { const obs = await getAixaObras(); setAixaObras(obs || []); }
-    catch (e) { console.error("Error recargando Avance de Producción:", e); alert("No se pudieron recargar las obras de Avance de Producción."); }
+    catch (e) { console.error("Error recargando Avance de Producción:", e); avisar("No se pudieron recargar las obras de Avance de Producción.", { tipo: "error" }); }
   }
 
   const obra = selectedObra ? aixaObras.find(o => o.id === selectedObra) : null;
@@ -1333,7 +1428,7 @@ function AvanceModule({ sesion, entregas = [] }) {
         return { ...datos, history: hist };
       });
       await recargar();
-    } catch { alert("Error al guardar"); }
+    } catch { avisar("Error al guardar", { tipo: "error" }); }
     setLoading(false); setShowObraModal(false); setEditingObra(null);
   }
 
@@ -1343,9 +1438,9 @@ function AvanceModule({ sesion, entregas = [] }) {
   }
 
   async function delObra(id) {
-    if (!confirm("¿Eliminar esta obra?")) return;
+    if (!await confirmar("¿Eliminar esta obra?")) return;
     setLoading(true);
-    try { await deleteAixaObraApi(id); if (selectedObra === id) setSelectedObra(null); await recargar(); } catch { alert("Error"); }
+    try { await deleteAixaObraApi(id); if (selectedObra === id) setSelectedObra(null); await recargar(); } catch (e) { avisar(`No se pudo eliminar la obra. ${e.message || ""}`, { tipo: "error" }); }
     setLoading(false);
   }
 
@@ -1371,12 +1466,12 @@ function AvanceModule({ sesion, entregas = [] }) {
         return { stations, history: hist };
       });
       await recargar();
-    } catch (e) { alert(`No se pudo guardar la estación. ${e.message || ""}`); }
+    } catch (e) { avisar(`No se pudo guardar la estación. ${e.message || ""}`, { tipo: "error" }); }
     setLoading(false); setShowStationModal(false);
     // If all stations are now done, offer completion report
     if (guardada?.stations?.length && guardada.stations.every(s => s.status === 'done')) {
-      setTimeout(() => {
-        if (confirm("🎉 ¡Todas las estaciones completadas!\n¿Deseas generar el informe de cierre de obra?")) {
+      setTimeout(async () => {
+        if (await confirmar("🎉 ¡Todas las estaciones completadas!\n¿Deseas generar el informe de cierre de obra?", { boton: "Generar informe", peligro: false })) {
           generarInformeCierre(guardada);
         }
       }, 400);
@@ -1395,14 +1490,14 @@ function AvanceModule({ sesion, entregas = [] }) {
         return { stations, history: hist };
       });
       await recargar(); setNewStationName("");
-    } catch (e) { alert(`No se pudo agregar la estación. ${e.message || ""}`); }
+    } catch (e) { avisar(`No se pudo agregar la estación. ${e.message || ""}`, { tipo: "error" }); }
     setLoading(false);
   }
 
   async function deleteStation(idx) {
     if (!obra) return;
     const nombre = obra.stations?.[idx]?.name;
-    if (!confirm(`¿Eliminar la estación "${nombre}"?`)) return;
+    if (!await confirmar(`¿Eliminar la estación "${nombre}"?`)) return;
     setLoading(true);
     try {
       await modificarFila("avance_obras", selectedObra, o => {
@@ -1415,7 +1510,7 @@ function AvanceModule({ sesion, entregas = [] }) {
         return { stations, history: hist };
       });
       await recargar();
-    } catch (e) { alert(`No se pudo eliminar la estación. ${e.message || ""}`); }
+    } catch (e) { avisar(`No se pudo eliminar la estación. ${e.message || ""}`, { tipo: "error" }); }
     setLoading(false);
   }
 
@@ -1440,12 +1535,12 @@ function AvanceModule({ sesion, entregas = [] }) {
         return { clarifications, history: hist };
       });
       await recargar();
-    } catch (e) { alert(`No se pudo guardar la aclaración. ${e.message || ""}`); }
+    } catch (e) { avisar(`No se pudo guardar la aclaración. ${e.message || ""}`, { tipo: "error" }); }
     setLoading(false); setShowClarifModal(false); setEditingClarif(null);
   }
 
   async function deleteClarif(idx) {
-    if (!confirm("¿Eliminar esta aclaración?")) return;
+    if (!await confirmar("¿Eliminar esta aclaración?")) return;
     if (!obra) return;
     const { time: creada, title } = obra.clarifications?.[idx] || {};
     setLoading(true);
@@ -1458,7 +1553,7 @@ function AvanceModule({ sesion, entregas = [] }) {
         return { clarifications, history: hist };
       });
       await recargar();
-    } catch (e) { alert(`No se pudo eliminar la aclaración. ${e.message || ""}`); }
+    } catch (e) { avisar(`No se pudo eliminar la aclaración. ${e.message || ""}`, { tipo: "error" }); }
     setLoading(false);
   }
 
@@ -1898,7 +1993,7 @@ function ModalElegirEntrega({ titulo, entregas, color = "#1A2B4A", onClose, onEl
     if (!e) return;
     setGuardando(true);
     try { await onElegir(e); onClose(); }
-    catch (err) { alert(`No se pudo agregar: ${err.message}`); }
+    catch (err) { avisar(`No se pudo agregar: ${err.message}`, { tipo: "error" }); }
     setGuardando(false);
   }
   return (
@@ -1937,7 +2032,7 @@ function ModalSimple({ title, onClose, onSave, fields }) {
 
   function handleSave() {
     const req = fields.find(fi => fi.required && !form[fi.key]?.trim());
-    if (req) { alert(`"${req.label}" es requerido.`); return; }
+    if (req) { avisar(`"${req.label}" es requerido.`, { tipo: "aviso" }); return; }
     onSave(form);
   }
 
@@ -2024,12 +2119,12 @@ function CobrosModule({ entregas = [] }) {
       setShowModal(null);
       setEditData({});
       setEditingAdicionalId(null);
-    } catch (e) { alert(`Error al guardar. ${e.message || ""}`); }
+    } catch (e) { avisar(`Error al guardar. ${e.message || ""}`, { tipo: "error" }); }
     setSaving(false);
   }
 
   async function agregarAdicional() {
-    if (!editData.descripcion) { alert("Completá la descripción."); return; }
+    if (!editData.descripcion) { avisar("Completá la descripción.", { tipo: "aviso" }); return; }
     await guardar(selected.id, c => {
       const adics = c.adicionales || [];
       if (editingAdicionalId) {
@@ -2043,7 +2138,7 @@ function CobrosModule({ entregas = [] }) {
   }
 
   async function eliminarAdicional(cobroId, adicionalId) {
-    if (!confirm("¿Eliminar este adicional?")) return;
+    if (!await confirmar("¿Eliminar este adicional?")) return;
     await guardar(cobroId, c => ({ adicionales: (c.adicionales || []).filter(a => a.id !== adicionalId) }));
   }
 
@@ -2052,12 +2147,12 @@ function CobrosModule({ entregas = [] }) {
   }
 
   async function eliminarCobro(id) {
-    if (!confirm("¿Eliminar esta obra de Cobros? Esta acción no se puede deshacer.")) return;
+    if (!await confirmar("¿Eliminar esta obra de Cobros? Esta acción no se puede deshacer.")) return;
     try {
       await deleteCobro(id);
       setSelected(null);
       await recargar();
-    } catch { alert("Error al eliminar."); }
+    } catch { avisar("Error al eliminar.", { tipo: "error" }); }
   }
 
   async function crearCobroEntrega(e) {
@@ -2684,7 +2779,7 @@ function MaterialesModule({ sesion, entregas = [] }) {
       setListas(lista);
       const upd = lista.find(x => x.id === id);
       if (upd) setSelected(upd);
-    } catch (e) { alert(`Error al guardar. ${e.message || ""}`); }
+    } catch (e) { avisar(`Error al guardar. ${e.message || ""}`, { tipo: "error" }); }
     setSaving(false);
   }
 
@@ -2695,7 +2790,7 @@ function MaterialesModule({ sesion, entregas = [] }) {
   }
 
   async function guardarItem() {
-    if (!itemData.nombre?.trim()) { alert("Ingresá una descripción."); return; }
+    if (!itemData.nombre?.trim()) { avisar("Ingresá una descripción.", { tipo: "aviso" }); return; }
     setSaving(true);
     await guardarLista(selected.id, l => {
       const items = l.items || [];
@@ -2713,7 +2808,7 @@ function MaterialesModule({ sesion, entregas = [] }) {
   }
 
   async function eliminarItem(itemId) {
-    if (!confirm("¿Eliminar este material?")) return;
+    if (!await confirmar("¿Eliminar este material?")) return;
     await guardarLista(selected.id, l => ({ items: (l.items || []).filter(i => i.id !== itemId) }));
   }
 
@@ -2722,12 +2817,12 @@ function MaterialesModule({ sesion, entregas = [] }) {
   }
 
   async function eliminarMaterial(id) {
-    if (!confirm("¿Eliminar esta obra de Materiales? Esta acción no se puede deshacer.")) return;
+    if (!await confirmar("¿Eliminar esta obra de Materiales? Esta acción no se puede deshacer.")) return;
     try {
       await deleteMaterialById(id);
       setSelected(null);
       await recargar();
-    } catch { alert("Error al eliminar."); }
+    } catch { avisar("Error al eliminar.", { tipo: "error" }); }
   }
 
   async function crearListaEntrega(e) {
@@ -3166,12 +3261,12 @@ function AvanceObraModule({ sesion, entregas = [] }) {
       if (selected && editingObra?.id === selected.id) {
         setSelected(newObras?.find(o => o.id === selected.id) || null);
       }
-    } catch { alert("Error al guardar la obra."); return; }
+    } catch { avisar("Error al guardar la obra.", { tipo: "error" }); return; }
     setShowObraModal(false); setEditingObra(null);
   }
 
   async function deleteObra(id) {
-    if (!confirm("¿Eliminar esta obra y todos sus registros?")) return;
+    if (!await confirmar("¿Eliminar esta obra y todos sus registros?")) return;
     try {
       const ds = await getDiasAvance(id);
       for (const d of (ds || [])) {
@@ -3181,7 +3276,7 @@ function AvanceObraModule({ sesion, entregas = [] }) {
       await deleteObraAvanceById(id);
       if (selected?.id === id) { setSelected(null); setDias([]); }
       await loadObras();
-    } catch { alert("Error al eliminar."); }
+    } catch { avisar("Error al eliminar.", { tipo: "error" }); }
   }
 
   async function saveDia(form) {
@@ -3192,18 +3287,18 @@ function AvanceObraModule({ sesion, entregas = [] }) {
         await insertDiaAvance({ ...form, obra_id: selected.id, archivos: [] });
       }
       await loadDias(selected.id);
-    } catch { alert("Error al guardar el día."); return; }
+    } catch { avisar("Error al guardar el día.", { tipo: "error" }); return; }
     setShowDiaModal(false); setEditingDia(null);
   }
 
   async function deleteDia(id) {
-    if (!confirm("¿Eliminar este registro de día?")) return;
+    if (!await confirmar("¿Eliminar este registro de día?")) return;
     try {
       const dia = dias.find(d => d.id === id);
       for (const f of (dia?.archivos || [])) { try { await deleteFileAvance(f.path); } catch { /* si el archivo ya no existe se sigue igual */ } }
       await deleteDiaAvanceById(id);
       await loadDias(selected.id);
-    } catch { alert("Error al eliminar."); }
+    } catch { avisar("Error al eliminar.", { tipo: "error" }); }
   }
 
   async function handleFileUpload(files, diaId) {
@@ -3213,7 +3308,7 @@ function AvanceObraModule({ sesion, entregas = [] }) {
       const archivos = [...(dia?.archivos || [])];
       for (const file of Array.from(files)) {
         try { const fi = await uploadFileAvance(file, selected.id); archivos.push(fi); }
-        catch (e) { alert(`Error al subir ${file.name}: ${e.message}`); }
+        catch (e) { avisar(`Error al subir ${file.name}: ${e.message}`, { tipo: "error" }); }
       }
       await updateDiaAvance(diaId, { archivos });
       await loadDias(selected.id);
@@ -3222,7 +3317,7 @@ function AvanceObraModule({ sesion, entregas = [] }) {
   }
 
   async function deleteFile(diaId, fileIdx) {
-    if (!confirm("¿Eliminar este archivo?")) return;
+    if (!await confirmar("¿Eliminar este archivo?")) return;
     try {
       const dia = dias.find(d => d.id === diaId);
       const archivos = [...(dia?.archivos || [])];
@@ -3230,7 +3325,7 @@ function AvanceObraModule({ sesion, entregas = [] }) {
       try { await deleteFileAvance(removed[0]?.path); } catch { /* si el archivo ya no existe se sigue igual */ }
       await updateDiaAvance(diaId, { archivos });
       await loadDias(selected.id);
-    } catch { alert("Error al eliminar archivo."); }
+    } catch { avisar("Error al eliminar archivo.", { tipo: "error" }); }
   }
 
   async function marcarFinalizada(obra) {
@@ -3245,7 +3340,7 @@ function AvanceObraModule({ sesion, entregas = [] }) {
         setInformeFinalObra(obraActualizada || obra);
         setShowInformeFinal(true);
       }
-    } catch { alert("Error al actualizar."); }
+    } catch { avisar("Error al actualizar.", { tipo: "error" }); }
   }
 
   const obrasActivas = obras.filter(o => !o.finalizada);
@@ -3619,7 +3714,7 @@ function ModalInformeFinalObra({ obra, onClose, onSave }) {
       if (saved) { setInformeId(saved.id); setArchivos(saved.archivos || archivosGuardados); }
       setGuardado(true);
       if (onSave) onSave();
-    } catch (e) { alert("Error al guardar el informe: " + e.message); }
+    } catch (e) { avisar("Error al guardar el informe: " + e.message, { tipo: "error" }); }
     setGuardando(false);
   }
 
@@ -3930,7 +4025,7 @@ function ObrasAceptadasModule({ sesion, proyectos = [], recargarObras }) {
 
   // Crea la obra en Entregas (con una primera entrega) y la deja vinculada
   async function pasarAEntregas(o) {
-    if (!confirm(`¿Crear "${o.nombre}" como obra nueva en Entregas?\n\nSe crea con una primera entrega${o.fecha_entrega_aprox ? ` para el ${formatDate(o.fecha_entrega_aprox)}` : ""} y queda vinculada a esta obra aceptada. Los muebles se completan después en Entregas.`)) return;
+    if (!await confirmar(`¿Crear "${o.nombre}" como obra nueva en Entregas?\n\nSe crea con una primera entrega${o.fecha_entrega_aprox ? ` para el ${formatDate(o.fecha_entrega_aprox)}` : ""} y queda vinculada a esta obra aceptada. Los muebles se completan después en Entregas.`, { boton: "Crear obra", peligro: false })) return;
     setPasando(o.id);
     try {
       const { proyecto } = await crearObraConEntrega({
@@ -3939,7 +4034,7 @@ function ObrasAceptadasModule({ sesion, proyectos = [], recargarObras }) {
       });
       await updateObraAceptada(o.id, { proyecto_id: proyecto.id, updated_at: new Date().toISOString() });
       await Promise.all([loadObras(), recargarObras()]);
-    } catch (e) { alert(`No se pudo crear la obra en Entregas: ${e.message}`); }
+    } catch (e) { avisar(`No se pudo crear la obra en Entregas: ${e.message}`, { tipo: "error" }); }
     setPasando(null);
   }
 
@@ -3953,13 +4048,13 @@ function ObrasAceptadasModule({ sesion, proyectos = [], recargarObras }) {
   useEffect(() => { loadObras(); }, []);
 
   async function deleteObra(obra) {
-    if (!confirm(`¿Eliminar la obra "${obra.nombre}" y todos sus archivos?`)) return;
+    if (!await confirmar(`¿Eliminar la obra "${obra.nombre}" y todos sus archivos?`)) return;
     try {
       for (const f of (obra.archivos || [])) { try { await deleteFileAvance(f.path); } catch { /* si el archivo ya no existe se sigue igual */ } }
       await deleteObraAceptadaById(obra.id);
       setModalObra(null);
       await loadObras();
-    } catch { alert("Error al eliminar la obra."); }
+    } catch { avisar("Error al eliminar la obra.", { tipo: "error" }); }
   }
 
   const hoy = new Date();
@@ -4114,7 +4209,7 @@ function ModalObraAceptada({ obra, proyectos = [], canEdit, canDelete, onClose, 
     for (const file of Array.from(files)) {
       if (archivos.find(f => f.name === file.name)) continue;
       const okType = kind === "img" ? IMG_RE_ACEPTADA.test(file.name) : /\.(pdf|xls|xlsx|csv)$/i.test(file.name);
-      if (!okType) { alert(kind === "img" ? `"${file.name}" no es una imagen válida (JPG, PNG, WEBP, GIF).` : `"${file.name}" no es un PDF o Excel válido.`); continue; }
+      if (!okType) { avisar(kind === "img" ? `"${file.name}" no es una imagen válida (JPG, PNG, WEBP, GIF).` : `"${file.name}" no es un PDF o Excel válido.`, { tipo: "aviso" }); continue; }
       const b64 = await new Promise(resolve => {
         const reader = new FileReader();
         reader.onload = e => resolve(e.target.result);
@@ -4158,13 +4253,13 @@ function ModalObraAceptada({ obra, proyectos = [], canEdit, canDelete, onClose, 
             const file = new File([blob], f.name, { type: f.type });
             const uploaded = await uploadFileObraAceptada(file, obraId);
             archivosFinal.push(uploaded);
-          } catch (err) { alert(`Error al subir ${f.name}: ${err.message}`); }
+          } catch (err) { avisar(`Error al subir ${f.name}: ${err.message}`, { tipo: "error" }); }
         }
       }
       await updateObraAceptada(obraId, { archivos: archivosFinal, updated_at: new Date().toISOString() });
       await onSave();
       onClose();
-    } catch (e) { alert("Error al guardar: " + e.message); }
+    } catch (e) { avisar("Error al guardar: " + e.message, { tipo: "error" }); }
     setSaving(false);
   }
 
@@ -4313,6 +4408,10 @@ function ModalObraAceptada({ obra, proyectos = [], canEdit, canDelete, onClose, 
 
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function App() {
+  return <><Aplicacion /><Avisos /></>;
+}
+
+function Aplicacion() {
   const [sesion, setSesion] = useState(null);
   const [obras, setObras] = useState([]); // entregas (incluidas las archivadas)
   const [proyectos, setProyectos] = useState([]); // obras que agrupan entregas
@@ -4505,8 +4604,8 @@ function GestionUsuarios({ onClose }) {
   }
 
   async function eliminar(id) {
-    if (!confirm("¿Eliminar este usuario?")) return;
-    try { await deleteUsuario(id); setUsuarios(u => u.filter(x => x.id !== id)); } catch (e) { alert(e.message); }
+    if (!await confirmar("¿Eliminar este usuario?")) return;
+    try { await deleteUsuario(id); setUsuarios(u => u.filter(x => x.id !== id)); } catch (e) { avisar(e.message, { tipo: "error" }); }
   }
 
   const si = { width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" };
