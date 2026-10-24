@@ -416,7 +416,7 @@ function Avisos() {
   const fuente = "'Inter', sans-serif";
   return (
     <>
-      <div style={{ position:"fixed", bottom:16, left:16, right:16, zIndex:2000, display:"flex", flexDirection:"column", alignItems:"center", gap:8, pointerEvents:"none" }}>
+      <div className="avisos-pila" style={{ position:"fixed", bottom:16, left:16, right:16, zIndex:2000, display:"flex", flexDirection:"column", alignItems:"center", gap:8, pointerEvents:"none" }}>
         {avisos.map(a => {
           const c = AVISO_COLORES[a.tipo] || AVISO_COLORES.info;
           return (
@@ -901,7 +901,7 @@ function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
   return (
     <div>
       {/* STATS */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:32 }}>
+      <div className="grid-numeros" style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:32 }}>
         {[
           { num: activas.length, label:"Entregas en curso", color:"#2563EB", border:"#DBEAFE" },
           { num: urgentes.length, label:"Urgentes", color:"#DC2626", border:"#FECACA" },
@@ -931,7 +931,7 @@ function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
             🗄 Archivo{enArchivo ? ` (${enArchivo})` : ""}
           </button>
         </div>
-        <div style={{ display:"flex", gap:4, background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:10, padding:4 }}>
+        <div className="barra-filtros" style={{ display:"flex", gap:4, background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:10, padding:4 }}>
           {[
             { key:"todas", label:"Todas" }, { key:"urgent", label:"Urgentes" }, { key:"warning", label:"Próximas" }, { key:"ok", label:"A tiempo" }, { key:"done", label:"Entregadas" },
           ].map(f => (
@@ -961,7 +961,7 @@ function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
           <div style={{ fontSize:13, color:"#94A3B8" }}>No hay obras en esta categoría</div>
         </div>
       ) : (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))", gap:16, alignItems:"start" }}>
+        <div className="grid-tarjetas" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))", gap:16, alignItems:"start" }}>
           {grupos.map(({ p, todas, visibles, peor }, idx) => (
             <div key={p.id} className="obra-card"
               style={{ background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:14, overflow:"hidden", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
@@ -1025,7 +1025,7 @@ function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
       )}
 
       {/* FAB */}
-      <button onClick={() => setModal({ modo:"nueva-obra" })}
+      <button onClick={() => setModal({ modo:"nueva-obra" })} className="boton-flotante"
         style={{ position:"fixed", bottom:28, right:24, height:48, padding:"0 22px", borderRadius:12, background:"#1A2B4A", border:"none", fontSize:13, fontWeight:600, color:"#ffffff", boxShadow:"0 4px 20px rgba(26,43,74,0.35)", cursor:"pointer", zIndex:200, display:"flex", alignItems:"center", gap:8, fontFamily:"'Inter', sans-serif" }}
         onMouseEnter={e => { e.currentTarget.style.background="#2563EB"; }}
         onMouseLeave={e => { e.currentTarget.style.background="#1A2B4A"; }}>
@@ -1111,7 +1111,7 @@ function ModalObraEntrega({ modo, proyecto, entrega, etiquetaSugerida = "", guar
           {modo === "nueva-obra" && <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", letterSpacing:0.5, margin:"4px 0 12px", paddingTop:14, borderTop:"1px solid #F1F5F9" }}>PRIMERA ENTREGA</div>}
           {conEntrega && (<>
             {inpEntrega("Nombre de la entrega (opcional)", "etiqueta", "text", "Ej: 1ª entrega, Planta baja, Mobiliario de cajas...")}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <div className="grid-form" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
               {inpEntrega("Fecha de inicio / pedido", "fecha_inicio", "date")}
               {inpEntrega("Fecha de entrega", "fecha", "date")}
             </div>
@@ -1284,7 +1284,7 @@ function DetalleObraEntrega({ obra, onClose, onEdit, onDelete, onEntregada, rol,
           <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
         </div>
         <div style={{ padding:"20px 24px 36px" }}>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
+          <div className="grid-form" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
             {[{ label:"Lugar", val: obra.lugar }, { label:"Inicio", val: obra.fecha_inicio ? formatDate(obra.fecha_inicio) : "—" }, { label:"Entrega", val: obra.fecha ? formatDate(obra.fecha) : "Sin fecha" }, { label:"Estado", val: ESTADO_LABELS[obra.estado] }, { label:"Muebles", val: `${normalizarMuebles(obra.muebles||[]).reduce((a,m)=>a+(m.cantidad||1),0)} unidades` }].map(d => (
               <div key={d.label} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:10, padding:"12px 14px" }}>
                 <div style={{ fontSize:11, color:"#94A3B8", fontWeight:600, marginBottom:4 }}>{d.label.toUpperCase()}</div>
@@ -1584,7 +1584,7 @@ function AvanceModule({ sesion, entregas = [] }) {
               </button>
             )}
           </div>
-          <div style={{ display:"flex", gap:4, background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:10, padding:4 }}>
+          <div className="barra-filtros" style={{ display:"flex", gap:4, background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:10, padding:4 }}>
             {["overview","stations","history","clarifications"].map(s => {
               const labels = { overview:"Resumen", stations:"Estaciones", history:"Historial", clarifications:"Aclaraciones" };
               return (
@@ -1780,7 +1780,7 @@ function AvanceModule({ sesion, entregas = [] }) {
     <div>
       {/* Stats */}
       {total > 0 && (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:24 }}>
+        <div className="grid-numeros" style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:24 }}>
           {[
             { num: total, label:"Total obras", color:"#2563EB", border:"#DBEAFE" },
             { num: total - done - delayed, label:"En progreso", color:"#D97706", border:"#FDE68A" },
@@ -1798,9 +1798,9 @@ function AvanceModule({ sesion, entregas = [] }) {
       {/* Title + filters */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:12 }}>
         <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Obras — Avance de producción</h2>
-        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+        <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
           <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..."
-            style={{ width:160, padding:"8px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" }} />
+            style={{ width:160, flex:"1 1 140px", padding:"8px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" }} />
           <select value={filter} onChange={e => setFilter(e.target.value)}
             style={{ padding:"8px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" }}>
             <option value="all">Todas</option>
@@ -1819,7 +1819,7 @@ function AvanceModule({ sesion, entregas = [] }) {
           <div style={{ fontSize:13, color:"#94A3B8" }}>No hay obras registradas</div>
         </div>
       ) : (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:14 }}>
+        <div className="grid-tarjetas" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:14 }}>
           {filtered.map((o, idx) => {
             const pct = obraProgressAixa(o);
             const del = isDelayedAixa(o);
@@ -2172,7 +2172,7 @@ function CobrosModule({ entregas = [] }) {
   return (
     <div>
       {/* STATS */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:32 }}>
+      <div className="grid-numeros" style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:32 }}>
         {[
           { num: totalObras,        label:"Total obras",        color:"#2563EB", border:"#DBEAFE" },
           { num: adelantosCobrados, label:"Adelantos cobrados",  color:"#059669", border:"#A7F3D0" },
@@ -2186,7 +2186,7 @@ function CobrosModule({ entregas = [] }) {
         ))}
       </div>
 
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:10 }}>
         <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Cobros por obra</h2>
         <button onClick={() => setShowNuevaObra(true)} title="Las entregas nuevas se agregan solas al crearlas en Entregas"
           style={{ padding:"9px 18px", background:"#7C3AED", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
@@ -2202,7 +2202,7 @@ function CobrosModule({ entregas = [] }) {
           <div style={{ fontSize:13, color:"#94A3B8" }}>No hay obras de cobro. Se crean automáticamente al crear obras en Entregas.</div>
         </div>
       ) : (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))", gap:16 }}>
+        <div className="grid-tarjetas" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))", gap:16 }}>
           {cobros.map((c, idx) => {
             const adics = c.adicionales || [];
             const adicsCobrados = adics.filter(a => a.cobrado).length;
@@ -2876,7 +2876,7 @@ function MaterialesModule({ sesion, entregas = [] }) {
   return (
     <div>
       {/* STATS */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:32 }}>
+      <div className="grid-numeros" style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:32 }}>
         {[
           { num:listas.length,     label:"Total obras",                   color:"#0F766E", border:"#99F6E4" },
           { num:totalCompletas,    label:"Obras con materiales completos", color:"#059669", border:"#A7F3D0" },
@@ -2908,7 +2908,7 @@ function MaterialesModule({ sesion, entregas = [] }) {
         </div>
       )}
 
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:10 }}>
         <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Materiales por obra</h2>
         <div style={{ flex:1 }} />
         {isAdmin && (
@@ -2931,7 +2931,7 @@ function MaterialesModule({ sesion, entregas = [] }) {
           <div style={{ fontSize:13, color:"#94A3B8" }}>Sin obras. Se crean automáticamente al crear obras en Entregas.</div>
         </div>
       ) : (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:16 }}>
+        <div className="grid-tarjetas" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:16 }}>
           {listas.map((l, idx) => {
             const items = l.items || [];
             const r = resumenes[idx];
@@ -3151,7 +3151,7 @@ function MaterialesModule({ sesion, entregas = [] }) {
                 );
               })}
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <div className="grid-form" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
               {CAMPOS_ITEM.map(f => (
                 <div key={f.key} style={{ gridColumn: f.full ? "1 / -1" : "auto" }}>
                   <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:5 }}>{f.label}</label>
@@ -3350,7 +3350,7 @@ function AvanceObraModule({ sesion, entregas = [] }) {
 
   return (
     <div>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:32 }}>
+      <div className="grid-numeros" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:32 }}>
         {[
           { num: obras.length, label:"Total obras", color:"#2563EB", border:"#DBEAFE" },
           { num: obrasActivas.length, label:"En curso", color:"#D97706", border:"#FDE68A" },
@@ -3363,7 +3363,7 @@ function AvanceObraModule({ sesion, entregas = [] }) {
         ))}
       </div>
 
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:10 }}>
         <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Obras — Avance de Obra</h2>
         {canEdit && (
           <button onClick={() => { setEditingObra(null); setShowObraModal(true); }}
@@ -3378,7 +3378,7 @@ function AvanceObraModule({ sesion, entregas = [] }) {
           <div style={{ fontSize:13, color:"#94A3B8" }}>No hay obras registradas aún</div>
         </div>
       ) : (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))", gap:16 }}>
+        <div className="grid-tarjetas" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))", gap:16 }}>
           {obras.map((obra, idx) => (
             <div key={obra.id} onClick={() => { setSelected(obra); loadDias(obra.id); }}
               style={{ background:"#ffffff", border: obra.finalizada ? "1px solid #A7F3D0" : "1px solid #E8ECF0", borderRadius:14, overflow:"hidden", cursor:"pointer", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
@@ -3883,7 +3883,7 @@ body{font-family:'Archivo',sans-serif;background:var(--bg);color:var(--text);lin
           {/* 2. Personal */}
           <div style={{ marginBottom:44 }}>
             <div style={secT}>Personal Responsable</div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:18, marginTop:16, marginBottom:18 }}>
+            <div className="grid-form" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:18, marginTop:16, marginBottom:18 }}>
               <div>
                 <label style={lbl}>Responsable de Obra (Estudio/Arquitecto)</label>
                 <input style={inp} value={form.responsableEstudio} onChange={e => { setForm(x => ({...x, responsableEstudio:e.target.value})); setGuardado(false); }} placeholder="Nombre completo"
@@ -4078,7 +4078,7 @@ function ObrasAceptadasModule({ sesion, proyectos = [], recargarObras }) {
   return (
     <div>
       {/* STATS */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:32 }}>
+      <div className="grid-numeros" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:32 }}>
         {[
           { num: obras.length, label:"Total obras aceptadas", color:"#2563EB", border:"#DBEAFE" },
           { num: esteMes, label:"Este mes", color:"#D97706", border:"#FDE68A" },
@@ -4121,7 +4121,7 @@ function ObrasAceptadasModule({ sesion, proyectos = [], recargarObras }) {
           <div style={{ fontSize:13, color:"#94A3B8" }}>{obras.length === 0 ? "No hay obras aceptadas registradas aún" : "No hay obras en esta búsqueda/filtro"}</div>
         </div>
       ) : (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:16 }}>
+        <div className="grid-tarjetas" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:16 }}>
           {obrasFiltradas.map((o, idx) => (
             <div key={o.id} className="obra-card" onClick={() => setModalObra(o)}
               style={{ background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:14, overflow:"hidden", cursor:"pointer", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
@@ -4287,7 +4287,7 @@ function ModalObraAceptada({ obra, proyectos = [], canEdit, canDelete, onClose, 
               <label style={lbl}>Nombre del cliente</label>
               <input style={inp} value={form.cliente} onChange={e => setForm(f => ({...f, cliente:e.target.value}))} placeholder="Nombre del cliente" />
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
+            <div className="grid-form" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
               <div>
                 <label style={lbl}>Fecha de aceptación</label>
                 <input type="date" style={inp} value={form.fecha_aceptacion} onChange={e => setForm(f => ({...f, fecha_aceptacion:e.target.value}))} />
@@ -4487,49 +4487,33 @@ function Aplicacion() {
     <div style={{ minHeight:"100vh", background:"#F4F6F9", fontFamily:"'Inter', sans-serif", color:"#1A2B4A" }}>
 
       {/* HEADER */}
-      <header style={{ position:"sticky", top:0, zIndex:100, background:"#ffffff", borderBottom:"1px solid #E8ECF0", padding:"0 24px", height:60, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+      <header className="app-encabezado" style={{ position:"sticky", top:0, zIndex:100, background:"#ffffff", borderBottom:"1px solid #E8ECF0", padding:"0 24px", height:60, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
         <div style={{ display:"flex", alignItems:"center", gap:16 }}>
           <img src={LOGO_AIXA} alt="Obras Grupo Aixa S.A." style={{ height:40, borderRadius:6 }} />
 
-          {/* TABS */}
-          <div style={{ display:"flex", gap:2, background:"#F1F5F9", borderRadius:10, padding:3 }}>
-            <button onClick={() => setActiveTab("entregas")}
-              style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="entregas" ? "#1A2B4A" : "transparent", color: activeTab==="entregas" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="entregas" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
-              📦 Entregas
-            </button>
-            <button onClick={() => setActiveTab("aceptadas")}
-              style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="aceptadas" ? "#1A2B4A" : "transparent", color: activeTab==="aceptadas" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="aceptadas" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
-              🗂️ Obras Aceptadas
-            </button>
-            {canSeeAvanceProduccion && (
-              <button onClick={() => setActiveTab("avance")}
-                style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="avance" ? "#1A2B4A" : "transparent", color: activeTab==="avance" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="avance" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
-                🏗 Avance de Producción
-              </button>
-            )}
-            {canSeeAvanceObra && (
-              <button onClick={() => setActiveTab("avance_obra")}
-                style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="avance_obra" ? "#1A2B4A" : "transparent", color: activeTab==="avance_obra" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="avance_obra" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
-                🏠 Avance de Obra
-              </button>
-            )}
-            {canSeeCobros && (
-              <button onClick={() => setActiveTab("cobros")}
-                style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="cobros" ? "#7C3AED" : "transparent", color: activeTab==="cobros" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="cobros" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
-                💰 Cobros
-              </button>
-            )}
-            {canSeeMateriales && (
-              <button onClick={() => setActiveTab("materiales")}
-                style={{ padding:"7px 18px", borderRadius:8, border:"none", background: activeTab==="materiales" ? "#0F766E" : "transparent", color: activeTab==="materiales" ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activeTab==="materiales" ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
-                🪵 Materiales
-                {matAlertCount > 0 && (
-                  <span title={`${matAlertCount} obra(s) con entrega próxima y materiales faltantes`}
-                    style={{ marginLeft:6, background:"#DC2626", color:"#fff", borderRadius:99, padding:"1px 7px", fontSize:10, fontWeight:700 }}>{matAlertCount}</span>
-                )}
-              </button>
-            )}
-          </div>
+          {/* TABS (en el celular pasan a una barra fija abajo, ver index.css) */}
+          <nav className="app-tabs" style={{ display:"flex", gap:2, background:"#F1F5F9", borderRadius:10, padding:3 }}>
+            {[
+              { id:"entregas",    icono:"📦", nombre:"Entregas",             corto:"Entregas",   ver:true },
+              { id:"aceptadas",   icono:"🗂️", nombre:"Obras Aceptadas",      corto:"Aceptadas",  ver:true },
+              { id:"avance",      icono:"🏗", nombre:"Avance de Producción", corto:"Producción", ver:canSeeAvanceProduccion },
+              { id:"avance_obra", icono:"🏠", nombre:"Avance de Obra",       corto:"Obra",       ver:canSeeAvanceObra },
+              { id:"cobros",      icono:"💰", nombre:"Cobros",               corto:"Cobros",     ver:canSeeCobros, color:"#7C3AED" },
+              { id:"materiales",  icono:"🪵", nombre:"Materiales",           corto:"Materiales", ver:canSeeMateriales, color:"#0F766E", alertas:matAlertCount },
+            ].filter(t => t.ver).map(t => {
+              const activa = activeTab === t.id;
+              return (
+                <button key={t.id} onClick={() => setActiveTab(t.id)} className={activa ? "app-tab activa" : "app-tab"} aria-current={activa ? "page" : undefined}
+                  style={{ "--tab-color": t.color || "#1A2B4A", position:"relative", padding:"7px 18px", borderRadius:8, border:"none", background: activa ? (t.color || "#1A2B4A") : "transparent", color: activa ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activa ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
+                  <span className="app-tab-icono">{t.icono}</span> <span className="app-tab-nombre">{t.nombre}</span><span className="app-tab-corto">{t.corto}</span>
+                  {t.alertas > 0 && (
+                    <span className="app-tab-alerta" title={`${t.alertas} obra(s) con entrega próxima y materiales faltantes`}
+                      style={{ marginLeft:6, background:"#DC2626", color:"#fff", borderRadius:99, padding:"1px 7px", fontSize:10, fontWeight:700 }}>{t.alertas}</span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
         </div>
 
         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
@@ -4548,10 +4532,10 @@ function Aplicacion() {
             <div style={{ width:26, height:26, borderRadius:6, background: isAdmin ? "#1A2B4A" : isFinanzas ? "#7C3AED" : isArquitecto ? "#B45309" : "#0F766E", display:"flex", alignItems:"center", justifyContent:"center" }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </div>
-            <span style={{ fontSize:13, color:"#1A2B4A", fontWeight:500 }}>{sesion.nombre.split(" ")[0]}</span>
-            {isAdmin && <span style={{ fontSize:10, color:"#1A2B4A", background:"#EFF6FF", border:"1px solid #DBEAFE", borderRadius:4, padding:"1px 6px", fontWeight:600 }}>ADMIN</span>}
-            {isFinanzas && <span style={{ fontSize:10, color:"#7C3AED", background:"#F5F3FF", border:"1px solid #DDD6FE", borderRadius:4, padding:"1px 6px", fontWeight:600 }}>FINANZAS</span>}
-            {isArquitecto && <span style={{ fontSize:10, color:"#92400E", background:"#FEF3C7", border:"1px solid #FDE68A", borderRadius:4, padding:"1px 6px", fontWeight:600 }}>ARQUITECTO</span>}
+            <span className="solo-escritorio" style={{ fontSize:13, color:"#1A2B4A", fontWeight:500 }}>{sesion.nombre.split(" ")[0]}</span>
+            {isAdmin && <span className="solo-escritorio" style={{ fontSize:10, color:"#1A2B4A", background:"#EFF6FF", border:"1px solid #DBEAFE", borderRadius:4, padding:"1px 6px", fontWeight:600 }}>ADMIN</span>}
+            {isFinanzas && <span className="solo-escritorio" style={{ fontSize:10, color:"#7C3AED", background:"#F5F3FF", border:"1px solid #DDD6FE", borderRadius:4, padding:"1px 6px", fontWeight:600 }}>FINANZAS</span>}
+            {isArquitecto && <span className="solo-escritorio" style={{ fontSize:10, color:"#92400E", background:"#FEF3C7", border:"1px solid #FDE68A", borderRadius:4, padding:"1px 6px", fontWeight:600 }}>ARQUITECTO</span>}
           </div>
 
           <button onClick={handleLogout}
@@ -4562,7 +4546,7 @@ function Aplicacion() {
       </header>
 
       {/* MAIN CONTENT */}
-      <main style={{ maxWidth:1200, margin:"0 auto", padding:"28px 24px 100px" }}>
+      <main className="app-main" style={{ maxWidth:1200, margin:"0 auto", padding:"28px 24px 100px" }}>
         {activeTab === "entregas" && <EntregasModule sesion={sesion} obras={obras} proyectos={proyectos} recargarObras={recargarObras} />}
         {activeTab === "aceptadas" && <ObrasAceptadasModule sesion={sesion} proyectos={proyectos} recargarObras={recargarObras} />}
         {activeTab === "avance" && canSeeAvanceProduccion && <AvanceModule sesion={sesion} entregas={obras} />}
@@ -4680,7 +4664,7 @@ function ConfigWhatsApp({ obras, onClose }) {
           <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
         </div>
         <div style={{ padding:"20px 24px" }}>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
+          <div className="grid-form" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
             <div style={{ background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:10, padding:14, textAlign:"center" }}>
               <div style={{ fontFamily:"'Sora', sans-serif", fontSize:28, fontWeight:800, color:"#DC2626" }}>{urgentes}</div>
               <div style={{ fontSize:11, color:"#EF4444", fontWeight:600, marginTop:4 }}>URGENTES</div>

@@ -24,3 +24,52 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.5; cursor: po
 input:focus { border-color: #2563EB !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.08) !important; }
 select:focus { border-color: #2563EB !important; }
 textarea:focus { border-color: #2563EB !important; }
+
+/* ─── Celular ───────────────────────────────────────────────────────────────
+   Los estilos de la app van inline, así que acá se pisan con !important.
+   En pantallas chicas las pestañas pasan a una barra fija abajo. */
+.app-tab-corto { display: none; }
+
+@media (max-width: 760px) {
+  .solo-escritorio { display: none !important; }
+
+  .app-encabezado { padding: 0 12px !important; height: 56px !important; padding-top: env(safe-area-inset-top) !important; }
+  .app-encabezado img { height: 34px !important; }
+  .app-main { padding: 16px 12px calc(92px + env(safe-area-inset-bottom)) !important; }
+
+  .app-tabs {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 300;
+    background: #ffffff !important; border-radius: 0 !important; border-top: 1px solid #E2E8F0;
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom)) !important; gap: 0 !important;
+    box-shadow: 0 -4px 16px rgba(26, 43, 74, 0.06);
+  }
+  .app-tab {
+    flex: 1 1 0; min-width: 0; padding: 6px 2px !important; border-radius: 10px !important;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    background: transparent !important; color: #64748B !important;
+    font-size: 10px !important; letter-spacing: 0 !important;
+  }
+  .app-tab.activa { color: var(--tab-color) !important; background: #F1F5F9 !important; font-weight: 700 !important; }
+  .app-tab-icono { font-size: 19px; line-height: 1; }
+  .app-tab-nombre { display: none; }
+  .app-tab-corto { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .app-tab-alerta { position: absolute; top: 2px; right: calc(50% - 22px); margin: 0 !important; padding: 0 5px !important; font-size: 9px !important; }
+
+  .boton-flotante { bottom: calc(84px + env(safe-area-inset-bottom)) !important; right: 14px !important; }
+  .avisos-pila { bottom: calc(84px + env(safe-area-inset-bottom)) !important; left: 12px !important; right: 12px !important; }
+
+  .grid-numeros { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; margin-bottom: 20px !important; }
+  .grid-numeros > div { padding: 14px !important; }
+  .grid-tarjetas { grid-template-columns: 1fr !important; gap: 12px !important; }
+  .grid-form { grid-template-columns: 1fr !important; }
+
+  /* Barras de filtros (Todas / Urgentes / ...): se deslizan de costado en vez de desbordar la página */
+  .barra-filtros { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .barra-filtros::-webkit-scrollbar { display: none; }
+  .barra-filtros > * { flex-shrink: 0; white-space: nowrap; }
+
+  /* En el celular el hover no existe: sin saltitos al tocar una tarjeta */
+  .obra-card:hover { transform: none; }
+  /* 16px evita que el iPhone haga zoom al tocar un campo */
+  input, select, textarea { font-size: 16px !important; min-width: 0; }
+}
