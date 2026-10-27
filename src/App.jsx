@@ -4928,6 +4928,7 @@ function Aplicacion() {
   const canSeeAvanceProduccion = !isArquitecto && !isFinanzas;
   const canSeeAvanceObra = !isFinanzas;
   const canSeeMateriales = !isArquitecto && !isFinanzas;
+  const canSeeHistorial = sesion?.email?.toLowerCase() === EMAIL_HISTORIAL;
   const activas = entregasActivas.filter(o => o.estado !== "terminado");
   const urgentes = activas.filter(o => { const d = diasRestantes(o.fecha); return d >= 0 && d <= 7; });
   const proximas = activas.filter(o => { const d = diasRestantes(o.fecha); return d > 7 && d <= 21; });
@@ -4975,6 +4976,11 @@ function Aplicacion() {
         </div>
 
         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          {canSeeHistorial && (
+            <button onClick={() => setActiveTab("historial")} className="btn-icon" title="Historial de modificaciones"
+              style={{ background: activeTab === "historial" ? "#1A2B4A" : "transparent", border:"1px solid #E8ECF0", borderRadius:8, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:16 }}>🕑</button>
+          )}
+
           {/* WhatsApp */}
           <button onClick={() => setShowWA(true)} className="btn-icon" title="WhatsApp"
             style={{ position:"relative", background:"transparent", border:"1px solid #E8ECF0", borderRadius:8, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
@@ -5011,6 +5017,7 @@ function Aplicacion() {
         {activeTab === "avance_obra" && canSeeAvanceObra && <AvanceObraModule sesion={sesion} entregas={obras} />}
         {activeTab === "cobros" && canSeeCobros && <CobrosModule entregas={obras} />}
         {activeTab === "materiales" && canSeeMateriales && <MaterialesModule sesion={sesion} entregas={obras} />}
+        {activeTab === "historial" && canSeeHistorial && <HistorialModule />}
       </main>
 
       {/* MODALES GLOBALES */}
@@ -5020,6 +5027,168 @@ function Aplicacion() {
   );
 }
 
+
+// ─── HISTORIAL DE MODIFICACIONES (solo admin@fabrica.com) ────────────────────
+// Lo anota la base sola (supabase/04-auditoria.sql); la base solo se lo entrega a esa cuenta.
+const EMAIL_HISTORIAL = "admin@fabrica.com";
+const TABLAS_HISTORIAL = {
+  proyectos: "Obras", obras: "Entregas", avance_obras: "Producción", materiales: "Materiales", cobros: "Cobros",
+  obras_avance: "Avance de obra", avance_dias: "Avance de obra (día)", informes_finales: "Informe final de obra",
+  obras_aceptadas: "Obras aceptadas", agregados: "Agregados", usuarios: "Usuarios",
+};
+const CAMPOS_HISTORIAL = {
+  nombre: "Nombre", lugar: "Dirección", direccion: "Dirección", fecha: "Fecha", fecha_inicio: "Fecha de inicio", estado: "Estado",
+  muebles: "Muebles", notas: "Notas", etiqueta: "Etiqueta", archivada: "Archivada", archivada_en: "Archivada el",
+  stations: "Estación", clarifications: "Aclaración", items: "Material", adicionales: "Adicional", archivos: "Archivo",
+  monto_total: "Monto total", adelanto_cobrado: "Adelanto cobrado", adelanto_monto: "Monto del adelanto", adelanto_porcentaje: "% de adelanto",
+  total_cobrado: "Total cobrado", total_fecha: "Fecha de cobro", plazo_pago: "Plazo de pago",
+  status: "Estado", operario: "Operario", start_date: "Inicio", end_date: "Fin", start_time: "Hora de inicio", end_time: "Hora de fin",
+  duration_min: "Minutos", duration_manual: "Minutos cargados a mano", note: "Observación", description: "Descripción", due_date: "Fecha de entrega", client: "Cliente",
+  cantidad: "Cantidad", unidad: "Unidad", proveedor: "Proveedor", cantidad_recibida: "Cantidad recibida", orden_pedido: "Orden de pedido", numero_remito: "N° de remito",
+  detalle: "Detalle", operarios: "Operarios", finalizada: "Finalizada", cliente: "Cliente", descripcion: "Descripción", monto: "Monto", cobrado: "Cobrado",
+  rol: "Rol", email: "Email", title: "Título", responsible: "Responsable", station: "Estación", detail: "Detalle", datos: "Datos",
+};
+const CAMPOS_PLATA = new Set(["monto_total", "adelanto_monto", "monto"]);
+const VALORES_HISTORIAL = { ...ESTADOS_MAT, pending: "Pendiente", active: "En progreso", done: "Completada", blocked: "Bloqueada", terminado: "Entregada" };
+
+const nombreCampo = k => CAMPOS_HISTORIAL[k] || k.replace(/_/g, " ");
+const nombreElemento = e => typeof e !== "object" || e === null ? String(e)
+  : e.nombre || e.name || e.descripcion || e.title || e.path?.split("/").pop() || e.fecha || JSON.stringify(e).slice(0, 60);
+function valorHistorial(campo, v) {
+  if (v === null || v === undefined || v === "") return "(vacío)";
+  if (v === true) return "Sí";
+  if (v === false) return "No";
+  if (CAMPOS_PLATA.has(campo) && !isNaN(Number(v))) return pesos(v);
+  if (Array.isArray(v)) return v.length ? v.map(nombreElemento).join(", ") : "(vacío)";
+  if (typeof v === "object") return nombreElemento(v);
+  const s = String(v);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return formatDate(s);
+  if (VALORES_HISTORIAL[s]) return VALORES_HISTORIAL[s];
+  return s.length > 140 ? s.slice(0, 140) + "…" : s;
+}
+
+// Renglones legibles de un registro: "Monto total: $0 → $4.500.000", "Material: agregó "Gris perla""...
+function renglonesHistorial(r) {
+  const c = r.cambios || {};
+  if (r.accion !== "modificó") {
+    return Object.entries(c)
+      .filter(([k, v]) => !/(^|_)id$/.test(k) && v !== null && v !== "" && !(Array.isArray(v) && !v.length) && k !== "password")
+      .slice(0, 8)
+      .map(([k, v]) => Array.isArray(v) ? `${nombreCampo(k)}: ${v.length > 3 ? `${v.length} elementos` : valorHistorial(k, v)}` : `${nombreCampo(k)}: ${valorHistorial(k, v)}`);
+  }
+  const lineas = [];
+  Object.entries(c).forEach(([k, v]) => {
+    if (Array.isArray(v)) { lineas.push(`${nombreCampo(k)}: ${valorHistorial(k, v[0])} → ${valorHistorial(k, v[1])}`); return; }
+    (v.agregados || []).forEach(e => lineas.push(`${nombreCampo(k)}: agregó "${nombreElemento(e)}"`));
+    (v.quitados || []).forEach(e => lineas.push(`${nombreCampo(k)}: quitó "${nombreElemento(e)}"`));
+    (v.cambiados || []).forEach(({ item, cambios }) => {
+      const partes = Object.entries(cambios || {}).filter(([sub]) => sub !== "id")
+        .map(([sub, [antes, despues]]) => sub === "valor" ? `${valorHistorial(k, antes)} → ${valorHistorial(k, despues)}` : `${nombreCampo(sub)}: ${valorHistorial(sub, antes)} → ${valorHistorial(sub, despues)}`);
+      lineas.push(`${nombreCampo(k)} "${item}": ${partes.join(" · ")}`);
+    });
+  });
+  return lineas;
+}
+
+function HistorialModule() {
+  const POR_PAGINA = 100;
+  const [filas, setFilas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [hayMas, setHayMas] = useState(false);
+  const [usuarios, setUsuarios] = useState([]);
+  const [filtro, setFiltro] = useState({ quien: "", tabla: "", obra: "", desde: "", hasta: "" });
+
+  const consulta = offset => {
+    const q = [`select=*&order=creado_en.desc&limit=${POR_PAGINA}&offset=${offset}`];
+    if (filtro.quien) q.push(`usuario_nombre=eq.${encodeURIComponent(filtro.quien)}`);
+    if (filtro.tabla) q.push(`tabla=eq.${filtro.tabla}`);
+    if (filtro.obra.trim()) q.push(`obra=ilike.${encodeURIComponent(`*${filtro.obra.trim()}*`)}`);
+    if (filtro.desde) q.push(`creado_en=gte.${new Date(`${filtro.desde}T00:00`).toISOString()}`);
+    if (filtro.hasta) q.push(`creado_en=lt.${new Date(new Date(`${filtro.hasta}T00:00`).getTime() + 86400000).toISOString()}`);
+    return `auditoria?${q.join("&")}`;
+  };
+
+  async function cargar(mas = false) {
+    setCargando(true);
+    try {
+      const nuevas = await sbFetch(consulta(mas ? filas.length : 0));
+      setFilas(f => mas ? [...f, ...nuevas] : nuevas);
+      setHayMas(nuevas.length === POR_PAGINA);
+    } catch (e) { avisar(`No se pudo cargar el historial. ${e.message || ""}`, { tipo: "error" }); }
+    setCargando(false);
+  }
+
+  // Se vuelve a pedir cada vez que cambia un filtro (el de texto espera a que se deje de escribir)
+  useEffect(() => {
+    const t = setTimeout(() => cargar(), filtro.obra ? 400 : 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtro]);
+  useEffect(() => { getUsuarios().then(u => setUsuarios(u || [])).catch(() => {}); }, []);
+
+  const si = { padding: "8px 10px", background: "#ffffff", border: "1px solid #E2E8F0", borderRadius: 8, color: "#1A2B4A", fontFamily: "'Inter', sans-serif", fontSize: 13, outline: "none", minWidth: 0 };
+  const COLOR_ACCION = { "creó": "#059669", "modificó": "#2563EB", "borró": "#DC2626" };
+  const hayFiltro = Object.values(filtro).some(Boolean);
+  const dia = iso => new Date(iso).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const hora = iso => new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ fontFamily: "'Sora', sans-serif", fontSize: 18, fontWeight: 700, color: "#1A2B4A", margin: 0 }}>🕑 Historial de modificaciones</h2>
+        <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>Quién cambió qué y cuándo, en todas las pestañas. Solo lo ve {EMAIL_HISTORIAL}.</div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18, alignItems: "center" }}>
+        <select value={filtro.quien} onChange={e => setFiltro(f => ({ ...f, quien: e.target.value }))} style={{ ...si, flex: "1 1 150px" }}>
+          <option value="">Todas las personas</option>
+          {usuarios.map(u => <option key={u.id} value={u.nombre}>{u.nombre}</option>)}
+        </select>
+        <select value={filtro.tabla} onChange={e => setFiltro(f => ({ ...f, tabla: e.target.value }))} style={{ ...si, flex: "1 1 150px" }}>
+          <option value="">Todas las pestañas</option>
+          {Object.entries(TABLAS_HISTORIAL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <input value={filtro.obra} onChange={e => setFiltro(f => ({ ...f, obra: e.target.value }))} placeholder="Buscar obra..." style={{ ...si, flex: "1 1 160px" }} />
+        <label style={{ fontSize: 12, color: "#64748B", display: "flex", alignItems: "center", gap: 6 }}>Desde
+          <input type="date" value={filtro.desde} onChange={e => setFiltro(f => ({ ...f, desde: e.target.value }))} style={si} /></label>
+        <label style={{ fontSize: 12, color: "#64748B", display: "flex", alignItems: "center", gap: 6 }}>Hasta
+          <input type="date" value={filtro.hasta} onChange={e => setFiltro(f => ({ ...f, hasta: e.target.value }))} style={si} /></label>
+        {hayFiltro && <button onClick={() => setFiltro({ quien: "", tabla: "", obra: "", desde: "", hasta: "" })} style={{ ...si, cursor: "pointer", color: "#64748B" }}>✕ Limpiar</button>}
+      </div>
+
+      {!filas.length ? (
+        <div style={{ background: "#ffffff", border: "1px solid #E8ECF0", borderRadius: 12, padding: 30, textAlign: "center", color: "#94A3B8", fontSize: 13 }}>
+          {cargando ? "Cargando…" : hayFiltro ? "No hay cambios con estos filtros." : "Todavía no hay cambios registrados."}
+        </div>
+      ) : (
+        <div style={{ background: "#ffffff", border: "1px solid #E8ECF0", borderRadius: 12, padding: "4px 18px" }}>
+          {filas.map((r, i) => {
+            const nuevoDia = i === 0 || dia(filas[i - 1].creado_en) !== dia(r.creado_en);
+            const renglones = renglonesHistorial(r);
+            return (
+              <div key={r.id}>
+                {nuevoDia && <div style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", letterSpacing: 0.5, textTransform: "uppercase", padding: "14px 0 6px" }}>{dia(r.creado_en)}</div>}
+                <div style={{ display: "flex", gap: 12, padding: "10px 0", borderTop: "1px solid #F1F5F9" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", width: 44, flexShrink: 0, paddingTop: 1 }}>{hora(r.creado_en)}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, color: "#1A2B4A" }}>
+                      <strong>{r.usuario_nombre || "—"}</strong>{" "}
+                      <span style={{ color: COLOR_ACCION[r.accion] || "#475569", fontWeight: 600 }}>{r.accion}</span>{" "}
+                      <span style={{ fontSize: 11, color: "#475569", background: "#F1F5F9", borderRadius: 4, padding: "1px 6px" }}>{TABLAS_HISTORIAL[r.tabla] || r.tabla}</span>
+                      {r.obra && <span style={{ color: "#64748B" }}> · {r.obra}</span>}
+                    </div>
+                    {renglones.map((l, j) => <div key={j} style={{ fontSize: 12, color: "#475569", marginTop: 3, overflowWrap: "anywhere" }}>{l}</div>)}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {hayMas && <button disabled={cargando} onClick={() => cargar(true)} style={{ width: "100%", marginTop: 12, padding: "10px 0", background: "#ffffff", border: "1px solid #E2E8F0", borderRadius: 8, color: "#2563EB", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{cargando ? "Cargando…" : "Ver más"}</button>}
+    </div>
+  );
+}
 
 // ─── GESTIÓN USUARIOS ─────────────────────────────────────────────────────────
 function GestionUsuarios({ onClose }) {
