@@ -781,6 +781,33 @@ async function enviarAvisoAhora(tipo) {
   } catch (e) { avisar(`No se pudo enviar: ${e.message}`, { tipo: "error" }); }
 }
 
+// ─── DIRECCIONES (cada pantalla tiene su link; "atrás" y recargar funcionan) ──
+const RUTAS_PESTANAS = { entregas: "entregas", aceptadas: "aceptadas", avance: "produccion", avance_obra: "avance-obra", cobros: "cobros", materiales: "materiales", historial: "historial" };
+const PESTANAS_RUTAS = Object.fromEntries(Object.entries(RUTAS_PESTANAS).map(([t, r]) => [r, t]));
+// Link a la ficha: /obra/<id>/<nombre-legible> (el nombre es solo para que el link se entienda)
+const linkFicha = p => `/obra/${encodeURIComponent(p.id)}/${(p.nombre || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+
+function leerRuta() {
+  const [primera = "", segunda] = window.location.pathname.split("/").filter(Boolean);
+  if (primera === "obra" && segunda) return { pestana: "entregas", fichaId: decodeURIComponent(segunda) };
+  return { pestana: PESTANAS_RUTAS[primera] || null, fichaId: null };
+}
+function navegar(ruta, { reemplazar = false } = {}) {
+  if (window.location.pathname === ruta) return;
+  window.history[reemplazar ? "replaceState" : "pushState"](null, "", ruta);
+  window.dispatchEvent(new Event("cambio-de-ruta"));
+}
+function useRuta() {
+  const [ruta, setRuta] = useState(leerRuta);
+  useEffect(() => {
+    const actualizar = () => { setRuta(leerRuta()); window.scrollTo(0, 0); };
+    window.addEventListener("popstate", actualizar);
+    window.addEventListener("cambio-de-ruta", actualizar);
+    return () => { window.removeEventListener("popstate", actualizar); window.removeEventListener("cambio-de-ruta", actualizar); };
+  }, []);
+  return ruta;
+}
+
 // Estado de una entrega para las tarjetas (las entregas sin fecha no muestran días)
 function estadoEntrega(e) {
   if (e.estado === "terminado") return { status: "done", label: "Entregada" };
@@ -822,6 +849,7 @@ function FichaObra({ proyecto: p, entregas, sesion, onVolver, onModal, onEntrega
   };
   const [solapa, setSolapa] = useState("resumen");
   const [datos, setDatos] = useState(null);
+  useEffect(() => { document.title = `${p.nombre} · MaderoGest`; }, [p.nombre]);
   const [recarga, setRecarga] = useState(0);
   const [editando, setEditando] = useState(null); // { tipo: "estacion" | "item" | "montos" | "adicional" | "dia", ... }
   const [ocupado, setOcupado] = useState(false);
@@ -1243,7 +1271,7 @@ function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
   const [verArchivo, setVerArchivo] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [informeIA, setInformeIA] = useState(null);
-  const [fichaId, setFichaId] = useState(null);
+  const { fichaId } = useRuta();
 
   const isAdmin = sesion.rol === "admin";
   const puedeArchivar = isAdmin || sesion.rol === "operario";
@@ -1375,9 +1403,16 @@ function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
   }
 
   const ficha = fichaId ? proyectos.find(p => p.id === fichaId) : null;
+  // Link a una obra que ya no existe: avisar y volver a la lista (si las obras ya cargaron)
+  const fichaPerdida = !!fichaId && proyectos.length > 0 && !ficha;
+  useEffect(() => {
+    if (!fichaPerdida) return;
+    avisar("Esa obra ya no existe. Te muestro la lista de obras.", { tipo: "aviso" });
+    navegar("/entregas", { reemplazar: true });
+  }, [fichaPerdida]);
   if (ficha) return <>
     <FichaObra proyecto={ficha} entregas={entregas.filter(e => e.proyecto_id === ficha.id)} sesion={sesion}
-      onVolver={() => setFichaId(null)} onModal={setModal} onEntregar={marcarEntregada} />
+      onVolver={() => navegar("/entregas")} onModal={setModal} onEntregar={marcarEntregada} />
     {modal && <ModalObraEntrega {...modal} guardando={guardando} onClose={() => setModal(null)} onSave={guardar} />}
   </>;
 
@@ -1455,8 +1490,8 @@ function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
               <div style={{ height:4, background: STATUS_META[peor].color }} />
               <div style={{ padding:"16px 16px 14px" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10, marginBottom:4 }}>
-                  <div onClick={() => { setFichaId(p.id); window.scrollTo(0, 0); }} title="Ver la ficha de la obra"
-                    style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", lineHeight:1.35, cursor:"pointer", textDecoration:"underline", textDecorationColor:"#CBD5E1", textUnderlineOffset:3 }}>{p.nombre}</div>
+                  <a href={linkFicha(p)} onClick={ev => { if (ev.ctrlKey || ev.metaKey || ev.shiftKey) return; ev.preventDefault(); navegar(linkFicha(p)); }} title="Ver la ficha de la obra"
+                    style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", lineHeight:1.35, cursor:"pointer", textDecoration:"underline", textDecorationColor:"#CBD5E1", textUnderlineOffset:3, display:"block" }}>{p.nombre}</a>
                   <div style={{ display:"flex", gap:4, flexShrink:0 }}>
                     {puedeInformeIA && <button title="Informe de la obra con IA" onClick={() => setInformeIA(p)} style={{ ...btnIcono, border:"1px solid #DDD6FE", background:"#F5F3FF", color:"#7C3AED" }}>✨</button>}
                     <button title="Editar obra" onClick={() => setModal({ modo:"editar-obra", proyecto:p })} style={btnIcono}>✎</button>
@@ -4874,7 +4909,7 @@ function Aplicacion() {
   const [obras, setObras] = useState([]); // entregas (incluidas las archivadas)
   const [proyectos, setProyectos] = useState([]); // obras que agrupan entregas
   const [cargando, setCargando] = useState(true);
-  const [activeTab, setActiveTab] = useState("entregas");
+  const ruta = useRuta();
   const [showUsuarios, setShowUsuarios] = useState(false);
   const [showWA, setShowWA] = useState(false);
 
@@ -4915,9 +4950,9 @@ function Aplicacion() {
     if (!sesion || sesion.rol === "arquitecto" || sesion.rol === "finanzas") return;
     const { activas, archivadas } = vinculoEntregas(obras);
     getMateriales().then(ls => setMatAlertCount(alertasMateriales((ls || []).filter(l => !archivadas.has(l.obra_id)), activas).length)).catch(() => {});
-  }, [sesion, obras, activeTab]);
+  }, [sesion, obras, ruta]);
 
-  function handleLogin(u) { setSesion(u); if (u.rol === "finanzas") setActiveTab("cobros"); recargarObras(); }
+  function handleLogin(u) { setSesion(u); recargarObras(); }
   async function handleLogout() { await cerrarSesion(); setSesion(null); setObras([]); setProyectos([]); }
   const entregasActivas = obras.filter(o => !o.archivada);
 
@@ -4929,6 +4964,16 @@ function Aplicacion() {
   const canSeeAvanceObra = !isFinanzas;
   const canSeeMateriales = !isArquitecto && !isFinanzas;
   const canSeeHistorial = sesion?.email?.toLowerCase() === EMAIL_HISTORIAL;
+
+  // La pestaña sale de la dirección; si el rol no la puede ver (o la dirección es "/"), va a su pantalla de inicio
+  const puedeVer = { entregas: true, aceptadas: true, avance: canSeeAvanceProduccion, avance_obra: canSeeAvanceObra, cobros: canSeeCobros, materiales: canSeeMateriales, historial: canSeeHistorial };
+  const activeTab = ruta.pestana && puedeVer[ruta.pestana] ? ruta.pestana : isFinanzas ? "cobros" : "entregas";
+  const setActiveTab = t => navegar(`/${RUTAS_PESTANAS[t]}`);
+  useEffect(() => {
+    if (!sesion) return;
+    if (!ruta.fichaId && ruta.pestana !== activeTab) navegar(`/${RUTAS_PESTANAS[activeTab]}`, { reemplazar: true });
+    if (!ruta.fichaId) document.title = activeTab === "entregas" ? "MaderoGest" : `${{ aceptadas: "Obras Aceptadas", avance: "Producción", avance_obra: "Avance de Obra", cobros: "Cobros", materiales: "Materiales", historial: "Historial" }[activeTab]} · MaderoGest`;
+  }, [sesion, ruta, activeTab]);
   const activas = entregasActivas.filter(o => o.estado !== "terminado");
   const urgentes = activas.filter(o => { const d = diasRestantes(o.fecha); return d >= 0 && d <= 7; });
   const proximas = activas.filter(o => { const d = diasRestantes(o.fecha); return d > 7 && d <= 21; });
