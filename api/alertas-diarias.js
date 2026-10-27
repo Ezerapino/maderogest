@@ -5,7 +5,7 @@
 //
 // Variables en Vercel: CRON_SECRET y las del envío de mails (ver _email.js).
 import { adminClient, getCaller, sendError } from "./_lib.js";
-import { APP_URL, enviarEmail, esc } from "./_email.js";
+import { APP_URL, enviarEmail, esc, linkFicha } from "./_email.js";
 
 const DIAS_ALERTA = 10;
 
@@ -26,12 +26,14 @@ function detalle(it) {
 function textoDias(d) { return d < 0 ? `vencida hace ${-d} día${d === -1 ? "" : "s"}` : d === 0 ? "entrega HOY" : `faltan ${d} día${d === 1 ? "" : "s"}`; }
 
 export async function armarResumen(db) {
-  const [{ data: todas, error: e1 }, { data: todasLasListas, error: e2 }] = await Promise.all([
-    db.from("obras").select("id, nombre, lugar, fecha, estado, archivada"),
+  const [{ data: todas, error: e1 }, { data: todasLasListas, error: e2 }, { data: proyectos, error: e3 }] = await Promise.all([
+    db.from("obras").select("id, nombre, lugar, fecha, estado, archivada, proyecto_id"),
     db.from("materiales").select("obra_id, obra_nombre, items"),
+    db.from("proyectos").select("id, nombre"),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
+  if (e3) throw e3;
   // Lo archivado no se avisa
   const archivadas = new Set(todas.filter(o => o.archivada).map(o => o.id));
   const obras = todas.filter(o => !o.archivada);
@@ -48,7 +50,8 @@ export async function armarResumen(db) {
     const items = lista?.items || [];
     const faltaPedir = items.filter(i => !i.estado || i.estado === "pendiente");
     const faltaRecibir = items.filter(i => i.estado === "pedido" || i.estado === "parcial");
-    enVentana.push({ obra: o, dias, items, tieneLista: !!lista, faltaPedir, faltaRecibir });
+    const link = linkFicha(proyectos.find(p => p.id === o.proyecto_id));
+    enVentana.push({ obra: o, dias, items, tieneLista: !!lista, faltaPedir, faltaRecibir, link });
   }
   enVentana.sort((a, b) => a.dias - b.dias);
   return {
@@ -61,6 +64,9 @@ export async function armarResumen(db) {
 
 // ─── Armado de los mails ─────────────────────────────────────────────────────
 function lugar(obra) { return obra.lugar && obra.lugar !== "-" ? obra.lugar : ""; }
+// Nombre de la obra con link a su ficha en la app
+const nombreConLink = x => `<a href="${esc(x.link)}" style="color:#1A2B4A;text-decoration:underline;text-decoration-color:#CBD5E1">${esc(x.obra.nombre)}</a>`;
+const botonFicha = x => `<a href="${esc(x.link)}" style="color:#2563EB;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap">Ver ficha →</a>`;
 function estadoMateriales({ items, tieneLista, faltaPedir, faltaRecibir }) {
   if (!tieneLista || !items.length) return "sin materiales cargados";
   if (!faltaPedir.length && !faltaRecibir.length) return "materiales completos";
@@ -85,7 +91,7 @@ function mailEntregas({ hoy, proximas, vencidas }) {
     const est = estadoMateriales(x);
     const colorEst = est === "materiales completos" ? "#059669" : est === "sin materiales cargados" ? "#94A3B8" : "#DC2626";
     return `<tr>
-      <td style="padding:9px 10px;border-bottom:1px solid #E2E8F0;font-size:13px"><b>${esc(x.obra.nombre)}</b>${lugar(x.obra) ? `<div style="color:#64748B;font-size:12px">${esc(lugar(x.obra))}</div>` : ""}</td>
+      <td style="padding:9px 10px;border-bottom:1px solid #E2E8F0;font-size:13px"><b>${nombreConLink(x)}</b>${lugar(x.obra) ? `<div style="color:#64748B;font-size:12px">${esc(lugar(x.obra))}</div>` : ""}<div style="margin-top:3px">${botonFicha(x)}</div></td>
       <td style="padding:9px 10px;border-bottom:1px solid #E2E8F0;font-size:13px;white-space:nowrap">${fmtFecha(x.obra.fecha)}</td>
       <td style="padding:9px 10px;border-bottom:1px solid #E2E8F0;font-size:13px;white-space:nowrap;font-weight:700;color:${x.dias <= 3 ? "#DC2626" : "#B45309"}">${textoDias(x.dias)}</td>
       <td style="padding:9px 10px;border-bottom:1px solid #E2E8F0;font-size:12px;color:${colorEst}">${est}</td>
@@ -101,9 +107,9 @@ function mailEntregas({ hoy, proximas, vencidas }) {
   const texto = [
     `Obras Grupo Aixa S.A. - MaderoGest`, `Entregas próximas - ${fmtFecha(hoy)}`, "",
     ...(proximas.length
-      ? [`ENTREGAS DE LOS PROXIMOS ${DIAS_ALERTA} DIAS (${proximas.length})`, ...proximas.map(x => `- ${x.obra.nombre}${lugar(x.obra) ? ` (${lugar(x.obra)})` : ""}: ${fmtFecha(x.obra.fecha)}, ${textoDias(x.dias)} - ${estadoMateriales(x)}`), ""]
+      ? [`ENTREGAS DE LOS PROXIMOS ${DIAS_ALERTA} DIAS (${proximas.length})`, ...proximas.map(x => `- ${x.obra.nombre}${lugar(x.obra) ? ` (${lugar(x.obra)})` : ""}: ${fmtFecha(x.obra.fecha)}, ${textoDias(x.dias)} - ${estadoMateriales(x)}\n  ${x.link}`), ""]
       : [`No hay entregas en los próximos ${DIAS_ALERTA} días.`, ""]),
-    ...(vencidas.length ? [`VENCIDAS SIN MARCAR COMO ENTREGADAS (${vencidas.length})`, ...vencidas.map(x => `- ${x.obra.nombre}: ${fmtFecha(x.obra.fecha)}, ${textoDias(x.dias)}`), ""] : []),
+    ...(vencidas.length ? [`VENCIDAS SIN MARCAR COMO ENTREGADAS (${vencidas.length})`, ...vencidas.map(x => `- ${x.obra.nombre}: ${fmtFecha(x.obra.fecha)}, ${textoDias(x.dias)}\n  ${x.link}`), ""] : []),
     `Abrir MaderoGest: ${APP_URL}`,
   ].join("\n");
   const n = proximas.length;
@@ -117,18 +123,19 @@ function mailEntregas({ hoy, proximas, vencidas }) {
 
 // Diario: obras próximas a entregar con materiales sin pedir o sin recibir
 function mailMateriales({ hoy, conFaltantes }) {
-  const bloque = ({ obra, dias, faltaPedir, faltaRecibir }) => `
+  const bloque = x => { const { obra, dias, faltaPedir, faltaRecibir } = x; return `
     <div style="border:1px solid #FECACA;border-left:4px solid #DC2626;border-radius:8px;padding:12px 14px;margin-bottom:10px;background:#FEF2F2">
-      <div style="font-size:15px;font-weight:700;color:#1A2B4A">${esc(obra.nombre)}${lugar(obra) ? ` <span style="font-weight:400;color:#64748B">— ${esc(lugar(obra))}</span>` : ""}</div>
+      <div style="font-size:15px;font-weight:700;color:#1A2B4A">${nombreConLink(x)}${lugar(obra) ? ` <span style="font-weight:400;color:#64748B">— ${esc(lugar(obra))}</span>` : ""} &nbsp;${botonFicha(x)}</div>
       <div style="font-size:13px;font-weight:700;color:#DC2626;margin:4px 0 8px">📅 ${fmtFecha(obra.fecha)} · ${textoDias(dias)}</div>
       ${faltaPedir.length ? `<div style="font-size:13px;color:#92400E;margin-bottom:4px">🛒 <b>Falta pedir (${faltaPedir.length}):</b> ${faltaPedir.map(i => esc(detalle(i))).join(" · ")}</div>` : ""}
       ${faltaRecibir.length ? `<div style="font-size:13px;color:#1E40AF">🚚 <b>Falta recibir (${faltaRecibir.length}):</b> ${faltaRecibir.map(i => esc(detalle(i) + (i.proveedor ? ` — ${i.proveedor}` : ""))).join(" · ")}</div>` : ""}
-    </div>`;
+    </div>`; };
   const cuerpo = `<h3 style="font-size:15px;color:#DC2626;margin:0 0 12px">⚠ Obras con entrega en ${DIAS_ALERTA} días o menos y materiales faltantes (${conFaltantes.length})</h3>${conFaltantes.map(bloque).join("")}`;
   const texto = [
     `Obras Grupo Aixa S.A. - MaderoGest`, `Materiales faltantes - ${fmtFecha(hoy)}`, "",
-    ...conFaltantes.flatMap(({ obra, dias, faltaPedir, faltaRecibir }) => [
+    ...conFaltantes.flatMap(({ obra, dias, faltaPedir, faltaRecibir, link }) => [
       `- ${obra.nombre}${lugar(obra) ? ` (${lugar(obra)})` : ""}: entrega ${fmtFecha(obra.fecha)}, ${textoDias(dias)}`,
+      `  Ver ficha: ${link}`,
       ...(faltaPedir.length ? [`  Falta pedir: ${faltaPedir.map(detalle).join("; ")}`] : []),
       ...(faltaRecibir.length ? [`  Falta recibir: ${faltaRecibir.map(i => detalle(i) + (i.proveedor ? ` - ${i.proveedor}` : "")).join("; ")}`] : []),
       "",

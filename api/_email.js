@@ -12,6 +12,13 @@ import { httpError } from "./_lib.js";
 
 export const APP_URL = "https://maderogest.vercel.app";
 
+// Link a la ficha de una obra (mismo formato que linkFicha en la app: /obra/<id>/<nombre-legible>)
+export function linkFicha(proyecto) {
+  if (!proyecto?.id) return APP_URL;
+  const nombre = (proyecto.nombre || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return `${APP_URL}/obra/${encodeURIComponent(proyecto.id)}/${nombre}`;
+}
+
 export function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
 
 // Direcciones escritas a mano ("a@b.com, c@d.com"): devuelve las válidas o lanza error
