@@ -2946,6 +2946,8 @@ const ESTADOS_MAT = { stock:"En stock", pendiente:"Falta pedir", pedido:"Pedido 
 const ESTADOS_MAT_PEDIR = ["pendiente","pedido","parcial","recibido"];
 const ESTADO_MAT_COLORS = { stock:{bg:"#F5F3FF",text:"#7C3AED",border:"#DDD6FE"}, pendiente:{bg:"#FFF7ED",text:"#D97706",border:"#FDE68A"}, pedido:{bg:"#EFF6FF",text:"#2563EB",border:"#BFDBFE"}, parcial:{bg:"#FEF2F2",text:"#DC2626",border:"#FECACA"}, recibido:{bg:"#ECFDF5",text:"#059669",border:"#A7F3D0"} };
 const DIAS_ALERTA_MAT = 10;
+const CAMPOS_BUSQUEDA_MAT = ["nombre","tipo","color","terminacion","marca","proveedor","orden_pedido","numero_remito","notas"];
+const sinAcentos = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 function resumenMateriales(items = []) {
   const faltaPedir = items.filter(i => !i.estado || i.estado === "pendiente");
@@ -3241,6 +3243,7 @@ function MaterialesModule({ sesion, entregas = [] }) {
   const [notasEdit, setNotasEdit] = useState("");
   const [showImportarIA, setShowImportarIA] = useState(false);
   const [enviandoResumen, setEnviandoResumen] = useState(false);
+  const [search, setSearch] = useState("");
   const isAdmin = sesion.rol === "admin";
   const puedeImportar = isAdmin || sesion.rol === "operario";
 
@@ -3344,6 +3347,13 @@ function MaterialesModule({ sesion, entregas = [] }) {
   const totalFaltaRecibir = resumenes.reduce((s, r) => s + r.faltaRecibir.length, 0);
   const alertas = alertasMateriales(listas, obras);
 
+  // Buscador: por obra (nombre, lugar, notas) o por material (descripción, color, marca, proveedor, N° de pedido o remito...)
+  const q = sinAcentos(search.trim());
+  const coincide = v => !!v && sinAcentos(v).includes(q);
+  const itemCoincide = it => q && CAMPOS_BUSQUEDA_MAT.some(k => coincide(it[k]));
+  const visibles = listas.map((l, idx) => ({ l, idx, itemsCoinc: q ? (l.items || []).filter(itemCoincide) : [] }))
+    .filter(v => !q || coincide(v.l.obra_nombre) || coincide(v.l.obra_lugar) || coincide(v.l.notas) || v.itemsCoinc.length);
+
   const si = { width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" };
   const siSm = { ...si, padding:"8px 10px", fontSize:12 };
 
@@ -3416,6 +3426,18 @@ function MaterialesModule({ sesion, entregas = [] }) {
         </button>
       </div>
 
+      {listas.length > 0 && (
+        <div style={{ display:"flex", gap:10, marginBottom:20, flexWrap:"wrap", alignItems:"center" }}>
+          <div style={{ position:"relative", flex:"1 1 260px", maxWidth:420 }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)" }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar obra, material, color, proveedor, N° de pedido..."
+              style={{ width:"100%", padding:"9px 32px 9px 36px", background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" }} />
+            {search && <button onClick={() => setSearch("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"#94A3B8", cursor:"pointer", fontSize:14, padding:2 }}>✕</button>}
+          </div>
+          {q && <span style={{ fontSize:12, color:"#94A3B8" }}>{visibles.length} obra{visibles.length !== 1 ? "s" : ""}</span>}
+        </div>
+      )}
+
       {cargando ? (
         <div style={{ textAlign:"center", padding:60, color:"#94A3B8", fontSize:13 }}>Cargando...</div>
       ) : listas.length === 0 ? (
@@ -3423,9 +3445,14 @@ function MaterialesModule({ sesion, entregas = [] }) {
           <div style={{ fontSize:32, marginBottom:12 }}>🪵</div>
           <div style={{ fontSize:13, color:"#94A3B8" }}>Sin obras. Se crean automáticamente al crear obras en Entregas.</div>
         </div>
+      ) : visibles.length === 0 ? (
+        <div style={{ textAlign:"center", padding:"60px 20px", background:"#ffffff", borderRadius:16, border:"1px solid #E8ECF0" }}>
+          <div style={{ fontSize:28, marginBottom:10 }}>🔎</div>
+          <div style={{ fontSize:13, color:"#94A3B8" }}>Ninguna obra ni material coincide con "{search.trim()}".</div>
+        </div>
       ) : (
         <div className="grid-tarjetas" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:16 }}>
-          {listas.map((l, idx) => {
+          {visibles.map(({ l, idx, itemsCoinc }, pos) => {
             const items = l.items || [];
             const r = resumenes[idx];
             const disponibles = r.stock + r.recibidos;
@@ -3434,7 +3461,7 @@ function MaterialesModule({ sesion, entregas = [] }) {
             const entrega = entregaDeLista(l, obras);
             return (
               <div key={l.id} onClick={() => setSelected(l)}
-                style={{ background:"#ffffff", border:`1px solid ${urgente?"#FCA5A5":r.completo?"#A7F3D0":"#E8ECF0"}`, borderRadius:14, overflow:"hidden", cursor:"pointer", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
+                style={{ background:"#ffffff", border:`1px solid ${urgente?"#FCA5A5":r.completo?"#A7F3D0":"#E8ECF0"}`, borderRadius:14, overflow:"hidden", cursor:"pointer", animation:`fadeUp 0.35s ease ${pos*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
                 <div style={{ height:4, background: urgente?"#DC2626":r.completo?"#059669":pct>0?"#D97706":"#CBD5E1" }} />
                 <div style={{ padding:"18px 18px 16px" }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
@@ -3463,6 +3490,18 @@ function MaterialesModule({ sesion, entregas = [] }) {
                       </div>
                       <div style={{ fontSize:11, color:"#94A3B8", marginTop:4, textAlign:"right" }}>{pct}% disponible</div>
                     </>
+                  )}
+                  {itemsCoinc.length > 0 && (
+                    <div style={{ marginTop:10, padding:"8px 10px", background:"#FEFCE8", border:"1px solid #FDE68A", borderRadius:8, fontSize:12, color:"#713F12" }}>
+                      <div style={{ fontWeight:700, marginBottom:4 }}>🔎 {itemsCoinc.length} material{itemsCoinc.length !== 1 ? "es" : ""} coincide{itemsCoinc.length !== 1 ? "n" : ""}:</div>
+                      {itemsCoinc.slice(0, 4).map(it => (
+                        <div key={it.id} style={{ display:"flex", justifyContent:"space-between", gap:8, padding:"2px 0" }}>
+                          <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{[it.nombre, it.color, it.proveedor].filter(Boolean).join(" · ")}</span>
+                          <span style={{ flexShrink:0, fontWeight:600, color:(ESTADO_MAT_COLORS[it.estado] || ESTADO_MAT_COLORS.pendiente).text }}>{ESTADOS_MAT[it.estado || "pendiente"]}</span>
+                        </div>
+                      ))}
+                      {itemsCoinc.length > 4 && <div style={{ color:"#A16207", marginTop:2 }}>y {itemsCoinc.length - 4} más…</div>}
+                    </div>
                   )}
                 </div>
               </div>
@@ -3573,8 +3612,9 @@ function MaterialesModule({ sesion, entregas = [] }) {
                       const ec = ESTADO_MAT_COLORS[it.estado] || ESTADO_MAT_COLORS.pendiente;
                       const medidas = [it.largo&&`L: ${it.largo}`, it.ancho&&`An: ${it.ancho}`, it.espesor&&`Esp: ${it.espesor}`].filter(Boolean).join("  ·  ");
                       const ok = it.estado==="recibido" || it.estado==="stock";
+                      const buscado = itemCoincide(it);
                       return (
-                        <div key={it.id} style={{ background: ok?"#F0FDF4":"#F8FAFC", border:`1px solid ${ok?"#A7F3D0":"#E2E8F0"}`, borderRadius:10, padding:"14px 16px" }}>
+                        <div key={it.id} style={{ background: ok?"#F0FDF4":"#F8FAFC", border:`1px solid ${buscado?"#EAB308":ok?"#A7F3D0":"#E2E8F0"}`, boxShadow: buscado?"0 0 0 2px #FEF08A":"none", borderRadius:10, padding:"14px 16px" }}>
                           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
                             <div style={{ flex:1 }}>
                               <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
