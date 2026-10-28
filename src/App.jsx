@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ─── LOGO ─────────────────────────────────────────────────────────────────────
@@ -267,7 +267,8 @@ async function getObrasAceptadas() { return sbFetch("obras_aceptadas?select=*&or
 async function insertObraAceptada(obra) { return sbFetch("obras_aceptadas", { method: "POST", body: JSON.stringify(obra) }); }
 async function updateObraAceptada(id, data) { return sbFetch(`obras_aceptadas?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
 async function deleteObraAceptadaById(id) { return sbFetch(`obras_aceptadas?id=eq.${id}`, { method: "DELETE" }); }
-async function uploadFileObraAceptada(file, obraId) {
+async function uploadFileObraAceptada(original, obraId) {
+  const file = await comprimirImagen(original);
   const ext = file.name.split(".").pop().toLowerCase();
   const path = `aceptadas/${obraId}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${ext}`;
   const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${AVANCE_BUCKET}/${path}`, {
@@ -279,7 +280,33 @@ async function uploadFileObraAceptada(file, obraId) {
   return { url: `${SUPABASE_URL}/storage/v1/object/public/${AVANCE_BUCKET}/${path}`, path, name: file.name, type: file.type, size: file.size };
 }
 
-async function uploadFileAvance(file, obraId) {
+// Las fotos del celular (3-8 MB) se achican antes de subirlas: lado mayor 2560 px, JPG calidad 0.82.
+// Si algo falla o no achica, se sube el archivo original.
+const LADO_MAX_FOTO = 2560;
+async function comprimirImagen(file) {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size < 400 * 1024) return file;
+  try {
+    const img = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const escala = Math.min(1, LADO_MAX_FOTO / Math.max(img.width, img.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(img.width * escala);
+    canvas.height = Math.round(img.height * escala);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff"; // las partes transparentes de un PNG quedan blancas, no negras
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    img.close?.();
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.82));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch (e) {
+    console.warn("No se pudo comprimir la foto, se sube como está:", e);
+    return file;
+  }
+}
+
+async function uploadFileAvance(original, obraId) {
+  const file = await comprimirImagen(original);
   const ext = file.name.split('.').pop().toLowerCase();
   const path = `${obraId}/${Date.now()}_${Math.random().toString(36).slice(2,6)}.${ext}`;
   const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${AVANCE_BUCKET}/${path}`, {
@@ -318,7 +345,8 @@ function b64ToBlob(b64, type) {
   return new Blob([arr], { type });
 }
 
-async function uploadFileInforme(file, obraId) {
+async function uploadFileInforme(original, obraId) {
+  const file = await comprimirImagen(original);
   const ext = file.name.split(".").pop().toLowerCase();
   const path = `informes/${obraId}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${ext}`;
   const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${AVANCE_BUCKET}/${path}`, {
@@ -455,6 +483,45 @@ const STATUS_META = {
   done:    { color: "#6a8a9a", bg: "rgba(106,138,154,0.1)", label: "ENTREGADA", icon: "📦" },
   vencida: { color: "#c84040", bg: "rgba(200,64,64,0.18)", label: "VENCIDA", icon: "⛔" },
 };
+
+// Visor de fotos en grande: flechas (o teclado / deslizar en el celular) para pasar, Esc o clic afuera para cerrar
+function VisorFotos({ fotos, inicio = 0, onCerrar }) {
+  const [i, setI] = useState(inicio);
+  const toqueX = useRef(null);
+  const total = fotos.length;
+  const pasar = useCallback(d => setI(n => (n + d + total) % total), [total]);
+  useEffect(() => {
+    const tecla = e => {
+      if (e.key === "Escape") onCerrar();
+      else if (e.key === "ArrowRight") pasar(1);
+      else if (e.key === "ArrowLeft") pasar(-1);
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, [pasar, onCerrar]);
+  const f = fotos[i];
+  if (!f) return null;
+  const src = f.url || f.b64;
+  const flecha = lado => ({ position:"absolute", top:"50%", [lado]:12, transform:"translateY(-50%)", width:48, height:48, borderRadius:"50%", border:"none", background:"rgba(255,255,255,0.15)", color:"#fff", fontSize:26, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 });
+  return (
+    <div onClick={e => e.target === e.currentTarget && onCerrar()}
+      onTouchStart={e => { toqueX.current = e.touches[0].clientX; }}
+      onTouchEnd={e => { if (toqueX.current == null) return; const dx = e.changedTouches[0].clientX - toqueX.current; toqueX.current = null; if (Math.abs(dx) > 50) pasar(dx < 0 ? 1 : -1); }}
+      style={{ position:"fixed", inset:0, zIndex:1500, background:"rgba(2,6,23,0.92)", display:"flex", alignItems:"center", justifyContent:"center", padding:"56px 16px 64px" }}>
+      <img src={src} alt={f.name} style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain", borderRadius:4, boxShadow:"0 10px 40px rgba(0,0,0,0.5)" }} />
+      <div style={{ position:"absolute", top:0, left:0, right:0, padding:"12px 16px", display:"flex", alignItems:"center", gap:12, color:"#E2E8F0", fontSize:13 }}>
+        <span style={{ flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.name}</span>
+        {f.url && <a href={f.url} target="_blank" rel="noreferrer" style={{ color:"#fff", fontSize:12, fontWeight:600, textDecoration:"none", padding:"6px 12px", borderRadius:8, background:"rgba(255,255,255,0.15)", whiteSpace:"nowrap" }}>Abrir original ↗</a>}
+        <button onClick={onCerrar} title="Cerrar (Esc)" style={{ width:34, height:34, borderRadius:8, border:"none", background:"rgba(255,255,255,0.15)", color:"#fff", fontSize:16, cursor:"pointer" }}>✕</button>
+      </div>
+      {total > 1 && <>
+        <button onClick={() => pasar(-1)} title="Anterior" style={flecha("left")}>‹</button>
+        <button onClick={() => pasar(1)} title="Siguiente" style={flecha("right")}>›</button>
+        <div style={{ position:"absolute", bottom:20, left:0, right:0, textAlign:"center", color:"#CBD5E1", fontSize:13 }}>{i + 1} de {total}</div>
+      </>}
+    </div>
+  );
+}
 
 function normalizarMuebles(muebles) {
   if (!muebles) return [];
@@ -663,7 +730,7 @@ async function generarPDFDiaAvance(obra, dia) {
 
   const fotosHTML = fotosEmb.length === 0
     ? '<p style="color:#94a3b8;font-size:13px;text-align:center">Sin fotos para este día.</p>'
-    : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:12px">${fotosEmb.map(f=>`<div style="border-radius:8px;overflow:hidden;border:1px solid #e2e8f0"><img src="${f.b64}" style="width:100%;height:170px;object-fit:cover"/><div style="padding:5px 8px;background:#f8fafc;font-size:10px;color:#64748b">${f.name}</div></div>`).join('')}</div>`;
+    : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;align-items:start">${fotosEmb.map(f=>`<div style="border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;page-break-inside:avoid;break-inside:avoid"><div style="background:#f1f5f9;display:flex;align-items:center;justify-content:center"><img src="${f.b64}" style="display:block;max-width:100%;max-height:115mm;height:auto"/></div><div style="padding:5px 8px;background:#f8fafc;font-size:10px;color:#64748b">${f.name}</div></div>`).join('')}</div>`;
 
   const otrosHTML = otrosArchivos.length > 0
     ? `<div style="margin-top:14px">${otrosArchivos.map(f=>`<div style="padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:#475569;margin-bottom:4px">📎 ${f.name}</div>`).join('')}</div>` : '';
@@ -3755,6 +3822,7 @@ function AvanceObraModule({ sesion, entregas = [] }) {
   const [showDiaModal, setShowDiaModal] = useState(false);
   const [editingDia, setEditingDia] = useState(null);
   const [uploadingFiles, setUploadingFiles] = useState({});
+  const [visor, setVisor] = useState(null); // { fotos, inicio }
   const [showInformeFinal, setShowInformeFinal] = useState(false);
   const [informeFinalObra, setInformeFinalObra] = useState(null);
   const [informesIds, setInformesIds] = useState(new Set());
@@ -4020,7 +4088,8 @@ function AvanceObraModule({ sesion, entregas = [] }) {
                                   const globalIdx = (dia.archivos||[]).indexOf(f);
                                   return (
                                     <div key={fi} style={{ position:"relative" }}>
-                                      <img src={f.url} alt={f.name} style={{ width:90, height:90, objectFit:"cover", borderRadius:8, border:"1px solid #E2E8F0", display:"block" }} />
+                                      <img src={f.url} alt={f.name} title="Ver en grande" onClick={() => setVisor({ fotos, inicio: fi })}
+                                        style={{ width:90, height:90, objectFit:"cover", borderRadius:8, border:"1px solid #E2E8F0", display:"block", cursor:"zoom-in" }} />
                                       {canEdit && <button onClick={() => deleteFile(dia.id, globalIdx)} style={{ position:"absolute", top:3, right:3, width:20, height:20, background:"rgba(220,38,38,0.85)", border:"none", borderRadius:"50%", color:"#fff", fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0, lineHeight:1 }}>✕</button>}
                                     </div>
                                   );
@@ -4065,6 +4134,7 @@ function AvanceObraModule({ sesion, entregas = [] }) {
         onClose={() => { setShowObraModal(false); setEditingObra(null); }} onSave={saveObra} />}
       {showDiaModal && <ModalDiaAvance dia={editingDia} onClose={() => { setShowDiaModal(false); setEditingDia(null); }} onSave={saveDia} />}
       {showInformeFinal && informeFinalObra && <ModalInformeFinalObra obra={informeFinalObra} onClose={() => { setShowInformeFinal(false); setInformeFinalObra(null); }} onSave={() => loadInformesIds()} />}
+      {visor && <VisorFotos fotos={visor.fotos} inicio={visor.inicio} onCerrar={() => setVisor(null)} />}
     </div>
   );
 }
@@ -4726,6 +4796,7 @@ function ModalObraAceptada({ obra, proyectos = [], canEdit, canDelete, onClose, 
     descripcion: obra?.descripcion || "", proyecto_id: obra?.proyecto_id || "",
   });
   const [archivos, setArchivos] = useState(obra?.archivos || []);
+  const [visor, setVisor] = useState(null); // { fotos, inicio }
   const [dragging, setDragging] = useState(false);
   const [draggingImg, setDraggingImg] = useState(false);
   const [errors, setErrors] = useState({});
@@ -4867,11 +4938,10 @@ function ModalObraAceptada({ obra, proyectos = [], canEdit, canDelete, onClose, 
               <div style={{ color:"#94A3B8", fontSize:12, textAlign:"center", padding:"10px 0" }}>Sin imágenes</div>
             ) : (
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(110px, 1fr))", gap:8 }}>
-                {archivos.filter(esImagenAceptada).map(f => (
+                {archivos.filter(esImagenAceptada).map((f, fi, imgs) => (
                   <div key={f.name} style={{ position:"relative", borderRadius:8, overflow:"hidden", border:"1px solid #E2E8F0", aspectRatio:"1 / 1", background:"#F8FAFC" }}>
-                    <a href={f.url || undefined} target="_blank" rel="noreferrer" style={{ display:"block", width:"100%", height:"100%", cursor: f.url ? "zoom-in" : "default" }}>
-                      <img src={f.url || f.b64} alt={f.name} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} />
-                    </a>
+                    <img src={f.url || f.b64} alt={f.name} title="Ver en grande" onClick={() => setVisor({ fotos: imgs, inicio: fi })}
+                      style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", cursor:"zoom-in" }} />
                     {!f.path && <div style={{ position:"absolute", left:0, right:0, bottom:0, background:"rgba(15,23,42,0.65)", color:"#fff", fontSize:10, padding:"2px 6px" }}>pendiente de subir</div>}
                     {canEdit && <button onClick={() => removeFile(f.name)} title="Quitar imagen"
                       style={{ position:"absolute", top:4, right:4, width:22, height:22, borderRadius:"50%", border:"none", background:"rgba(15,23,42,0.7)", color:"#fff", cursor:"pointer", fontSize:12, padding:0 }}>✕</button>}
@@ -4934,6 +5004,7 @@ function ModalObraAceptada({ obra, proyectos = [], canEdit, canDelete, onClose, 
           </div>
         </div>
       </div>
+      {visor && <VisorFotos fotos={visor.fotos} inicio={visor.inicio} onCerrar={() => setVisor(null)} />}
     </div>
   );
 }
