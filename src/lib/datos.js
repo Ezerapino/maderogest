@@ -258,6 +258,12 @@ export async function upsertInformeFinal(obraId, datos, archivos, existingId) {
   });
 }
 
+// ─── MANTENIMIENTO PLANTA API (tabla: mantenimiento, ver supabase/05-mantenimiento.sql) ──
+export async function getMantenimiento() { return sbFetch("mantenimiento?select=*&order=fecha_solicitud.asc,creado_en.asc"); }
+export async function insertMantenimiento(t) { return sbFetch("mantenimiento", { method: "POST", body: JSON.stringify(t) }); }
+export async function updateMantenimiento(id, data) { return sbFetch(`mantenimiento?id=eq.${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ ...data, editado_en: new Date().toISOString() }) }); }
+export async function deleteMantenimiento(id) { return sbFetch(`mantenimiento?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" }); }
+
 // ─── OBRAS ACEPTADAS API (tabla: obras_aceptadas) ─────────────────────────────
 // You need to create the table "obras_aceptadas" in your Supabase with:
 // id (uuid, default gen_random_uuid()), nombre (text not null), direccion (text),

@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { Avisos } from "./components/Avisos.jsx";
 import { Login } from "./components/Login.jsx";
-import { cerrarSesion, getMateriales, getObras, getProyectos, getSesion, patchEntregas, supabase, upsertProyecto, vinculoEntregas } from "./lib/datos.js";
+import { cerrarSesion, getMantenimiento, getMateriales, getObras, getProyectos, getSesion, patchEntregas, supabase, upsertProyecto, vinculoEntregas } from "./lib/datos.js";
 import { LOGO_AIXA, diasRestantes, uid } from "./lib/formato.js";
 import { EMAIL_HISTORIAL } from "./lib/historial.js";
+import { tareaAtrasada } from "./lib/mantenimiento.js";
 import { alertasMateriales } from "./lib/materiales.js";
 import { RUTAS_PESTANAS, navegar, useRuta } from "./lib/rutas.js";
 import { ObrasAceptadasModule } from "./modulos/Aceptadas.jsx";
@@ -12,6 +13,7 @@ import { AvanceObraModule } from "./modulos/AvanceObra.jsx";
 import { CobrosModule } from "./modulos/Cobros.jsx";
 import { EntregasModule } from "./modulos/Entregas.jsx";
 import { HistorialModule } from "./modulos/Historial.jsx";
+import { MantenimientoModule } from "./modulos/Mantenimiento.jsx";
 import { MaterialesModule } from "./modulos/Materiales.jsx";
 import { AvanceModule } from "./modulos/Produccion.jsx";
 
@@ -68,6 +70,18 @@ function Aplicacion() {
     getMateriales().then(ls => setMatAlertCount(alertasMateriales((ls || []).filter(l => !archivadas.has(l.obra_id)), activas).length)).catch(() => {});
   }, [sesion, obras, ruta]);
 
+  // Tareas de mantenimiento con más de 5 días sin hacer (número rojo en la pestaña)
+  const [mantAlertCount, setMantAlertCount] = useState(0);
+  useEffect(() => {
+    if (!sesion || sesion.rol === "arquitecto" || sesion.rol === "finanzas") return;
+    getMantenimiento().then(ts => setMantAlertCount((ts || []).filter(tareaAtrasada).length)).catch(() => {});
+  }, [sesion, ruta]);
+  useEffect(() => {
+    const alCambiar = e => setMantAlertCount(e.detail);
+    window.addEventListener("mantenimiento-actualizado", alCambiar);
+    return () => window.removeEventListener("mantenimiento-actualizado", alCambiar);
+  }, []);
+
   function handleLogin(u) { setSesion(u); recargarObras(); }
   async function handleLogout() { await cerrarSesion(); setSesion(null); setObras([]); setProyectos([]); }
   const entregasActivas = obras.filter(o => !o.archivada);
@@ -79,16 +93,17 @@ function Aplicacion() {
   const canSeeAvanceProduccion = !isArquitecto && !isFinanzas;
   const canSeeAvanceObra = !isFinanzas;
   const canSeeMateriales = !isArquitecto && !isFinanzas;
+  const canSeeMantenimiento = !isArquitecto && !isFinanzas;
   const canSeeHistorial = sesion?.email?.toLowerCase() === EMAIL_HISTORIAL;
 
   // La pestaña sale de la dirección; si el rol no la puede ver (o la dirección es "/"), va a su pantalla de inicio
-  const puedeVer = { entregas: true, aceptadas: true, avance: canSeeAvanceProduccion, avance_obra: canSeeAvanceObra, cobros: canSeeCobros, materiales: canSeeMateriales, historial: canSeeHistorial };
+  const puedeVer = { entregas: true, aceptadas: true, avance: canSeeAvanceProduccion, avance_obra: canSeeAvanceObra, cobros: canSeeCobros, materiales: canSeeMateriales, mantenimiento: canSeeMantenimiento, historial: canSeeHistorial };
   const activeTab = ruta.pestana && puedeVer[ruta.pestana] ? ruta.pestana : isFinanzas ? "cobros" : "entregas";
   const setActiveTab = t => navegar(`/${RUTAS_PESTANAS[t]}`);
   useEffect(() => {
     if (!sesion) return;
     if (!ruta.fichaId && ruta.pestana !== activeTab) navegar(`/${RUTAS_PESTANAS[activeTab]}`, { reemplazar: true });
-    if (!ruta.fichaId) document.title = activeTab === "entregas" ? "MaderoGest" : `${{ aceptadas: "Obras Aceptadas", avance: "Producción", avance_obra: "Avance de Obra", cobros: "Cobros", materiales: "Materiales", historial: "Historial" }[activeTab]} · MaderoGest`;
+    if (!ruta.fichaId) document.title = activeTab === "entregas" ? "MaderoGest" : `${{ aceptadas: "Obras Aceptadas", avance: "Producción", avance_obra: "Avance de Obra", cobros: "Cobros", materiales: "Materiales", mantenimiento: "Mantenimiento planta", historial: "Historial" }[activeTab]} · MaderoGest`;
   }, [sesion, ruta, activeTab]);
   const activas = entregasActivas.filter(o => o.estado !== "terminado");
   const urgentes = activas.filter(o => { const d = diasRestantes(o.fecha); return d >= 0 && d <= 7; });
@@ -119,7 +134,8 @@ function Aplicacion() {
               { id:"avance",      icono:"🏗", nombre:"Avance de Producción", corto:"Producción", ver:canSeeAvanceProduccion },
               { id:"avance_obra", icono:"🏠", nombre:"Avance de Obra",       corto:"Obra",       ver:canSeeAvanceObra },
               { id:"cobros",      icono:"💰", nombre:"Cobros",               corto:"Cobros",     ver:canSeeCobros, color:"#7C3AED" },
-              { id:"materiales",  icono:"🪵", nombre:"Materiales",           corto:"Materiales", ver:canSeeMateriales, color:"#0F766E", alertas:matAlertCount },
+              { id:"materiales",  icono:"🪵", nombre:"Materiales",           corto:"Materiales", ver:canSeeMateriales, color:"#0F766E", alertas:matAlertCount, alertaTitulo:`${matAlertCount} obra(s) con entrega próxima y materiales faltantes` },
+              { id:"mantenimiento", icono:"🔧", nombre:"Mantenimiento planta", corto:"Planta", ver:canSeeMantenimiento, color:"#B45309", alertas:mantAlertCount, alertaTitulo:`${mantAlertCount} tarea(s) de mantenimiento con más de 5 días sin hacer` },
             ].filter(t => t.ver).map(t => {
               const activa = activeTab === t.id;
               return (
@@ -127,7 +143,7 @@ function Aplicacion() {
                   style={{ "--tab-color": t.color || "#1A2B4A", position:"relative", padding:"7px 18px", borderRadius:8, border:"none", background: activa ? (t.color || "#1A2B4A") : "transparent", color: activa ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activa ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
                   <span className="app-tab-icono">{t.icono}</span> <span className="app-tab-nombre">{t.nombre}</span><span className="app-tab-corto">{t.corto}</span>
                   {t.alertas > 0 && (
-                    <span className="app-tab-alerta" title={`${t.alertas} obra(s) con entrega próxima y materiales faltantes`}
+                    <span className="app-tab-alerta" title={t.alertaTitulo}
                       style={{ marginLeft:6, background:"#DC2626", color:"#fff", borderRadius:99, padding:"1px 7px", fontSize:10, fontWeight:700 }}>{t.alertas}</span>
                   )}
                 </button>
@@ -178,6 +194,7 @@ function Aplicacion() {
         {activeTab === "avance_obra" && canSeeAvanceObra && <AvanceObraModule sesion={sesion} entregas={obras} />}
         {activeTab === "cobros" && canSeeCobros && <CobrosModule entregas={obras} />}
         {activeTab === "materiales" && canSeeMateriales && <MaterialesModule sesion={sesion} entregas={obras} />}
+        {activeTab === "mantenimiento" && canSeeMantenimiento && <MantenimientoModule sesion={sesion} />}
         {activeTab === "historial" && canSeeHistorial && <HistorialModule />}
       </main>
 

@@ -30,6 +30,13 @@ textarea:focus { border-color: #2563EB !important; }
    En pantallas chicas las pestañas pasan a una barra fija abajo. */
 .app-tab-corto { display: none; }
 
+/* Notebooks / pantallas medianas: con tantas pestañas, el nombre corto para que entren en una línea */
+@media (min-width: 761px) and (max-width: 1440px) {
+  .app-tab { padding: 7px 11px !important; white-space: nowrap; }
+  .app-tab-nombre { display: none; }
+  .app-tab-corto { display: inline; }
+}
+
 @media (max-width: 760px) {
   .solo-escritorio { display: none !important; }
 
@@ -44,7 +51,7 @@ textarea:focus { border-color: #2563EB !important; }
     box-shadow: 0 -4px 16px rgba(26, 43, 74, 0.06);
   }
   .app-tab {
-    flex: 1 1 0; min-width: 0; padding: 6px 2px !important; border-radius: 10px !important;
+    flex: 1 1 auto; min-width: 0; padding: 6px 2px !important; border-radius: 10px !important;
     display: flex; flex-direction: column; align-items: center; gap: 2px;
     background: transparent !important; color: #64748B !important;
     font-size: 10px !important; letter-spacing: 0 !important;
@@ -59,7 +66,7 @@ textarea:focus { border-color: #2563EB !important; }
   .avisos-pila { bottom: calc(84px + env(safe-area-inset-bottom)) !important; left: 12px !important; right: 12px !important; }
 
   .grid-numeros { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; margin-bottom: 20px !important; }
-  .grid-numeros > div { padding: 14px !important; }
+  .grid-numeros > div, .grid-numeros > button { padding: 14px !important; }
   .grid-tarjetas { grid-template-columns: 1fr !important; gap: 12px !important; }
   .grid-form { grid-template-columns: 1fr !important; }
 

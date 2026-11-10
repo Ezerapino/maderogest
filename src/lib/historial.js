@@ -8,7 +8,7 @@ export const EMAIL_HISTORIAL = "admin@fabrica.com";
 export const TABLAS_HISTORIAL = {
   proyectos: "Obras", obras: "Entregas", avance_obras: "Producción", materiales: "Materiales", cobros: "Cobros",
   obras_avance: "Avance de obra", avance_dias: "Avance de obra (día)", informes_finales: "Informe final de obra",
-  obras_aceptadas: "Obras aceptadas", agregados: "Agregados", usuarios: "Usuarios",
+  obras_aceptadas: "Obras aceptadas", agregados: "Agregados", usuarios: "Usuarios", mantenimiento: "Mantenimiento planta",
 };
 const CAMPOS_HISTORIAL = {
   nombre: "Nombre", lugar: "Dirección", direccion: "Dirección", fecha: "Fecha", fecha_inicio: "Fecha de inicio", estado: "Estado",
@@ -21,6 +21,8 @@ const CAMPOS_HISTORIAL = {
   cantidad: "Cantidad", unidad: "Unidad", proveedor: "Proveedor", cantidad_recibida: "Cantidad recibida", orden_pedido: "Orden de pedido", numero_remito: "N° de remito",
   detalle: "Detalle", operarios: "Operarios", finalizada: "Finalizada", cliente: "Cliente", descripcion: "Descripción", monto: "Monto", cobrado: "Cobrado",
   rol: "Rol", email: "Email", title: "Título", responsible: "Responsable", station: "Estación", detail: "Detalle", datos: "Datos",
+  tarea: "Tarea", responsable: "Realiza", supervisor: "Supervisa", fecha_solicitud: "Fecha de solicitud", solicitado_por: "Solicitada por",
+  realizada: "Hecha", realizada_en: "Hecha el", supervisada: "Supervisada", supervisada_en: "Supervisada el",
 };
 const CAMPOS_PLATA = new Set(["monto_total", "adelanto_monto", "monto"]);
 const VALORES_HISTORIAL = { ...ESTADOS_MAT, pending: "Pendiente", active: "En progreso", done: "Completada", blocked: "Bloqueada", terminado: "Entregada" };

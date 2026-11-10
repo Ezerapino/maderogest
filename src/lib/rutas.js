@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 
 // ─── DIRECCIONES (cada pantalla tiene su link; "atrás" y recargar funcionan) ──
-export const RUTAS_PESTANAS = { entregas: "entregas", aceptadas: "aceptadas", avance: "produccion", avance_obra: "avance-obra", cobros: "cobros", materiales: "materiales", historial: "historial" };
+export const RUTAS_PESTANAS = { entregas: "entregas", aceptadas: "aceptadas", avance: "produccion", avance_obra: "avance-obra", cobros: "cobros", materiales: "materiales", mantenimiento: "mantenimiento", historial: "historial" };
 const PESTANAS_RUTAS = Object.fromEntries(Object.entries(RUTAS_PESTANAS).map(([t, r]) => [r, t]));
 // Link a la ficha: /obra/<id>/<nombre-legible> (el nombre es solo para que el link se entienda)
 export const linkFicha = p => `/obra/${encodeURIComponent(p.id)}/${(p.nombre || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
