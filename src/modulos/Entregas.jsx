@@ -4,6 +4,7 @@ import { avisar, confirmar } from "../lib/avisos.js";
 import { agregarHistorial, crearObraConEntrega, crearRegistrosEntrega, eliminarEntregaDefinitiva, eliminarObraDefinitiva, enviarAvisoAhora, getAgregados, insertAgregado, nombreEntrega, patchEntregas, patchProyecto, sincronizarEntrega, upsertObra } from "../lib/datos.js";
 import { diasRestantes, formatDate, getStatus, uid } from "../lib/formato.js";
 import { generarPDF } from "../lib/pdf.js";
+import { imprimirTableroGeneral } from "../lib/tablero.js";
 import { ESTADO_LABELS, PRIORIDAD_ESTADO, SC_ENTREGA, STATUS_META, estadoEntrega, normalizarMuebles } from "../lib/produccion.js";
 import { linkFicha, navegar, useRuta } from "../lib/rutas.js";
 import { FichaObra } from "./FichaObra.jsx";
@@ -199,6 +200,11 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
           <button onClick={() => setVerArchivo(true)} title="Obras y entregas archivadas"
             style={{ padding:"6px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:600, cursor:"pointer" }}>
             🗄 Archivo{enArchivo ? ` (${enArchivo})` : ""}
+          </button>
+          <button onClick={() => imprimirTableroGeneral(grupos.flatMap(g => g.visibles).filter(e => e.estado !== "terminado"))}
+            title="Una hoja con todas las entregas en curso (respeta la búsqueda y los filtros) y casilleros por estación para tildar a mano, para pegar en la pizarra del taller"
+            style={{ padding:"6px 12px", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:8, color:"#1D4ED8", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+            📋 Tablero del taller
           </button>
         </div>
         <div className="barra-filtros" style={{ display:"flex", gap:4, background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:10, padding:4 }}>
