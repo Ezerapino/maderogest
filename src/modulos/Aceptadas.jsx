@@ -2,11 +2,12 @@
 import { useState, useEffect, useRef } from "react";
 import { VisorFotos } from "../components/VisorFotos.jsx";
 import { IMG_RE_ACEPTADA, esImagenAceptada, formatFileSizeAceptada, getFileIconAceptada } from "../lib/aceptadas.js";
-import { avisar, confirmar } from "../lib/avisos.js";
-import { b64ToBlob, crearObraConEntrega, deleteFileAvance, deleteObraAceptadaById, getObrasAceptadas, insertObraAceptada, updateObraAceptada, uploadFileObraAceptada } from "../lib/datos.js";
-import { formatDate } from "../lib/formato.js";
+import { avisar, confirmar, elegir } from "../lib/avisos.js";
+import { b64ToBlob, crearObraConEntrega, deleteFileAvance, renombrarObra, deleteObraAceptadaById, getObrasAceptadas, insertObraAceptada, updateObraAceptada, uploadFileObraAceptada } from "../lib/datos.js";
+import { buscarParecidos, formatDate } from "../lib/formato.js";
 import { CerrarConAtras } from "../lib/atras.js";
 import { Icono } from "../components/Icono.jsx";
+import { FiltroMes } from "../components/comunes.jsx";
 
 export function ObrasAceptadasModule({ sesion, proyectos = [], recargarObras }) {
   const [obrasTodas, setObras] = useState([]);
@@ -24,10 +25,29 @@ export function ObrasAceptadasModule({ sesion, proyectos = [], recargarObras }) 
   const obras = obrasTodas.filter(o => !proyectosArchivados.has(o.proyecto_id));
   const proyectosActivos = proyectos.filter(p => !p.archivada).sort((a, b) => a.nombre.localeCompare(b.nombre));
   const obraEnEntregas = o => proyectos.find(p => p.id === o.proyecto_id);
+  // Una obra ya pasada a Entregas se llama como allá (un solo nombre en todas las pestañas)
+  const nombreDe = o => obraEnEntregas(o)?.nombre || o.nombre;
 
   // Crea la obra en Entregas (con una primera entrega) y la deja vinculada
   async function pasarAEntregas(o) {
     if (!await confirmar(`¿Crear "${o.nombre}" como obra nueva en Entregas?\n\nSe crea con una primera entrega${o.fecha_entrega_aprox ? ` para el ${formatDate(o.fecha_entrega_aprox)}` : ""} y queda vinculada a esta obra aceptada. Los muebles se completan después en Entregas.`, { boton: "Crear obra", peligro: false })) return;
+    const parecidas = buscarParecidos(o.nombre, proyectosActivos);
+    if (parecidas.length) {
+      const v = await elegir(`En Entregas ya hay una obra con un nombre parecido a "${o.nombre}". ¿Es la misma?`, [
+        ...parecidas.slice(0, 3).map(p => ({ valor: p.id, texto: `Sí: vincular a "${p.nombre}"` })),
+        { valor: "nueva", texto: `No: crear "${o.nombre}" como obra nueva` },
+      ]);
+      if (!v) return;
+      if (v !== "nueva") {
+        setPasando(o.id);
+        try {
+          await updateObraAceptada(o.id, { proyecto_id: v, nombre: proyectosActivos.find(p => p.id === v).nombre, updated_at: new Date().toISOString() });
+          await loadObras();
+        } catch (e) { avisar(`No se pudo vincular: ${e.message}`, { tipo: "error" }); }
+        setPasando(null);
+        return;
+      }
+    }
     setPasando(o.id);
     try {
       const { proyecto } = await crearObraConEntrega({
@@ -67,7 +87,7 @@ export function ObrasAceptadasModule({ sesion, proyectos = [], recargarObras }) 
   const obrasFiltradas = obras.filter(o => {
     if (search) {
       const q = search.toLowerCase();
-      if (!o.nombre.toLowerCase().includes(q) && !(o.direccion || "").toLowerCase().includes(q) && !(o.cliente || "").toLowerCase().includes(q)) return false;
+      if (!nombreDe(o).toLowerCase().includes(q) && !(o.direccion || "").toLowerCase().includes(q) && !(o.cliente || "").toLowerCase().includes(q)) return false;
     }
     if (mesFilter) {
       if (!(o.fecha_aceptacion || "").startsWith(mesFilter) && !(o.fecha_entrega_aprox || "").startsWith(mesFilter)) return false;
@@ -110,9 +130,8 @@ export function ObrasAceptadasModule({ sesion, proyectos = [], recargarObras }) 
             style={{ width:"100%", padding:"9px 12px 9px 36px", background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" }} />
           {search && <button onClick={() => setSearch("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"#94A3B8", cursor:"pointer", fontSize:14, padding:2 }}><Icono n="cerrar" /></button>}
         </div>
-        <input type="month" value={mesFilter} onChange={e => setMesFilter(e.target.value)}
-          style={{ padding:"9px 12px", background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" }} />
-        {mesFilter && <button onClick={() => setMesFilter("")} style={{ padding:"6px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#64748B", fontSize:12, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Limpiar mes</button>}
+        <FiltroMes valor={mesFilter} onCambio={setMesFilter} />
+        {mesFilter && <button onClick={() => setMesFilter("")} style={{ padding:"6px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#64748B", fontSize:12, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Quitar filtro de mes</button>}
         {(search || mesFilter) && <span style={{ fontSize:12, color:"#94A3B8" }}>{obrasFiltradas.length} resultado{obrasFiltradas.length !== 1 ? "s" : ""}</span>}
       </div>
 
@@ -132,7 +151,7 @@ export function ObrasAceptadasModule({ sesion, proyectos = [], recargarObras }) 
                 <img src={img.url} alt="" loading="lazy" style={{ width:"100%", height:140, objectFit:"cover", display:"block" }} />
               ) : null; })()}
               <div style={{ padding:"18px 18px 16px" }}>
-                <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", marginBottom:6, lineHeight:1.35 }}>{o.nombre}</div>
+                <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", marginBottom:6, lineHeight:1.35 }}>{nombreDe(o)}</div>
                 {o.cliente && <div style={{ fontSize:12, color:"#64748B", marginBottom:4 }}><Icono n="persona" /> {o.cliente}</div>}
                 {o.direccion && <div style={{ fontSize:12, color:"#64748B", marginBottom:4 }}><Icono n="ubicacion" /> {o.direccion}</div>}
                 <div style={{ fontSize:12, color:"#64748B", marginBottom:12, display:"flex", gap:12, flexWrap:"wrap" }}>
@@ -155,7 +174,7 @@ export function ObrasAceptadasModule({ sesion, proyectos = [], recargarObras }) 
                   );
                 })()}
                 {obraEnEntregas(o) && (
-                  <div style={{ fontSize:11, color:"#059669", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:6, padding:"4px 9px", marginBottom:12, display:"inline-block" }}><Icono n="paquete" /> En Entregas: {obraEnEntregas(o).nombre}</div>
+                  <div style={{ fontSize:11, color:"#059669", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:6, padding:"4px 9px", marginBottom:12, display:"inline-block" }}><Icono n="link" /> Vinculada a Entregas</div>
                 )}
                 <div onClick={e => e.stopPropagation()} style={{ display:"flex", gap:6, paddingTop:12, borderTop:"1px solid #F1F5F9" }}>
                   <button onClick={() => setModalObra(o)} style={{ flex:1, padding:"7px 0", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>{canEdit ? "Editar" : "Ver"}</button>
@@ -177,6 +196,8 @@ export function ObrasAceptadasModule({ sesion, proyectos = [], recargarObras }) 
         <ModalObraAceptada
           obra={modalObra === "nueva" ? null : modalObra}
           proyectos={proyectosActivos}
+          otrasAceptadas={obrasTodas.filter(x => x.id !== modalObra?.id).map(x => ({ id: x.id, nombre: nombreDe(x) }))}
+          recargarObras={recargarObras}
           canEdit={canEdit}
           canDelete={canDelete}
           onClose={() => setModalObra(null)}
@@ -188,9 +209,10 @@ export function ObrasAceptadasModule({ sesion, proyectos = [], recargarObras }) 
   );
 }
 
-function ModalObraAceptada({ obra, proyectos = [], canEdit, canDelete, onClose, onSave, onDelete }) {
+function ModalObraAceptada({ obra, proyectos = [], otrasAceptadas = [], recargarObras, canEdit, canDelete, onClose, onSave, onDelete }) {
+  const vinculadaAntes = proyectos.find(p => p.id === obra?.proyecto_id);
   const [form, setForm] = useState({
-    nombre: obra?.nombre || "", direccion: obra?.direccion || "", cliente: obra?.cliente || "",
+    nombre: vinculadaAntes?.nombre || obra?.nombre || "", direccion: obra?.direccion || "", cliente: obra?.cliente || "",
     fecha_aceptacion: obra?.fecha_aceptacion || "", fecha_entrega_aprox: obra?.fecha_entrega_aprox || "",
     descripcion: obra?.descripcion || "", proyecto_id: obra?.proyecto_id || "",
   });
@@ -230,11 +252,31 @@ function ModalObraAceptada({ obra, proyectos = [], canEdit, canDelete, onClose, 
     if (!form.nombre.trim()) e.nombre = "Requerido";
     setErrors(e);
     if (Object.keys(e).length > 0) return;
+    // Un solo nombre: si la obra está vinculada a Entregas y el nombre no coincide, se decide cuál queda
+    const nombre = form.nombre.trim();
+    const destino = proyectos.find(p => p.id === form.proyecto_id);
+    let renombrar = null;   // nombre nuevo para la obra en todas las pestañas
+    let nombreFinal = nombre;
+    if (destino && destino.nombre !== nombre) {
+      if (destino.id === vinculadaAntes?.id) {
+        if (!await confirmar(`¿Cambiar el nombre de la obra a "${nombre}"?
+
+Se cambia también en Entregas y en todas las pestañas.`, { boton: "Cambiar en todas", peligro: false })) return;
+        renombrar = nombre;
+      } else {
+        const v = await elegir(`El nombre no coincide con el de la obra en Entregas. ¿Cuál queda para todas las pestañas?`, [
+          { valor: "entregas", texto: `"${destino.nombre}" (el de Entregas)` },
+          { valor: "aceptadas", texto: `"${nombre}" (el escrito acá)` },
+        ]);
+        if (!v) return;
+        if (v === "entregas") nombreFinal = destino.nombre; else renombrar = nombre;
+      }
+    }
     setSaving(true);
     try {
       let obraId = obra?.id;
       const baseData = {
-        nombre: form.nombre.trim(), direccion: form.direccion.trim(), cliente: form.cliente.trim(),
+        nombre: nombreFinal, direccion: form.direccion.trim(), cliente: form.cliente.trim(),
         fecha_aceptacion: form.fecha_aceptacion || null, fecha_entrega_aprox: form.fecha_entrega_aprox || null,
         descripcion: form.descripcion.trim(), proyecto_id: form.proyecto_id || null,
       };
@@ -260,6 +302,7 @@ function ModalObraAceptada({ obra, proyectos = [], canEdit, canDelete, onClose, 
         }
       }
       await updateObraAceptada(obraId, { archivos: archivosFinal, updated_at: new Date().toISOString() });
+      if (renombrar) { await renombrarObra(destino.id, { nombre: renombrar }); await recargarObras?.(); }
       await onSave();
       onClose();
     } catch (e) { avisar("Error al guardar: " + e.message, { tipo: "error" }); }
@@ -282,6 +325,24 @@ function ModalObraAceptada({ obra, proyectos = [], canEdit, canDelete, onClose, 
                 onChange={e => { setForm(f => ({...f, nombre:e.target.value})); setErrors(er => ({...er, nombre:""})); }}
                 placeholder="Ej: Remodelación Cocina" autoFocus />
               {errors.nombre && <div style={{ color:"#DC2626", fontSize:11, marginTop:4 }}>{errors.nombre}</div>}
+              {!form.proyecto_id && (() => {
+                // Aviso si ya hay una obra con nombre parecido (para no cargarla dos veces con otra letra)
+                const enEntregas = buscarParecidos(form.nombre, proyectos, vinculadaAntes?.nombre).slice(0, 2);
+                const enAceptadas = buscarParecidos(form.nombre, otrasAceptadas).slice(0, 2);
+                if (!enEntregas.length && !enAceptadas.length) return null;
+                return (
+                  <div style={{ marginTop:8, padding:"9px 12px", borderRadius:8, background:"#FFFBEB", border:"1px solid #FDE68A", fontSize:12, color:"#92400E", lineHeight:1.5 }}>
+                    {enEntregas.map(p => (
+                      <div key={p.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                        <span><Icono n="alerta" /> Parecida a <b>{p.nombre}</b> (en Entregas)</span>
+                        <button type="button" onClick={() => setForm(f => ({ ...f, proyecto_id: p.id, nombre: p.nombre }))}
+                          style={{ padding:"4px 10px", borderRadius:6, border:"1px solid #D97706", background:"#fff", color:"#92400E", fontSize:12, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>Es la misma: vincular</button>
+                      </div>
+                    ))}
+                    {enAceptadas.map(x => <div key={x.id}><Icono n="alerta" /> Ya hay una obra aceptada parecida: <b>{x.nombre}</b></div>)}
+                  </div>
+                );
+              })()}
             </div>
             <div style={{ marginBottom:16 }}>
               <label style={lbl}>Dirección de la obra</label>

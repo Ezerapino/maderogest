@@ -14,5 +14,10 @@ export function confirmar(texto, { boton = "Eliminar", peligro = true } = {}) {
   if (!pedirConfirmacion) return Promise.resolve(window.confirm(texto));
   return new Promise(resolver => pedirConfirmacion({ texto, boton, peligro, resolver }));
 }
+// elegir() pregunta entre varias opciones [{ valor, texto }] y devuelve el valor elegido, o null si se cancela
+export function elegir(texto, opciones) {
+  if (!pedirConfirmacion) return Promise.resolve(null);
+  return new Promise(resolver => pedirConfirmacion({ texto, opciones, resolver: v => resolver(v === false ? null : v) }));
+}
 // El componente Avisos se anota acá al montarse (y se borra al desmontarse)
 export function registrarAvisos(mostrar, pedir) { mostrarAviso = mostrar; pedirConfirmacion = pedir; }

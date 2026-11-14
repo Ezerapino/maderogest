@@ -123,9 +123,9 @@ export function CobrosModule({ entregas = [] }) {
 
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:10 }}>
         <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Cobros por obra</h2>
-        <button onClick={() => setShowNuevaObra(true)} title="Las entregas nuevas se agregan solas al crearlas en Entregas"
+        <button onClick={() => setShowNuevaObra(true)} title="Para entregas que todavía no están acá. Las nuevas se agregan solas al crearlas en Entregas."
           style={{ padding:"9px 18px", background:"#7C3AED", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
-          + Agregar entrega
+          <Icono n="link" /> Vincular entrega
         </button>
       </div>
 
@@ -373,7 +373,7 @@ export function CobrosModule({ entregas = [] }) {
       )}
 
       {/* MODAL: AGREGAR ENTREGA */}
-      {showNuevaObra && <ModalElegirEntrega titulo="Agregar entrega a Cobros" color="#7C3AED"
+      {showNuevaObra && <ModalElegirEntrega titulo="Vincular una entrega a Cobros" color="#7C3AED"
         entregas={activas.filter(e => !cobrosTodos.some(c => c.obra_id === e.id))}
         onClose={() => setShowNuevaObra(false)} onElegir={crearCobroEntrega} />}
     </div>

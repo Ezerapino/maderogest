@@ -142,6 +142,23 @@ export async function sincronizarEntrega(e) {
   r.filter(x => x.status === "rejected").forEach(x => console.error("Error sincronizando la entrega:", x.reason));
 }
 
+// Cambia el nombre (y la dirección, si se pasa) de una obra en todos lados: la obra, sus entregas,
+// las otras pestañas y las obras aceptadas vinculadas. Es el único lugar donde se renombra una obra.
+export async function renombrarObra(proyectoId, { nombre, lugar }) {
+  const [p] = await sbFetch(`proyectos?id=eq.${proyectoId}&select=*`);
+  if (!p) throw new Error("La obra ya no existe. Recargá la página.");
+  const datos = { nombre: nombre.trim(), ...(lugar !== undefined ? { lugar: lugar.trim() } : {}) };
+  await patchProyecto(proyectoId, datos);
+  const obra = { ...p, ...datos };
+  for (const e of (await sbFetch(`obras?proyecto_id=eq.${proyectoId}&select=*`)) || []) {
+    const upd = { ...e, nombre: nombreEntrega(obra, e.etiqueta), lugar: obra.lugar };
+    await patchEntregas(`id=eq.${e.id}`, { nombre: upd.nombre, lugar: upd.lugar });
+    await sincronizarEntrega(upd);
+  }
+  await sbFetch(`obras_aceptadas?proyecto_id=eq.${proyectoId}`, { method: "PATCH", body: JSON.stringify({ nombre: obra.nombre, updated_at: new Date().toISOString() }) });
+  return obra;
+}
+
 // Crea una obra con su primera entrega (y los registros de las otras pestañas)
 export async function crearObraConEntrega({ nombre, lugar, entrega, sesion }) {
   const ahora = new Date().toISOString();

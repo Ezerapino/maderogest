@@ -19,6 +19,7 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
   const obras = obrasTodas.filter(o => !archivadas.has(o.obra_id));
   const [cargando, setCargando] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [filtroObras, setFiltroObras] = useState("curso");   // curso | finalizadas | todas
   const [dias, setDias] = useState([]);
   const [cargandoDias, setCargandoDias] = useState(false);
   const [showObraModal, setShowObraModal] = useState(false);
@@ -148,6 +149,7 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
 
   const obrasActivas = obras.filter(o => !o.finalizada);
   const obrasFinalizadas = obras.filter(o => o.finalizada);
+  const obrasVisibles = filtroObras === "curso" ? obrasActivas : filtroObras === "finalizadas" ? obrasFinalizadas : obras;
 
   if (cargando) return <div style={{ textAlign:"center", padding:"60px 0", color:"#94A3B8", fontSize:13 }}>Cargando avance de obras...</div>;
 
@@ -155,34 +157,43 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
     <div>
       <div className="grid-numeros" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:32 }}>
         {[
-          { num: obras.length, label:"Total obras", color:"#2563EB", border:"#DBEAFE" },
-          { num: obrasActivas.length, label:"En curso", color:"#D97706", border:"#FDE68A" },
-          { num: obrasFinalizadas.length, label:"Finalizadas", color:"#059669", border:"#A7F3D0" },
+          { num: obras.length, label:"Total obras", color:"#2563EB", border:"#DBEAFE", f:"todas" },
+          { num: obrasActivas.length, label:"En curso", color:"#D97706", border:"#FDE68A", f:"curso" },
+          { num: obrasFinalizadas.length, label:"Finalizadas", color:"#059669", border:"#A7F3D0", f:"finalizadas" },
         ].map((s, i) => (
-          <div key={i} style={{ background:"#ffffff", border:`1px solid ${s.border}`, borderRadius:12, padding:"20px 20px 18px" }}>
+          <button key={i} onClick={() => setFiltroObras(s.f)} title="Ver estas obras" aria-pressed={filtroObras === s.f}
+            style={{ background:"#ffffff", border:`${filtroObras === s.f ? 2 : 1}px solid ${s.border}`, borderRadius:12, padding:"20px 20px 18px", textAlign:"left", cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
             <div style={{ fontFamily:"'Sora', sans-serif", fontSize:32, fontWeight:800, color:s.color, lineHeight:1 }}>{s.num}</div>
             <div style={{ fontSize:12, color:"#64748B", fontWeight:500, marginTop:6 }}>{s.label}</div>
-          </div>
+          </button>
         ))}
       </div>
 
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:10 }}>
         <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Obras — Avance de Obra</h2>
+        <div className="barra-filtros" style={{ display:"flex", gap:4, background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:10, padding:4, marginLeft:"auto" }}>
+          {[{ key:"curso", label:"En curso" }, { key:"finalizadas", label:"Finalizadas" }, { key:"todas", label:"Todas" }].map(f => (
+            <button key={f.key} onClick={() => setFiltroObras(f.key)} className="filter-btn"
+              style={{ padding:"6px 14px", borderRadius:7, border:"none", background: filtroObras === f.key ? "#1A2B4A" : "transparent", color: filtroObras === f.key ? "#ffffff" : "#64748B", fontFamily:"'Inter', sans-serif", fontSize:12, fontWeight: filtroObras === f.key ? 600 : 400, cursor:"pointer" }}>
+              {f.label}
+            </button>
+          ))}
+        </div>
         {canEdit && (
-          <button onClick={() => { setEditingObra(null); setShowObraModal(true); }}
+          <button onClick={() => { setEditingObra(null); setShowObraModal(true); }} title="Agregar a Avance de Obra una entrega de la pestaña Entregas"
             style={{ padding:"8px 18px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
-            + Agregar entrega
+            <Icono n="link" /> Vincular entrega
           </button>
         )}
       </div>
 
-      {obras.length === 0 ? (
+      {obrasVisibles.length === 0 ? (
         <div style={{ textAlign:"center", padding:"80px 20px", background:"#ffffff", borderRadius:16, border:"1px solid #E8ECF0" }}>
-          <div style={{ fontSize:13, color:"#94A3B8" }}>No hay obras registradas aún</div>
+          <div style={{ fontSize:13, color:"#94A3B8" }}>{!obras.length ? "No hay obras registradas aún" : filtroObras === "curso" ? "No hay obras en curso" : "No hay obras finalizadas"}</div>
         </div>
       ) : (
         <div className="grid-tarjetas" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))", gap:16 }}>
-          {obras.map((obra, idx) => (
+          {obrasVisibles.map((obra, idx) => (
             <div key={obra.id} onClick={() => { setSelected(obra); loadDias(obra.id); }}
               style={{ background:"#ffffff", border: obra.finalizada ? "1px solid #A7F3D0" : "1px solid #E8ECF0", borderRadius:14, overflow:"hidden", cursor:"pointer", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
               <div style={{ height:4, background: obra.finalizada ? "#059669" : "#2563EB" }} />
@@ -373,7 +384,7 @@ function ModalObraAvance({ obra, entregas = [], onClose, onSave }) {
       <CerrarConAtras onClose={() => onClose()} />
       <div className="modal-caja" style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:460, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
         <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{obra ? "Editar obra" : "Agregar entrega a Avance de Obra"}</h2>
+          <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{obra ? "Editar obra" : "Vincular una entrega a Avance de Obra"}</h2>
           <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}><Icono n="cerrar" /></button>
         </div>
         <div style={{ padding:"24px" }}>

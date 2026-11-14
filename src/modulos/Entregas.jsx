@@ -1,13 +1,15 @@
 // Pestaña Entregas
 import { useState, useEffect } from "react";
 import { avisar, confirmar } from "../lib/avisos.js";
-import { agregarHistorial, crearObraConEntrega, crearRegistrosEntrega, eliminarEntregaDefinitiva, eliminarObraDefinitiva, enviarAvisoAhora, getAgregados, insertAgregado, nombreEntrega, patchEntregas, patchProyecto, sincronizarEntrega, upsertObra } from "../lib/datos.js";
-import { diasRestantes, formatDate, getStatus, uid } from "../lib/formato.js";
+import { agregarHistorial, crearObraConEntrega, crearRegistrosEntrega, eliminarEntregaDefinitiva, eliminarObraDefinitiva, enviarAvisoAhora, getAgregados, insertAgregado, nombreEntrega, patchEntregas, patchProyecto, renombrarObra, sincronizarEntrega, upsertObra } from "../lib/datos.js";
+import { buscarParecidos, diasRestantes, formatDate, getStatus, uid } from "../lib/formato.js";
 import { generarPDF } from "../lib/pdf.js";
 import { imprimirTableroGeneral } from "../lib/tablero.js";
 import { ESTADO_LABELS, PRIORIDAD_ESTADO, SC_ENTREGA, STATUS_META, estadoEntrega, normalizarMuebles } from "../lib/produccion.js";
 import { linkFicha, navegar, useRuta, volver } from "../lib/rutas.js";
 import { FichaObra } from "./FichaObra.jsx";
+import { RevisarNombres } from "./RevisarNombres.jsx";
+import { FiltroMes, MenuMas } from "../components/comunes.jsx";
 import { ModalInformeIA } from "./Produccion.jsx";
 import { CerrarConAtras } from "../lib/atras.js";
 import { Icono } from "../components/Icono.jsx";
@@ -20,6 +22,7 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
   const [modal, setModal] = useState(null); // { modo: "nueva-obra" | "editar-obra" | "nueva-entrega" | "editar-entrega", proyecto, entrega }
   const [detalleId, setDetalleId] = useState(null);
   const [verArchivo, setVerArchivo] = useState(false);
+  const [verNombres, setVerNombres] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [informeIA, setInformeIA] = useState(null);
   const { fichaId } = useRuta();
@@ -69,13 +72,7 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
       if (modal.modo === "nueva-obra") {
         await crearObraConEntrega({ nombre: obraForm.nombre, lugar: obraForm.lugar, entrega: entregaForm, sesion });
       } else if (modal.modo === "editar-obra") {
-        const p = { ...modal.proyecto, nombre: obraForm.nombre.trim(), lugar: obraForm.lugar.trim() };
-        await patchProyecto(p.id, { nombre: p.nombre, lugar: p.lugar });
-        for (const e of obras.filter(x => x.proyecto_id === p.id)) {
-          const upd = { ...e, nombre: nombreEntrega(p, e.etiqueta), lugar: p.lugar };
-          await patchEntregas(`id=eq.${e.id}`, { nombre: upd.nombre, lugar: upd.lugar });
-          await sincronizarEntrega(upd);
-        }
+        await renombrarObra(modal.proyecto.id, { nombre: obraForm.nombre, lugar: obraForm.lugar });
       } else {
         const p = modal.proyecto, existente = modal.entrega;
         const etiqueta = entregaForm.etiqueta.trim() || null;
@@ -170,7 +167,7 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
   if (ficha) return <>
     <FichaObra proyecto={ficha} entregas={entregas.filter(e => e.proyecto_id === ficha.id)} sesion={sesion}
       onVolver={() => volver("/entregas")} onModal={setModal} onEntregar={marcarEntregada} />
-    {modal && <ModalObraEntrega {...modal} guardando={guardando} onClose={() => setModal(null)} onSave={guardar} />}
+    {modal && <ModalObraEntrega {...modal} proyectos={proyectos} guardando={guardando} onClose={() => setModal(null)} onSave={guardar} />}
   </>;
 
   const detalle = detalleId ? obras.find(o => o.id === detalleId) : null;
@@ -215,6 +212,12 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
             style={{ padding:"6px 12px", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:8, color:"#1D4ED8", fontSize:12, fontWeight:600, cursor:"pointer" }}>
             <Icono n="lista" /> Tablero del taller
           </button>
+          {isAdmin && (
+            <button onClick={() => setVerNombres(true)} title="Ver dónde una misma obra quedó escrita distinto (Obras Aceptadas, Cobros, Materiales, Producción) y corregirlo"
+              style={{ padding:"6px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+              <Icono n="editar" /> Revisar nombres
+            </button>
+          )}
         </div>
         <div className="barra-filtros" style={{ display:"flex", gap:4, background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:10, padding:4 }}>
           {[
@@ -234,9 +237,8 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
             style={{ width:"100%", padding:"9px 12px 9px 36px", background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" }} />
           {search && <button onClick={() => setSearch("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"#94A3B8", cursor:"pointer", fontSize:14, padding:2 }}><Icono n="cerrar" /></button>}
         </div>
-        <input type="month" value={mesFilter} onChange={e => setMesFilter(e.target.value)}
-          style={{ padding:"9px 12px", background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" }} />
-        {mesFilter && <button onClick={() => setMesFilter("")} style={{ padding:"6px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#64748B", fontSize:12, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Limpiar mes</button>}
+        <FiltroMes valor={mesFilter} onCambio={setMesFilter} />
+        {mesFilter && <button onClick={() => setMesFilter("")} style={{ padding:"6px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#64748B", fontSize:12, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Quitar filtro de mes</button>}
         {hayFiltro && <span style={{ fontSize:12, color:"#94A3B8" }}>{grupos.length} obra{grupos.length !== 1 ? "s" : ""} · {entregasVisibles} entrega{entregasVisibles !== 1 ? "s" : ""}</span>}
       </div>
 
@@ -249,8 +251,9 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
         <div className="grid-tarjetas" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))", gap:16, alignItems:"start" }}>
           {grupos.map(({ p, todas, visibles, peor }, idx) => (
             <div key={p.id} className="obra-card"
-              style={{ background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:14, overflow:"hidden", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
-              <div style={{ height:4, background: STATUS_META[peor].color }} />
+              style={{ background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:14, animation:`fadeUp 0.35s ease ${idx*0.04}s both`, boxShadow:"0 1px 4px rgba(26,43,74,0.05)" }}>
+              {/* Color solo cuando hay algo que mirar (vencida, urgente o próxima); el resto, neutro */}
+              <div style={{ height:4, borderRadius:"14px 14px 0 0", background: ["vencida", "urgent", "warning"].includes(peor) ? STATUS_META[peor].color : "#E8ECF0" }} />
               <div style={{ padding:"16px 16px 14px" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10, marginBottom:4 }}>
                   <a href={linkFicha(p)} onClick={ev => { if (ev.ctrlKey || ev.metaKey || ev.shiftKey) return; ev.preventDefault(); navegar(linkFicha(p)); }} title="Ver la ficha de la obra"
@@ -258,7 +261,7 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
                   <div style={{ display:"flex", gap:4, flexShrink:0 }}>
                     {puedeInformeIA && <button title="Informe de la obra con IA" onClick={() => setInformeIA(p)} style={{ ...btnIcono, border:"1px solid #DDD6FE", background:"#F5F3FF", color:"#7C3AED" }}><Icono n="ia" /></button>}
                     <button title="Editar obra" onClick={() => setModal({ modo:"editar-obra", proyecto:p })} style={btnIcono}><Icono n="editar" /></button>
-                    {puedeArchivar && <button title="Archivar obra" onClick={() => archivarObra(p)} style={{ ...btnIcono, border:"1px solid #FECACA", background:"#FEF2F2", color:"#DC2626" }}><Icono n="archivo" /></button>}
+                    {puedeArchivar && <MenuMas estiloBoton={btnIcono} titulo="Más acciones de la obra" opciones={[{ texto: "Archivar obra", icono: "archivo", peligro: true, onClick: () => archivarObra(p) }]} />}
                   </div>
                 </div>
                 {p.lugar && <div style={{ fontSize:12, color:"#64748B", marginBottom:10 }}><Icono n="ubicacion" /> {p.lugar}</div>}
@@ -272,7 +275,7 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
                     const muebles = normalizarMuebles(e.muebles || []);
                     return (
                       <div key={e.id} onClick={() => setDetalleId(e.id)}
-                        style={{ border:`1px solid ${sc.border}`, background:"#FAFBFC", borderRadius:10, padding:"9px 11px", cursor:"pointer" }}>
+                        style={{ border:`1px solid ${est.status === "ok" || est.status === "done" ? "#E2E8F0" : sc.border}`, background:"#FAFBFC", borderRadius:10, padding:"9px 11px", cursor:"pointer" }}>
                         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8 }}>
                           <div style={{ fontSize:13, fontWeight:600, color:"#1A2B4A" }}>{e.etiqueta || "Entrega"}</div>
                           <span style={{ padding:"2px 8px", borderRadius:6, background:sc.bg, color:sc.text, fontSize:11, fontWeight:700, border:`1px solid ${sc.border}`, whiteSpace:"nowrap" }}>{est.label}</span>
@@ -318,12 +321,14 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
         + Nueva obra
       </button>
 
-      {modal && <ModalObraEntrega {...modal} guardando={guardando} onClose={() => setModal(null)} onSave={guardar} />}
+      {modal && <ModalObraEntrega {...modal} proyectos={proyectos} guardando={guardando} onClose={() => setModal(null)} onSave={guardar} />}
 
       {detalle && <DetalleObraEntrega obra={detalle} sesion={sesion} rol={sesion.rol}
         onClose={() => setDetalleId(null)}
         onEdit={() => { setModal({ modo:"editar-entrega", proyecto: proyectoDe(detalle), entrega: detalle }); setDetalleId(null); }}
         onDelete={() => archivarEntrega(detalle)} onEntregada={() => marcarEntregada(detalle)} />}
+
+      {verNombres && <RevisarNombres obras={obras} proyectos={proyectos} onClose={() => setVerNombres(false)} onCambio={recargarObras} />}
 
       {verArchivo && <ArchivoObras obras={obras} proyectos={proyectos} sesion={sesion} onClose={() => setVerArchivo(false)} onCambio={recargarObras} />}
 
@@ -334,7 +339,7 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
 
 // ─── MODAL OBRA / ENTREGA (Entregas) ──────────────────────────────────────────
 // nueva-obra: datos de la obra + su primera entrega · editar-obra: solo la obra · nueva/editar-entrega: solo la entrega
-function ModalObraEntrega({ modo, proyecto, entrega, etiquetaSugerida = "", guardando, onClose, onSave }) {
+function ModalObraEntrega({ modo, proyecto, entrega, etiquetaSugerida = "", proyectos = [], guardando, onClose, onSave }) {
   const conObra = modo === "nueva-obra" || modo === "editar-obra";
   const conEntrega = modo !== "editar-obra";
   const [obraForm, setObraForm] = useState({ nombre: proyecto?.nombre || "", lugar: proyecto?.lugar || "" });
@@ -392,6 +397,26 @@ function ModalObraEntrega({ modo, proyecto, entrega, etiquetaSugerida = "", guar
         <div style={{ padding:"24px" }}>
           {conObra && (<>
             {inpObra("Nombre de la obra", "nombre", "Ej: BBVA Flores")}
+            {(() => {
+              // Aviso si ya existe una obra con nombre parecido (para no cargarla dos veces con otra letra)
+              const parecidas = buscarParecidos(obraForm.nombre, proyectos, proyecto?.nombre).slice(0, 3);
+              if (!parecidas.length) return null;
+              return (
+                <div style={{ margin:"-6px 0 14px", padding:"9px 12px", borderRadius:8, background:"#FFFBEB", border:"1px solid #FDE68A", fontSize:12, color:"#92400E", lineHeight:1.5 }}>
+                  <div style={{ fontWeight:600, marginBottom:4 }}><Icono n="alerta" /> Ya hay {parecidas.length === 1 ? "una obra" : "obras"} con nombre parecido:</div>
+                  {parecidas.map(p => (
+                    <div key={p.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginTop:4 }}>
+                      <span><b>{p.nombre}</b>{p.archivada ? " (en Archivo)" : ""}</span>
+                      {modo === "nueva-obra" && !p.archivada && (
+                        <button type="button" onClick={() => { onClose(); navegar(linkFicha(p)); }}
+                          style={{ padding:"4px 10px", borderRadius:6, border:"1px solid #D97706", background:"#fff", color:"#92400E", fontSize:12, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>Es la misma: ir a esa obra</button>
+                      )}
+                    </div>
+                  ))}
+                  {modo === "nueva-obra" && <div style={{ marginTop:6, color:"#B45309" }}>Si es la misma, agregale una entrega desde su ficha en vez de crear otra obra.</div>}
+                </div>
+              );
+            })()}
             {inpObra("Dirección", "lugar", "Calle, número, barrio...")}
             {modo === "editar-obra" && <div style={{ fontSize:12, color:"#64748B", marginBottom:20 }}>El nombre y la dirección se actualizan en todas las entregas y pestañas de esta obra.</div>}
           </>)}

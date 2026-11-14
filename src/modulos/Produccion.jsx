@@ -5,7 +5,7 @@ import { avisar, confirmar } from "../lib/avisos.js";
 import { apiFetch, deleteAixaObraApi, getAixaObras, getAixaUsers, insertAixaObra, modificarFila, vinculoEntregas } from "../lib/datos.js";
 import { fmtDateAixa, fmtDateTimeAixa, fmtDurAixa } from "../lib/formato.js";
 import { generarInformeCierre, ofrecerInformeCierre } from "../lib/pdf.js";
-import { cambioEstacion, camposEstacion, daysDelayedAixa, isDelayedAixa, mkStations, obraProgressAixa } from "../lib/produccion.js";
+import { cambioEstacion, camposEstacion, daysDelayedAixa, etapaActual, isDelayedAixa, mkStations, obraProgressAixa } from "../lib/produccion.js";
 import { CerrarConAtras } from "../lib/atras.js";
 import { Icono } from "../components/Icono.jsx";
 
@@ -440,7 +440,7 @@ export function AvanceModule({ sesion, entregas = [] }) {
             <option value="done">Completadas</option>
             <option value="delayed">Con demora</option>
           </select>
-          {(isAdmin || sesion.rol === "operario") && <button onClick={() => setShowElegirEntrega(true)} title="Las entregas nuevas se agregan solas al crearlas en Entregas" style={{ padding:"8px 18px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#ffffff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>+ Agregar entrega</button>}
+          {(isAdmin || sesion.rol === "operario") && <button onClick={() => setShowElegirEntrega(true)} title="Para entregas que todavía no están acá. Las nuevas se agregan solas al crearlas en Entregas." style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"8px 18px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#ffffff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}><Icono n="link" /> Vincular entrega</button>}
         </div>
       </div>
 
@@ -461,7 +461,7 @@ export function AvanceModule({ sesion, entregas = [] }) {
             const bl = st.filter(s => s.status === 'blocked').length;
             return (
               <div key={o.id} className="obra-card" onClick={() => { setSelectedObra(o.id); setSection("overview"); }}
-                style={{ background:"#ffffff", border:`1.5px solid ${pct===100?"#A7F3D0":del?"#FECACA":"#FDE68A"}`, borderRadius:14, padding:18, cursor:"pointer", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, position:"relative" }}>
+                style={{ background:"#ffffff", border:`1px solid ${del?"#FECACA":"#E8ECF0"}`, borderRadius:14, padding:18, cursor:"pointer", animation:`fadeUp 0.35s ease ${idx*0.04}s both`, position:"relative" }}>
                 {(isAdmin || sesion.rol === "operario") && (
                   <div onClick={e => e.stopPropagation()} style={{ position:"absolute", top:10, right:10, display:"flex", gap:4 }}>
                     <button onClick={() => { setEditingObra(o.id); setShowObraModal(true); }} style={{ padding:"4px 8px", fontSize:11, border:"1px solid #E2E8F0", borderRadius:5, background:"#F8FAFC", color:"#64748B", cursor:"pointer" }}><Icono n="editar" /></button>
@@ -471,6 +471,12 @@ export function AvanceModule({ sesion, entregas = [] }) {
                 )}
                 <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", textTransform:"uppercase", marginBottom:3, paddingRight:60 }}>{o.name}</div>
                 <div style={{ fontSize:12, color:"#94A3B8", marginBottom:10 }}>{o.client || "Sin cliente"}</div>
+                {(() => {
+                  const et = etapaActual(o);
+                  if (!et) return null;
+                  const c = { activa: ["#FFFBEB", "#B45309", "En: "], bloqueada: ["#FEF2F2", "#DC2626", "Bloqueada en: "], sigue: ["#F8FAFC", "#475569", "Próxima: "], sinEmpezar: ["#F8FAFC", "#94A3B8", "Sin empezar"] }[et.tipo];
+                  return <div style={{ display:"inline-block", maxWidth:"100%", marginBottom:10, padding:"3px 9px", borderRadius:6, background:c[0], color:c[1], fontSize:12, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c[2]}{et.tipo === "sinEmpezar" ? "" : et.texto}</div>;
+                })()}
                 <div style={{ height:4, background:"#E8ECF0", borderRadius:99, marginBottom:10 }}>
                   <div style={{ height:4, borderRadius:99, width:`${pct}%`, background:barColor }} />
                 </div>
@@ -506,7 +512,7 @@ export function AvanceModule({ sesion, entregas = [] }) {
           ]} />;
       })()}
 
-      {showElegirEntrega && <ModalElegirEntrega titulo="Agregar entrega a Avance de Producción"
+      {showElegirEntrega && <ModalElegirEntrega titulo="Vincular una entrega a Avance de Producción"
         entregas={activas.filter(e => !aixaObrasTodas.some(a => a.obra_id === e.id))}
         onClose={() => setShowElegirEntrega(false)} onElegir={agregarEntrega} />}
     </div>

@@ -82,6 +82,18 @@ export const SC_ENTREGA = {
   warning: { bg: "#FFFBEB", text: "#D97706", border: "#FDE68A" }, ok: { bg: "#ECFDF5", text: "#059669", border: "#A7F3D0" },
   done: { bg: "#F8FAFC", text: "#64748B", border: "#E2E8F0" },
 };
+// En qué etapa está una obra de producción, para mostrarlo en la tarjeta sin abrirla
+export function etapaActual(o) {
+  const st = o.stations || [];
+  if (!st.length) return null;
+  const activas = st.filter(s => s.status === "active").map(s => s.name);
+  if (activas.length) return { texto: activas.join(" · "), tipo: "activa" };
+  const bloqueadas = st.filter(s => s.status === "blocked").map(s => s.name);
+  if (bloqueadas.length) return { texto: bloqueadas.join(" · "), tipo: "bloqueada" };
+  if (st.every(s => s.status === "done")) return null;
+  const siguiente = st.find(s => s.status !== "done");
+  return { texto: siguiente.name, tipo: st.some(s => s.status === "done") ? "sigue" : "sinEmpezar" };
+}
 export const PRIORIDAD_ESTADO = { vencida: 0, urgent: 1, warning: 2, ok: 3, done: 4 };
 
 // ─── FICHA DE OBRA (todo lo de una obra en una página, y se edita desde acá) ──

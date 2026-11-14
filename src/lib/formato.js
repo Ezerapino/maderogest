@@ -41,3 +41,31 @@ export function hoyLocal() {
   const h = new Date();
   return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, "0")}-${String(h.getDate()).padStart(2, "0")}`;
 }
+
+// ─── NOMBRES PARECIDOS (para no crear dos veces la misma obra con otra letra) ──
+const normNombre = s => sinAcentos(s || "").replace(/[^a-z0-9ñ]+/g, " ").trim();
+function distancia(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 99;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const fila = [i];
+    for (let j = 1; j <= b.length; j++) fila[j] = Math.min(prev[j] + 1, fila[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = fila;
+  }
+  return prev[b.length];
+}
+// Mismo nombre salvo mayúsculas, acentos o signos, o con 1-2 letras distintas ("Spensieri" / "Spencieri")
+export function nombresParecidos(a, b) {
+  const x = normNombre(a), y = normNombre(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  // Números distintos (sucursal 217 / 218, piso 26 / 27) son obras distintas
+  if ((x.match(/\d+/g) || []).join(",") !== (y.match(/\d+/g) || []).join(",")) return false;
+  const largo = Math.min(x.length, y.length);
+  const tolerancia = largo >= 12 ? 2 : largo >= 6 ? 1 : 0;
+  return tolerancia > 0 && distancia(x, y) <= tolerancia;
+}
+// De una lista de { nombre }, los que se parecen a "nombre" (sin contar uno exactamente igual a "excepto")
+export function buscarParecidos(nombre, lista, excepto) {
+  return lista.filter(x => x.nombre && x.nombre !== excepto && nombresParecidos(nombre, x.nombre));
+}

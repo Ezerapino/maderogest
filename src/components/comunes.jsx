@@ -1,5 +1,6 @@
 // Ventanas que se usan en varias pestañas
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { avisar } from "../lib/avisos.js";
 import { formatDate } from "../lib/formato.js";
 import { CerrarConAtras } from "../lib/atras.js";
@@ -134,6 +135,77 @@ export function ModalSimple({ title, onClose, onSave, fields }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Menú "⋯" con acciones menos frecuentes (o peligrosas), para no tenerlas a un toque de distancia
+// opciones: [{ texto, icono, onClick, peligro }]
+export function MenuMas({ opciones, titulo = "Más acciones", estiloBoton }) {
+  const [pos, setPos] = useState(null);   // dónde se abre el menú (null = cerrado)
+  const boton = useRef(null);
+  const menu = useRef(null);
+  const abierto = !!pos;
+  useEffect(() => {
+    if (!abierto) return;
+    const cerrar = () => setPos(null);
+    const fuera = e => { if (!menu.current?.contains(e.target) && !boton.current?.contains(e.target)) cerrar(); };
+    const tecla = e => { if (e.key === "Escape") cerrar(); };
+    document.addEventListener("pointerdown", fuera);
+    document.addEventListener("keydown", tecla);
+    window.addEventListener("scroll", cerrar, true);
+    window.addEventListener("resize", cerrar);
+    return () => { document.removeEventListener("pointerdown", fuera); document.removeEventListener("keydown", tecla); window.removeEventListener("scroll", cerrar, true); window.removeEventListener("resize", cerrar); };
+  }, [abierto]);
+  function alternar() {
+    if (abierto) { setPos(null); return; }
+    const r = boton.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+  }
+  // El menú se dibuja aparte (portal) para que ninguna tarjeta lo tape ni lo recorte
+  return (
+    <>
+      <button ref={boton} onClick={alternar} title={titulo} aria-label={titulo} aria-expanded={abierto} style={estiloBoton}><Icono n="puntos" /></button>
+      {abierto && createPortal(
+        <div ref={menu} role="menu" style={{ position:"fixed", top:pos.top, right:pos.right, zIndex:180, minWidth:180, background:"#fff", border:"1px solid #E2E8F0", borderRadius:10, boxShadow:"0 10px 30px rgba(15,23,42,0.15)", padding:4 }}>
+          {opciones.filter(Boolean).map(o => (
+            <button key={o.texto} role="menuitem" onClick={() => { setPos(null); o.onClick(); }}
+              style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"9px 10px", border:"none", background:"transparent", borderRadius:7, color: o.peligro ? "#DC2626" : "#1A2B4A", fontSize:13, cursor:"pointer", textAlign:"left", fontFamily:"'Inter', sans-serif" }}
+              onMouseEnter={e => { e.currentTarget.style.background = o.peligro ? "#FEF2F2" : "#F1F5F9"; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+              {o.icono && <Icono n={o.icono} />}{o.texto}
+            </button>
+          ))}
+        </div>, document.body
+      )}
+    </>
+  );
+}
+
+// Filtro por mes: atajos (este mes, el próximo) y "Elegir mes…" para cualquier otro. valor = "AAAA-MM" o ""
+const mesDe = (desplazamiento = 0) => { const h = new Date(); const d = new Date(h.getFullYear(), h.getMonth() + desplazamiento, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+export function FiltroMes({ valor, onCambio, etiqueta = "Fechas" }) {
+  const [eligiendo, setEligiendo] = useState(false);
+  const esteMes = mesDe(0), proximo = mesDe(1);
+  const opcion = !valor ? "" : valor === esteMes ? "este" : valor === proximo ? "proximo" : "otro";
+  const estilo = { padding:"9px 12px", background:"#ffffff", border:`1px solid ${valor ? "#93C5FD" : "#E2E8F0"}`, borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", cursor:"pointer" };
+  return (
+    <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+      <select aria-label={`Filtrar ${etiqueta.toLowerCase()} por mes`} value={eligiendo ? "otro" : opcion} style={estilo}
+        onChange={e => {
+          const v = e.target.value;
+          setEligiendo(v === "otro");
+          if (v === "") onCambio("");
+          else if (v === "este") onCambio(esteMes);
+          else if (v === "proximo") onCambio(proximo);
+        }}>
+        <option value="">{etiqueta}: todas</option>
+        <option value="este">Este mes</option>
+        <option value="proximo">Próximo mes</option>
+        <option value="otro">{opcion === "otro" && !eligiendo ? `Mes: ${valor.split("-").reverse().join("/")}` : "Elegir mes…"}</option>
+      </select>
+      {(eligiendo || opcion === "otro") && (
+        <input type="month" value={valor} autoFocus={eligiendo} aria-label="Mes" onChange={e => { onCambio(e.target.value); }} style={{ ...estilo, cursor:"text" }} />
+      )}
     </div>
   );
 }

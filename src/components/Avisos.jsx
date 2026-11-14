@@ -54,10 +54,20 @@ export function Avisos() {
           <CerrarConAtras onClose={() => responder(false)} />
           <div onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" style={{ width:"100%", maxWidth:420, background:"#fff", borderRadius:14, padding:22, boxShadow:"0 20px 50px rgba(15,23,42,0.25)", fontFamily:fuente, color:"#1A2B4A" }}>
             <div style={{ fontSize:14, lineHeight:1.55, whiteSpace:"pre-line" }}>{pregunta.texto}</div>
+            {pregunta.opciones ? (
+              <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:18 }}>
+                {pregunta.opciones.map((o, i) => (
+                  <button key={o.valor} autoFocus={i === 0} onClick={() => { pregunta.resolver(o.valor); setPregunta(null); }}
+                    style={{ padding:"10px 14px", background: i === 0 ? "#1A2B4A" : "#ffffff", border:"1px solid #1A2B4A", borderRadius:8, color: i === 0 ? "#fff" : "#1A2B4A", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:fuente, textAlign:"left" }}>{o.texto}</button>
+                ))}
+                <button onClick={() => responder(false)} style={{ padding:"9px 14px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:13, cursor:"pointer", fontFamily:fuente }}>Cancelar</button>
+              </div>
+            ) : (
             <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:20 }}>
               <button onClick={() => responder(false)} style={{ padding:"9px 16px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:fuente }}>Cancelar</button>
               <button autoFocus onClick={() => responder(true)} style={{ padding:"9px 16px", background:pregunta.peligro ? "#DC2626" : "#1A2B4A", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:fuente }}>{pregunta.boton}</button>
             </div>
+            )}
           </div>
         </div>
       )}

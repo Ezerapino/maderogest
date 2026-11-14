@@ -290,8 +290,19 @@ export function MaterialesModule({ sesion, entregas = [] }) {
   const q = sinAcentos(search.trim());
   const coincide = v => !!v && sinAcentos(v).includes(q);
   const itemCoincide = it => q && CAMPOS_BUSQUEDA_MAT.some(k => coincide(it[k]));
+  // Orden: en curso por fecha de entrega (la más próxima arriba), después las sin fecha y al final las ya entregadas
+  const grupoOrden = e => !e || e.estado === "terminado" ? (e ? 2 : 1) : e.fecha ? 0 : 1;
+  const ordenLista = (a, b) => {
+    const ea = entregaDeLista(a.l, obras), eb = entregaDeLista(b.l, obras);
+    const ga = grupoOrden(ea), gb = grupoOrden(eb);
+    if (ga !== gb) return ga - gb;
+    if (ga === 0) return ea.fecha.localeCompare(eb.fecha);
+    if (ga === 2) return (eb.fecha || "").localeCompare(ea.fecha || "");
+    return (a.l.obra_nombre || "").localeCompare(b.l.obra_nombre || "");
+  };
   const visibles = listas.map((l, idx) => ({ l, idx, itemsCoinc: q ? (l.items || []).filter(itemCoincide) : [] }))
-    .filter(v => !q || coincide(v.l.obra_nombre) || coincide(v.l.obra_lugar) || coincide(v.l.notas) || v.itemsCoinc.length);
+    .filter(v => !q || coincide(v.l.obra_nombre) || coincide(v.l.obra_lugar) || coincide(v.l.notas) || v.itemsCoinc.length)
+    .sort(ordenLista);
 
   const si = { width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" };
   const siSm = { ...si, padding:"8px 10px", fontSize:12 };
@@ -359,9 +370,9 @@ export function MaterialesModule({ sesion, entregas = [] }) {
             {enviandoResumen ? "Enviando..." : <><Icono n="mail" /> Enviar aviso de materiales ahora</>}
           </button>
         )}
-        <button onClick={() => setShowNuevaObra(true)} title="Las entregas nuevas se agregan solas al crearlas en Entregas"
+        <button onClick={() => setShowNuevaObra(true)} title="Para entregas que todavía no están acá. Las nuevas se agregan solas al crearlas en Entregas."
           style={{ padding:"9px 18px", background:"#0F766E", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer" }}>
-          + Agregar entrega
+          <Icono n="link" /> Vincular entrega
         </button>
       </div>
 
@@ -673,7 +684,7 @@ export function MaterialesModule({ sesion, entregas = [] }) {
       )}
 
       {/* MODAL: AGREGAR ENTREGA */}
-      {showNuevaObra && <ModalElegirEntrega titulo="Agregar entrega a Materiales" color="#0F766E"
+      {showNuevaObra && <ModalElegirEntrega titulo="Vincular una entrega a Materiales" color="#0F766E"
         entregas={obras.filter(e => !listasTodas.some(l => l.obra_id === e.id))}
         onClose={() => setShowNuevaObra(false)} onElegir={crearListaEntrega} />}
     </div>
