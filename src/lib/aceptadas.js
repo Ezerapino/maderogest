@@ -4,11 +4,12 @@
 // OBRAS ACEPTADAS MODULE
 // ═══════════════════════════════════════════════════════════════════════════════
 export function getFileIconAceptada(type) {
-  if (!type) return "📎";
-  if (type.startsWith("image/")) return "🖼️";
-  if (type.includes("pdf")) return "📄";
-  if (type.includes("sheet") || type.includes("excel") || type.includes("csv")) return "📊";
-  return "📎";
+  // Nombre del ícono (components/Icono.jsx) según el tipo de archivo
+  if (!type) return "clip";
+  if (type.startsWith("image/")) return "imagen";
+  if (type.includes("pdf")) return "documento";
+  if (type.includes("sheet") || type.includes("excel") || type.includes("csv")) return "grafico";
+  return "clip";
 }
 export function formatFileSizeAceptada(bytes) {
   if (!bytes) return "";

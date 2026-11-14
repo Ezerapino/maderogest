@@ -36,3 +36,8 @@ export function diasHastaFecha(fecha) {
   return Math.round((new Date(y, m-1, d) - hoy) / 86400000);
 }
 export function textoDiasEntrega(dias) { return dias < 0 ? `vencida hace ${-dias} día${dias === -1 ? "" : "s"}` : dias === 0 ? "entrega hoy" : `faltan ${dias} día${dias === 1 ? "" : "s"}`; }
+// Fecha de hoy (hora local) como AAAA-MM-DD, para campos de fecha
+export function hoyLocal() {
+  const h = new Date();
+  return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, "0")}-${String(h.getDate()).padStart(2, "0")}`;
+}

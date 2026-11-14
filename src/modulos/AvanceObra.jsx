@@ -3,9 +3,11 @@ import { useState, useEffect, useRef } from "react";
 import { VisorFotos } from "../components/VisorFotos.jsx";
 import { EnviarPorMail } from "../components/comunes.jsx";
 import { avisar, confirmar } from "../lib/avisos.js";
-import { apiFetch, b64ToBlob, deleteDiaAvanceById, deleteFileAvance, deleteObraAvanceById, getDiasAvance, getInformeFinal, getInformesFinalesObraIds, getObrasAvance, imgToBase64, insertDiaAvance, insertObraAvance, updateDiaAvance, updateObraAvance, uploadFileAvance, uploadFileInforme, upsertInformeFinal, vinculoEntregas } from "../lib/datos.js";
+import { apiFetch, b64ToBlob, deleteDiaAvanceById, modificarFila, deleteFileAvance, deleteObraAvanceById, getDiasAvance, getInformeFinal, getInformesFinalesObraIds, getObrasAvance, imgToBase64, insertDiaAvance, insertObraAvance, updateDiaAvance, updateObraAvance, uploadFileAvance, uploadFileInforme, upsertInformeFinal, vinculoEntregas } from "../lib/datos.js";
 import { formatDate } from "../lib/formato.js";
 import { generarPDFDiaAvance } from "../lib/pdf.js";
+import { CerrarConAtras } from "../lib/atras.js";
+import { Icono } from "../components/Icono.jsx";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // AVANCE DE OBRA MODULE (nuevo — con días y fotos)
@@ -37,7 +39,7 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
   }
 
   async function loadObras() {
-    setCargando(true);
+    // "cargando" arranca en true: las recargas después de guardar no vuelven a tapar la pantalla
     try { const obs = await getObrasAvance(); setObras(obs || []); } catch (e) { console.error("Error cargando obras de avance:", e); }
     setCargando(false);
   }
@@ -107,26 +109,24 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
   async function handleFileUpload(files, diaId) {
     setUploadingFiles(s => ({ ...s, [diaId]: true }));
     try {
-      const dia = dias.find(d => d.id === diaId);
-      const archivos = [...(dia?.archivos || [])];
+      const nuevos = [];
       for (const file of Array.from(files)) {
-        try { const fi = await uploadFileAvance(file, selected.id); archivos.push(fi); }
+        try { nuevos.push(await uploadFileAvance(file, selected.id)); }
         catch (e) { avisar(`Error al subir ${file.name}: ${e.message}`, { tipo: "error" }); }
       }
-      await updateDiaAvance(diaId, { archivos });
+      // Se suman a lo último guardado (no a lo que había en pantalla), para no pisar fotos que subió otra persona
+      if (nuevos.length) await modificarFila("avance_dias", diaId, d => ({ archivos: [...(d.archivos || []), ...nuevos] }));
       await loadDias(selected.id);
-    } catch (e) { console.error("Error guardando los archivos del día:", e); }
+    } catch (e) { console.error("Error guardando los archivos del día:", e); avisar(`No se pudieron guardar los archivos: ${e.message}`, { tipo: "error" }); }
     setUploadingFiles(s => ({ ...s, [diaId]: false }));
   }
 
-  async function deleteFile(diaId, fileIdx) {
-    if (!await confirmar("¿Eliminar este archivo?")) return;
+  // El archivo se busca por su ruta en lo último guardado (no por su posición en pantalla, que pudo cambiar)
+  async function deleteFile(diaId, archivo) {
+    if (!archivo || !await confirmar("¿Eliminar este archivo?")) return;
     try {
-      const dia = dias.find(d => d.id === diaId);
-      const archivos = [...(dia?.archivos || [])];
-      const removed = archivos.splice(fileIdx, 1);
-      try { await deleteFileAvance(removed[0]?.path); } catch { /* si el archivo ya no existe se sigue igual */ }
-      await updateDiaAvance(diaId, { archivos });
+      await modificarFila("avance_dias", diaId, d => ({ archivos: (d.archivos || []).filter(f => (f.path || f.url) !== (archivo.path || archivo.url)) }));
+      if (archivo.path) { try { await deleteFileAvance(archivo.path); } catch { /* si el archivo ya no existe se sigue igual */ } }
       await loadDias(selected.id);
     } catch { avisar("Error al eliminar archivo.", { tipo: "error" }); }
   }
@@ -190,12 +190,12 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
                   <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", flex:1, paddingRight:8 }}>{obra.nombre}</div>
                   <div style={{ display:"flex", flexDirection:"column", gap:4, alignItems:"flex-end", flexShrink:0 }}>
-                    {obra.finalizada && <span style={{ fontSize:10, fontWeight:700, color:"#059669", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:5, padding:"2px 8px", whiteSpace:"nowrap" }}>✅ FINALIZADA</span>}
-                    {informesIds.has(obra.id) && <span style={{ fontSize:10, fontWeight:700, color:"#7C3AED", background:"#F5F3FF", border:"1px solid #DDD6FE", borderRadius:5, padding:"2px 8px", whiteSpace:"nowrap" }}>💾 INFORME GUARDADO</span>}
+                    {obra.finalizada && <span style={{ fontSize:10, fontWeight:700, color:"#059669", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:5, padding:"2px 8px", whiteSpace:"nowrap" }}><Icono n="checkCirculo" /> FINALIZADA</span>}
+                    {informesIds.has(obra.id) && <span style={{ fontSize:10, fontWeight:700, color:"#7C3AED", background:"#F5F3FF", border:"1px solid #DDD6FE", borderRadius:5, padding:"2px 8px", whiteSpace:"nowrap" }}><Icono n="guardar" /> INFORME GUARDADO</span>}
                   </div>
                 </div>
-                {obra.direccion && <div style={{ fontSize:12, color:"#64748B", marginBottom:4 }}>📍 {obra.direccion}</div>}
-                {obra.fecha_entrega && <div style={{ fontSize:12, color:"#64748B", marginBottom:12 }}>📅 Entrega: {formatDate(obra.fecha_entrega)}</div>}
+                {obra.direccion && <div style={{ fontSize:12, color:"#64748B", marginBottom:4 }}><Icono n="ubicacion" /> {obra.direccion}</div>}
+                {obra.fecha_entrega && <div style={{ fontSize:12, color:"#64748B", marginBottom:12 }}><Icono n="calendario" /> Entrega: {formatDate(obra.fecha_entrega)}</div>}
                 <div onClick={e => e.stopPropagation()} style={{ display:"flex", gap:6, paddingTop:12, borderTop:"1px solid #F1F5F9" }}>
                   {canEdit && <button onClick={() => { setEditingObra(obra); setShowObraModal(true); }} style={{ flex:1, padding:"7px 0", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Editar</button>}
                   {canEdit && (
@@ -204,8 +204,8 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
                       {obra.finalizada ? "Reabrir" : "Finalizar"}
                     </button>
                   )}
-                  {obra.finalizada && <button onClick={() => { setInformeFinalObra(obra); setShowInformeFinal(true); }} style={{ flex:1, padding:"7px 0", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:8, color:"#2563EB", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>📋 Informe</button>}
-                  {(isAdmin || sesion.rol === "operario") && <button onClick={() => deleteObra(obra.id)} style={{ padding:"7px 10px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:12, cursor:"pointer" }}>✕</button>}
+                  {obra.finalizada && <button onClick={() => { setInformeFinalObra(obra); setShowInformeFinal(true); }} style={{ flex:1, padding:"7px 0", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:8, color:"#2563EB", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}><Icono n="lista" /> Informe</button>}
+                  {(isAdmin || sesion.rol === "operario") && <button onClick={() => deleteObra(obra.id)} style={{ padding:"7px 10px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:12, cursor:"pointer" }}><Icono n="cerrar" /></button>}
                 </div>
               </div>
             </div>
@@ -214,32 +214,33 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
       )}
 
       {selected && (
-        <div onClick={e => e.target === e.currentTarget && setSelected(null)}
+        <div onClick={e => e.target === e.currentTarget && setSelected(null)} className="modal-fondo"
           style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-          <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:720, maxHeight:"92vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+          <CerrarConAtras onClose={() => setSelected(null)} />
+          <div className="modal-caja" style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:720, maxHeight:"92vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
             <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"flex-start", position:"sticky", top:0, background:"#fff", zIndex:10, borderRadius:"14px 14px 0 0" }}>
               <div style={{ flex:1 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
                   <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>{selected.nombre}</h2>
-                  {selected.finalizada && <span style={{ fontSize:10, fontWeight:700, color:"#059669", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:5, padding:"2px 8px" }}>✅ FINALIZADA</span>}
+                  {selected.finalizada && <span style={{ fontSize:10, fontWeight:700, color:"#059669", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:5, padding:"2px 8px" }}><Icono n="checkCirculo" /> FINALIZADA</span>}
                 </div>
-                {selected.direccion && <div style={{ fontSize:12, color:"#64748B", marginTop:3 }}>📍 {selected.direccion}</div>}
-                {selected.fecha_entrega && <div style={{ fontSize:12, color:"#64748B" }}>📅 Entrega pactada: {formatDate(selected.fecha_entrega)}</div>}
+                {selected.direccion && <div style={{ fontSize:12, color:"#64748B", marginTop:3 }}><Icono n="ubicacion" /> {selected.direccion}</div>}
+                {selected.fecha_entrega && <div style={{ fontSize:12, color:"#64748B" }}><Icono n="calendario" /> Entrega pactada: {formatDate(selected.fecha_entrega)}</div>}
               </div>
               <div style={{ display:"flex", gap:8, alignItems:"center", flexShrink:0 }}>
                 {selected.finalizada && (
                   <button onClick={() => { setInformeFinalObra(selected); setShowInformeFinal(true); }}
                     style={{ padding:"7px 14px", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:8, color:"#2563EB", fontSize:12, fontWeight:600, cursor:"pointer" }}>
-                    📋 Informe Final
+                    <Icono n="lista" /> Informe Final
                   </button>
                 )}
                 {canEdit && (
                   <button onClick={() => marcarFinalizada(selected)}
                     style={{ padding:"7px 14px", background: selected.finalizada ? "#F8FAFC" : "#ECFDF5", border:`1px solid ${selected.finalizada ? "#E2E8F0" : "#A7F3D0"}`, borderRadius:8, color: selected.finalizada ? "#475569" : "#059669", fontSize:12, fontWeight:600, cursor:"pointer" }}>
-                    {selected.finalizada ? "Reabrir obra" : "✅ Finalizar obra"}
+                    {selected.finalizada ? "Reabrir obra" : <><Icono n="checkCirculo" /> Finalizar obra</>}
                   </button>
                 )}
-                <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16, flexShrink:0 }}>✕</button>
+                <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16, flexShrink:0 }}><Icono n="cerrar" /></button>
               </div>
             </div>
             <div style={{ padding:"20px 24px" }}>
@@ -264,14 +265,14 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
                         <div style={{ padding:"13px 16px", background:"#F8FAFC", borderBottom:"1px solid #E2E8F0", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                           <div>
                             <div style={{ fontSize:14, fontWeight:700, color:"#1A2B4A" }}>{dia.fecha ? formatDate(dia.fecha) : `Día ${idx + 1}`}</div>
-                            {dia.operarios && <div style={{ fontSize:12, color:"#64748B", marginTop:2 }}>👷 {dia.operarios}</div>}
+                            {dia.operarios && <div style={{ fontSize:12, color:"#64748B", marginTop:2 }}><Icono n="casco" /> {dia.operarios}</div>}
                           </div>
                           <div style={{ display:"flex", gap:6 }}>
                             <button onClick={() => generarPDFDiaAvance(selected, dia)}
-                              style={{ padding:"5px 10px", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:7, color:"#2563EB", fontSize:11, fontWeight:600, cursor:"pointer" }}>📄 PDF</button>
+                              style={{ padding:"5px 10px", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:7, color:"#2563EB", fontSize:11, fontWeight:600, cursor:"pointer" }}><Icono n="documento" /> PDF</button>
                             {canEdit && <>
                               <button onClick={() => { setEditingDia(dia); setShowDiaModal(true); }} style={{ padding:"5px 10px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:7, color:"#475569", fontSize:11, cursor:"pointer" }}>Editar</button>
-                              <button onClick={() => deleteDia(dia.id)} style={{ padding:"5px 8px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:7, color:"#DC2626", fontSize:11, cursor:"pointer" }}>✕</button>
+                              <button onClick={() => deleteDia(dia.id)} style={{ padding:"5px 8px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:7, color:"#DC2626", fontSize:11, cursor:"pointer" }}><Icono n="cerrar" /></button>
                             </>}
                           </div>
                         </div>
@@ -287,12 +288,11 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
                               <div style={{ fontSize:11, color:"#94A3B8", textTransform:"uppercase", letterSpacing:0.5, marginBottom:8 }}>Fotos ({fotos.length})</div>
                               <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
                                 {fotos.map((f, fi) => {
-                                  const globalIdx = (dia.archivos||[]).indexOf(f);
                                   return (
                                     <div key={fi} style={{ position:"relative" }}>
                                       <img src={f.url} alt={f.name} title="Ver en grande" onClick={() => setVisor({ fotos, inicio: fi })}
                                         style={{ width:90, height:90, objectFit:"cover", borderRadius:8, border:"1px solid #E2E8F0", display:"block", cursor:"zoom-in" }} />
-                                      {canEdit && <button onClick={() => deleteFile(dia.id, globalIdx)} style={{ position:"absolute", top:3, right:3, width:20, height:20, background:"rgba(220,38,38,0.85)", border:"none", borderRadius:"50%", color:"#fff", fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0, lineHeight:1 }}>✕</button>}
+                                      {canEdit && <button onClick={() => deleteFile(dia.id, f)} style={{ position:"absolute", top:3, right:3, width:20, height:20, background:"rgba(220,38,38,0.85)", border:"none", borderRadius:"50%", color:"#fff", fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0, lineHeight:1 }}><Icono n="cerrar" /></button>}
                                     </div>
                                   );
                                 })}
@@ -303,12 +303,11 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
                             <div style={{ marginBottom:12 }}>
                               <div style={{ fontSize:11, color:"#94A3B8", textTransform:"uppercase", letterSpacing:0.5, marginBottom:6 }}>Archivos</div>
                               {otros.map((f, fi) => {
-                                const globalIdx = (dia.archivos||[]).indexOf(f);
                                 return (
                                   <div key={fi} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:7, marginBottom:4 }}>
-                                    <span style={{ fontSize:12, color:"#475569", flex:1 }}>📎 {f.name}</span>
+                                    <span style={{ fontSize:12, color:"#475569", flex:1 }}><Icono n="clip" /> {f.name}</span>
                                     <a href={f.url} target="_blank" rel="noreferrer" style={{ fontSize:11, color:"#2563EB", textDecoration:"none" }}>Ver</a>
-                                    {canEdit && <button onClick={() => deleteFile(dia.id, globalIdx)} style={{ background:"none", border:"none", color:"#CBD5E1", cursor:"pointer", fontSize:13, padding:0 }} onMouseEnter={e=>e.currentTarget.style.color="#EF4444"} onMouseLeave={e=>e.currentTarget.style.color="#CBD5E1"}>✕</button>}
+                                    {canEdit && <button onClick={() => deleteFile(dia.id, f)} style={{ background:"none", border:"none", color:"#CBD5E1", cursor:"pointer", fontSize:13, padding:0 }} onMouseEnter={e=>e.currentTarget.style.color="#EF4444"} onMouseLeave={e=>e.currentTarget.style.color="#CBD5E1"}><Icono n="cerrar" /></button>}
                                   </div>
                                 );
                               })}
@@ -316,7 +315,7 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
                           )}
                           {canEdit && (
                             <label style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"6px 12px", background:"#F8FAFC", border:"1px dashed #CBD5E1", borderRadius:8, cursor: uploadingFiles[dia.id] ? "not-allowed" : "pointer", fontSize:12, color:"#64748B" }}>
-                              {uploadingFiles[dia.id] ? "Subiendo..." : "📎 Subir archivos / fotos"}
+                              {uploadingFiles[dia.id] ? "Subiendo..." : <><Icono n="clip" /> Subir archivos / fotos</>}
                               <input type="file" multiple accept="image/*,.pdf,.doc,.docx" onChange={e => { if (e.target.files?.length) { handleFileUpload(e.target.files, dia.id); e.target.value=""; } }} style={{ display:"none" }} disabled={!!uploadingFiles[dia.id]} />
                             </label>
                           )}
@@ -370,11 +369,12 @@ function ModalObraAvance({ obra, entregas = [], onClose, onSave }) {
   }
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:460, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+    <div onClick={e => e.target === e.currentTarget && onClose()} className="modal-fondo" style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <CerrarConAtras onClose={() => onClose()} />
+      <div className="modal-caja" style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:460, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
         <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{obra ? "Editar obra" : "Agregar entrega a Avance de Obra"}</h2>
-          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
+          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}><Icono n="cerrar" /></button>
         </div>
         <div style={{ padding:"24px" }}>
           {(!obra || !obra.obra_id) && (
@@ -424,11 +424,12 @@ export function ModalDiaAvance({ dia, onClose, onSave }) {
   }
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:600, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:460, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+    <div onClick={e => e.target === e.currentTarget && onClose()} className="modal-fondo" style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:600, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <CerrarConAtras onClose={() => onClose()} />
+      <div className="modal-caja" style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:460, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
         <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{dia ? "Editar día" : "Agregar día"}</h2>
-          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
+          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}><Icono n="cerrar" /></button>
         </div>
         <div style={{ padding:"24px" }}>
           <div style={{ marginBottom:16 }}>
@@ -540,13 +541,15 @@ function ModalInformeFinalObra({ obra, onClose, onSave }) {
 
   function removeFile(name) { setArchivos(a => a.filter(f => f.name !== name)); setGuardado(false); }
 
+  // Ícono (en pantalla) y sigla (en el PDF) según el tipo de archivo
   function getFileIcon(type) {
-    if (!type) return "📎";
-    if (type.startsWith("image/")) return "🖼️";
-    if (type.startsWith("video/")) return "🎥";
-    if (type.includes("pdf")) return "📄";
-    return "📎";
+    if (!type) return "clip";
+    if (type.startsWith("image/")) return "imagen";
+    if (type.startsWith("video/")) return "video";
+    if (type.includes("pdf")) return "documento";
+    return "clip";
   }
+  const siglaArchivo = type => !type ? "ARCH" : type.startsWith("image/") ? "IMG" : type.startsWith("video/") ? "VIDEO" : type.includes("pdf") ? "PDF" : "ARCH";
 
   function formatFileSize(bytes) {
     if (!bytes) return "";
@@ -569,7 +572,7 @@ function ModalInformeFinalObra({ obra, onClose, onSave }) {
       `<div class="prev-img"><img src="${f.b64}" alt="${f.name}"><div class="caption">${f.name}</div></div>`
     ).join("");
     const otrosHTML = archivosConSrc.filter(f => !f.type?.startsWith("image/")).map(f =>
-      `<div class="prev-file"><span style="font-size:28px">${getFileIcon(f.type)}</span><div><b>${f.name}</b><br><span style="font-size:12px;color:#666">${formatFileSize(f.size)}</span></div></div>`
+      `<div class="prev-file"><span style="font-size:11px;font-weight:700;color:#475569;border:1.5px solid #CBD5E1;border-radius:4px;padding:6px 7px;letter-spacing:.5px">${siglaArchivo(f.type)}</span><div><b>${f.name}</b><br><span style="font-size:12px;color:#666">${formatFileSize(f.size)}</span></div></div>`
     ).join("");
 
     const campo = (label, val) => val ? `<div class="campo"><div class="lbl">${label}</div><div class="val">${val}</div></div>` : "";
@@ -638,8 +641,9 @@ body{font-family:'Archivo',sans-serif;background:var(--bg);color:var(--text);lin
   const secT = { fontFamily:"'Sora',sans-serif", fontSize:20, fontWeight:700, color:"#1a1a1a", marginBottom:22, paddingBottom:10, borderBottom:"3px solid #ff6b35", display:"inline-block" };
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.75)", backdropFilter:"blur(4px)", zIndex:700, overflowY:"auto", padding:"20px 16px", display:"flex", justifyContent:"center", alignItems:"flex-start" }}>
-      <div style={{ background:"#fafafa", borderRadius:4, width:"100%", maxWidth:920, boxShadow:"0 24px 60px rgba(0,0,0,.25)" }}>
+    <div onClick={e => e.target === e.currentTarget && onClose()} className="modal-fondo" style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.75)", backdropFilter:"blur(4px)", zIndex:700, overflowY:"auto", padding:"20px 16px", display:"flex", justifyContent:"center", alignItems:"flex-start" }}>
+      <CerrarConAtras onClose={() => onClose()} />
+      <div className="modal-caja" style={{ background:"#fafafa", borderRadius:4, width:"100%", maxWidth:920, boxShadow:"0 24px 60px rgba(0,0,0,.25)" }}>
 
         {/* HEADER */}
         <div style={{ background:"linear-gradient(135deg,#1a1a1a,#2d2d2d)", color:"#fff", padding:"48px 44px 36px", position:"relative", overflow:"hidden" }}>
@@ -648,10 +652,10 @@ body{font-family:'Archivo',sans-serif;background:var(--bg);color:var(--text);lin
             <div>
               <h1 style={{ fontFamily:"'Sora',sans-serif", fontSize:36, fontWeight:800, letterSpacing:-1, marginBottom:8 }}>Informe Final de Obra</h1>
               <p style={{ fontSize:14, opacity:.75 }}>
-                {cargando ? "Cargando informe guardado..." : informeId ? "💾 Informe guardado en el sistema" : "Nuevo informe — aún no guardado"}
+                {cargando ? "Cargando informe guardado..." : informeId ? <><Icono n="guardar" /> Informe guardado en el sistema</> : "Nuevo informe — aún no guardado"}
               </p>
             </div>
-            <button onClick={onClose} style={{ background:"rgba(255,255,255,.15)", border:"1px solid rgba(255,255,255,.3)", borderRadius:8, width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#fff", fontSize:16, flexShrink:0 }}>✕</button>
+            <button onClick={onClose} style={{ background:"rgba(255,255,255,.15)", border:"1px solid rgba(255,255,255,.3)", borderRadius:8, width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#fff", fontSize:16, flexShrink:0 }}><Icono n="cerrar" /></button>
           </div>
         </div>
 
@@ -722,7 +726,7 @@ body{font-family:'Archivo',sans-serif;background:var(--bg);color:var(--text);lin
               onDragLeave={() => setDragging(false)}
               onDrop={e => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
               style={{ marginTop:16, border:`3px dashed ${dragging ? "#ff6b35" : "#e0e0e0"}`, borderRadius:2, padding:"36px 20px", textAlign:"center", cursor:"pointer", background: dragging ? "rgba(255,107,53,.04)" : "#fafafa", transition:"all .2s" }}>
-              <div style={{ fontSize:42, marginBottom:12, color:"#bbb" }}>📎</div>
+              <div style={{ fontSize:42, marginBottom:12, color:"#bbb" }}><Icono n="clip" /></div>
               <div style={{ fontSize:14, color:"#666", marginBottom:5 }}>Arrastrá archivos aquí o hacé clic para seleccionar</div>
               <div style={{ fontSize:12, color:"#aaa" }}>Fotos, planos, documentos PDF, etc.</div>
               <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.doc,.docx" style={{ display:"none" }} onChange={e => { if (e.target.files?.length) handleFiles(e.target.files); e.target.value=""; }} />
@@ -731,7 +735,7 @@ body{font-family:'Archivo',sans-serif;background:var(--bg);color:var(--text);lin
               <div style={{ marginTop:14 }}>
                 {archivos.map((f, i) => (
                   <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 14px", background:"#fafafa", borderRadius:2, marginBottom:7, border:"1px solid #e0e0e0" }}>
-                    <span style={{ fontSize:22 }}>{getFileIcon(f.type)}</span>
+                    <Icono n={getFileIcon(f.type)} tam={22} color="#64748B" />
                     <div style={{ flex:1 }}>
                       <div style={{ fontSize:13, fontWeight:600, color:"#2a2a2a" }}>{f.name}</div>
                       <div style={{ fontSize:11, color:"#999" }}>{formatFileSize(f.size)}{f.path ? " · guardado" : ""}</div>
@@ -764,19 +768,19 @@ body{font-family:'Archivo',sans-serif;background:var(--bg);color:var(--text);lin
           {/* BOTONES */}
           <div style={{ display:"flex", gap:16, justifyContent:"space-between", alignItems:"center", paddingTop:32, borderTop:"2px solid #e0e0e0" }}>
             <div style={{ fontSize:13, color: guardado ? "#059669" : "#94A3B8", fontWeight:600 }}>
-              {guardado ? "✓ Guardado en el sistema" : "Sin cambios guardados"}
+              {guardado ? <><Icono n="check" /> Guardado en el sistema</> : "Sin cambios guardados"}
             </div>
             <div style={{ display:"flex", gap:12 }}>
               <button onClick={onClose} style={{ padding:"14px 24px", border:"2px solid #e0e0e0", borderRadius:2, background:"#fafafa", color:"#666", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:600, cursor:"pointer", textTransform:"uppercase", letterSpacing:.5 }}>Cerrar</button>
               <button onClick={handleSave} disabled={guardando}
                 style={{ padding:"14px 28px", border:"none", borderRadius:2, background: guardando ? "#94A3B8" : "#059669", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, cursor: guardando ? "not-allowed" : "pointer", textTransform:"uppercase", letterSpacing:.5, boxShadow:"0 4px 12px rgba(5,150,105,.3)" }}
                 onMouseEnter={e => { if (!guardando) e.currentTarget.style.background="#047857"; }} onMouseLeave={e => { if (!guardando) e.currentTarget.style.background="#059669"; }}>
-                {guardando ? "Guardando..." : "💾 Guardar"}
+                {guardando ? "Guardando..." : <><Icono n="guardar" /> Guardar</>}
               </button>
               <button onClick={exportPDF}
                 style={{ padding:"14px 28px", border:"none", borderRadius:2, background:"#004e89", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, cursor:"pointer", textTransform:"uppercase", letterSpacing:.5, boxShadow:"0 4px 12px rgba(0,78,137,.3)" }}
                 onMouseEnter={e => e.currentTarget.style.background="#003d6d"} onMouseLeave={e => e.currentTarget.style.background="#004e89"}>
-                📄 Exportar PDF
+                <Icono n="documento" /> Exportar PDF
               </button>
               {/* Se manda lo guardado: con cambios sin guardar, primero hay que guardar */}
               <EnviarPorMail deshabilitado={!guardado || !informeId} motivo="Guardá el informe antes de enviarlo"

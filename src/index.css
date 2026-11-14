@@ -15,6 +15,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.5; cursor: po
 
 @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
 @keyframes slideIn { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:translateX(0); } }
+@keyframes subirHoja { from { transform:translateY(24px); opacity:.6; } to { transform:translateY(0); opacity:1; } }
+
+/* Foco visible al moverse con el teclado (sin marcar el clic del mouse) */
+button:focus-visible, a:focus-visible, [role="button"]:focus-visible { outline: 2px solid #2563EB; outline-offset: 2px; }
+button:disabled { cursor: not-allowed; }
 
 .obra-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(26,43,74,0.10) !important; border-color: #93C5FD !important; }
 .obra-card { transition: all 0.18s ease; }
@@ -44,8 +49,9 @@ textarea:focus { border-color: #2563EB !important; }
   .app-encabezado img { height: 34px !important; }
   .app-main { padding: 16px 12px calc(92px + env(safe-area-inset-bottom)) !important; }
 
+  /* Debajo de las ventanas (z-index 200 o más) para no taparlas */
   .app-tabs {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 300;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 150;
     background: #ffffff !important; border-radius: 0 !important; border-top: 1px solid #E2E8F0;
     padding: 4px 4px calc(4px + env(safe-area-inset-bottom)) !important; gap: 0 !important;
     box-shadow: 0 -4px 16px rgba(26, 43, 74, 0.06);
@@ -57,10 +63,22 @@ textarea:focus { border-color: #2563EB !important; }
     font-size: 10px !important; letter-spacing: 0 !important;
   }
   .app-tab.activa { color: var(--tab-color) !important; background: #F1F5F9 !important; font-weight: 700 !important; }
-  .app-tab-icono { font-size: 19px; line-height: 1; }
+  .app-tab-icono { line-height: 0; }
+  .app-tab-icono svg { width: 21px !important; height: 21px !important; }
+  .app-tab.activa .app-tab-icono svg { stroke-width: 2.4; }
   .app-tab-nombre { display: none; }
   .app-tab-corto { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .app-tab-alerta { position: absolute; top: 2px; right: calc(50% - 22px); margin: 0 !important; padding: 0 5px !important; font-size: 9px !important; }
+
+  .boton-salir { padding: 0 !important; width: 38px; height: 38px; justify-content: center; }
+
+  /* Ventanas: en el celular se abren desde abajo, a todo el ancho (más fácil de usar con el pulgar) */
+  .modal-fondo:not(.modal-centrado) { align-items: flex-end !important; padding: 0 !important; overflow: hidden !important; }
+  .modal-fondo:not(.modal-centrado) > .modal-caja {
+    max-width: 100% !important; width: 100% !important; max-height: 92dvh !important; overflow-y: auto !important;
+    border-radius: 16px 16px 0 0 !important; border-bottom: env(safe-area-inset-bottom) solid #fff;
+    animation: subirHoja .18s ease-out;
+  }
 
   .boton-flotante { bottom: calc(84px + env(safe-area-inset-bottom)) !important; right: 14px !important; }
   .avisos-pila { bottom: calc(84px + env(safe-area-inset-bottom)) !important; left: 12px !important; right: 12px !important; }

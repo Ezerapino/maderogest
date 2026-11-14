@@ -4,6 +4,8 @@ import { ModalElegirEntrega } from "../components/comunes.jsx";
 import { avisar, confirmar } from "../lib/avisos.js";
 import { deleteCobro, getCobros, insertCobro, modificarFila, vinculoEntregas } from "../lib/datos.js";
 import { formatDate, uid } from "../lib/formato.js";
+import { CerrarConAtras } from "../lib/atras.js";
+import { Icono } from "../components/Icono.jsx";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // COBROS MODULE
@@ -22,7 +24,7 @@ export function CobrosModule({ entregas = [] }) {
   const [showNuevaObra, setShowNuevaObra] = useState(false);
 
   async function recargar() {
-    setCargando(true);
+    // "cargando" arranca en true: las recargas después de guardar no vuelven a tapar la pantalla
     try {
       const c = await getCobros();
       const lista = c || [];
@@ -131,7 +133,7 @@ export function CobrosModule({ entregas = [] }) {
         <div style={{ textAlign:"center", padding:60, color:"#94A3B8", fontSize:13 }}>Cargando...</div>
       ) : cobros.length === 0 ? (
         <div style={{ textAlign:"center", padding:"80px 20px", background:"#ffffff", borderRadius:16, border:"1px solid #E8ECF0" }}>
-          <div style={{ fontSize:32, marginBottom:12 }}>💰</div>
+          <div style={{ fontSize:32, marginBottom:12 }}><Icono n="dinero" /></div>
           <div style={{ fontSize:13, color:"#94A3B8" }}>No hay obras de cobro. Se crean automáticamente al crear obras en Entregas.</div>
         </div>
       ) : (
@@ -148,14 +150,14 @@ export function CobrosModule({ entregas = [] }) {
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
                     <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", flex:1, lineHeight:1.35, paddingRight:10 }}>{c.obra_nombre}</div>
                     <div style={{ padding:"3px 10px", borderRadius:6, background: c.total_cobrado ? "#ECFDF5" : "#F8FAFC", color: c.total_cobrado ? "#059669" : "#94A3B8", fontSize:11, fontWeight:700, border:`1px solid ${c.total_cobrado ? "#A7F3D0" : "#E2E8F0"}`, whiteSpace:"nowrap", flexShrink:0 }}>
-                      {c.total_cobrado ? "✓ COBRADA" : "PENDIENTE"}
+                      {c.total_cobrado ? <><Icono n="check" /> COBRADA</> : "PENDIENTE"}
                     </div>
                   </div>
-                  {c.obra_lugar && <div style={{ fontSize:12, color:"#64748B", marginBottom:10 }}>📍 {c.obra_lugar}</div>}
+                  {c.obra_lugar && <div style={{ fontSize:12, color:"#64748B", marginBottom:10 }}><Icono n="ubicacion" /> {c.obra_lugar}</div>}
                   {c.monto_total > 0 && <div style={{ fontSize:13, fontWeight:700, color:"#1A2B4A", marginBottom:10 }}>Total: {fmtMonto(c.monto_total)}</div>}
                   <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                     <div style={{ fontSize:11, padding:"3px 9px", borderRadius:5, background: c.adelanto_cobrado ? "#ECFDF5" : "#FFF7ED", color: c.adelanto_cobrado ? "#059669" : "#D97706", border:`1px solid ${c.adelanto_cobrado ? "#A7F3D0" : "#FDE68A"}` }}>
-                      {c.adelanto_cobrado ? "✓" : "○"} Adelanto{c.adelanto_monto > 0 ? ` ${fmtMonto(c.adelanto_monto)}` : ""}
+                      <Icono n={c.adelanto_cobrado ? "check" : "reloj"} /> Adelanto{c.adelanto_monto > 0 ? ` ${fmtMonto(c.adelanto_monto)}` : ""}
                     </div>
                     {adics.length > 0 && (
                       <div style={{ fontSize:11, padding:"3px 9px", borderRadius:5, background:"#F5F3FF", color:"#7C3AED", border:"1px solid #DDD6FE" }}>
@@ -163,7 +165,7 @@ export function CobrosModule({ entregas = [] }) {
                       </div>
                     )}
                   </div>
-                  {c.plazo_pago && <div style={{ marginTop:8, fontSize:12, color:"#64748B" }}>⏱ Plazo: {c.plazo_pago}</div>}
+                  {c.plazo_pago && <div style={{ marginTop:8, fontSize:12, color:"#64748B" }}><Icono n="cronometro" /> Plazo: {c.plazo_pago}</div>}
                 </div>
               </div>
             );
@@ -173,22 +175,23 @@ export function CobrosModule({ entregas = [] }) {
 
       {/* DETALLE OBRA */}
       {selected && (
-        <div onClick={e => e.target === e.currentTarget && setSelected(null)}
+        <div onClick={e => e.target === e.currentTarget && setSelected(null)} className="modal-fondo"
           style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-          <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:600, maxHeight:"92vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+          <CerrarConAtras onClose={() => setSelected(null)} />
+          <div className="modal-caja" style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:600, maxHeight:"92vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
             <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, background:"#fff", zIndex:10 }}>
               <div>
                 <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>{selected.obra_nombre}</h2>
-                {selected.obra_lugar && <div style={{ fontSize:12, color:"#94A3B8", marginTop:3 }}>📍 {selected.obra_lugar}</div>}
+                {selected.obra_lugar && <div style={{ fontSize:12, color:"#94A3B8", marginTop:3 }}><Icono n="ubicacion" /> {selected.obra_lugar}</div>}
               </div>
               <div style={{ display:"flex", gap:8, alignItems:"center" }}>
                 {/* Los cobros de una entrega se archivan o eliminan desde Entregas */}
                 {!existentes.has(selected.obra_id) && <button onClick={() => eliminarCobro(selected.id)}
                   style={{ background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, padding:"6px 12px", color:"#DC2626", fontSize:12, fontWeight:600, cursor:"pointer" }}
                   onMouseEnter={e=>e.currentTarget.style.background="#FEE2E2"} onMouseLeave={e=>e.currentTarget.style.background="#FEF2F2"}>
-                  🗑 Eliminar
+                  <Icono n="basura" /> Eliminar
                 </button>}
-                <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16, flexShrink:0 }}>✕</button>
+                <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16, flexShrink:0 }}><Icono n="cerrar" /></button>
               </div>
             </div>
             <div style={{ padding:"20px 24px" }}>
@@ -212,7 +215,7 @@ export function CobrosModule({ entregas = [] }) {
                       <input type="checkbox" checked={!!selected.adelanto_cobrado}
                         onChange={async () => { await guardar(selected.id, { adelanto_cobrado: !selected.adelanto_cobrado }); }}
                         style={{ width:16, height:16, cursor:"pointer", accentColor:"#059669" }} />
-                      {selected.adelanto_cobrado ? "Cobrado ✓" : "Pendiente"}
+                      {selected.adelanto_cobrado ? <>Cobrado <Icono n="check" /></> : "Pendiente"}
                     </label>
                     <button onClick={() => { setShowModal("adelanto"); setEditData({ adelanto_monto: selected.adelanto_monto || "", adelanto_porcentaje: selected.adelanto_porcentaje || "" }); }}
                       style={{ background:"transparent", border:"1px solid #E2E8F0", borderRadius:6, padding:"5px 10px", color:"#64748B", fontSize:12, cursor:"pointer" }}>Editar</button>
@@ -250,7 +253,7 @@ export function CobrosModule({ entregas = [] }) {
                         style={{ background:"none", border:"1px solid #E2E8F0", borderRadius:6, padding:"4px 8px", color:"#64748B", fontSize:11, cursor:"pointer" }}>Editar</button>
                       <button onClick={() => eliminarAdicional(selected.id, a.id)}
                         style={{ background:"none", border:"none", color:"#CBD5E1", cursor:"pointer", fontSize:15, padding:0, flexShrink:0 }}
-                        onMouseEnter={e => e.currentTarget.style.color="#EF4444"} onMouseLeave={e => e.currentTarget.style.color="#CBD5E1"}>✕</button>
+                        onMouseEnter={e => e.currentTarget.style.color="#EF4444"} onMouseLeave={e => e.currentTarget.style.color="#CBD5E1"}><Icono n="cerrar" /></button>
                     </div>
                   ))
                 )}
@@ -264,7 +267,7 @@ export function CobrosModule({ entregas = [] }) {
                       <input type="checkbox" checked={!!selected.total_cobrado}
                         onChange={async () => { await guardar(selected.id, { total_cobrado: !selected.total_cobrado }); }}
                         style={{ width:16, height:16, cursor:"pointer", accentColor:"#059669" }} />
-                      {selected.total_cobrado ? "Cobrado ✓" : "Pendiente"}
+                      {selected.total_cobrado ? <>Cobrado <Icono n="check" /></> : "Pendiente"}
                     </label>
                     <button onClick={() => { setShowModal("total"); setEditData({ total_fecha: selected.total_fecha || "", plazo_pago: selected.plazo_pago || "" }); }}
                       style={{ background:"transparent", border:"1px solid #E2E8F0", borderRadius:6, padding:"5px 10px", color:"#64748B", fontSize:12, cursor:"pointer" }}>Editar</button>
@@ -288,8 +291,9 @@ export function CobrosModule({ entregas = [] }) {
 
       {/* MODAL: MONTO TOTAL */}
       {showModal === "monto_total" && (
-        <div onClick={e => e.target === e.currentTarget && setShowModal(null)} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-          <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:380, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+        <div onClick={e => e.target === e.currentTarget && setShowModal(null)} className="modal-fondo" style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <CerrarConAtras onClose={() => setShowModal(null)} />
+          <div className="modal-caja" style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:380, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
             <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 18px" }}>Monto Total del Contrato</h3>
             <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Monto ($)</label>
             <input type="number" value={editData.monto_total} onChange={e => setEditData(d => ({ ...d, monto_total: e.target.value }))} style={si} placeholder="0" autoFocus />
@@ -303,8 +307,9 @@ export function CobrosModule({ entregas = [] }) {
       )}
       {/* MODAL: ADELANTO */}
       {showModal === "adelanto" && (
-        <div onClick={e => e.target === e.currentTarget && setShowModal(null)} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-          <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:380, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+        <div onClick={e => e.target === e.currentTarget && setShowModal(null)} className="modal-fondo" style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <CerrarConAtras onClose={() => setShowModal(null)} />
+          <div className="modal-caja" style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:380, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
             <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 18px" }}>Editar Adelanto</h3>
             <div style={{ marginBottom:14 }}>
               <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Monto del adelanto ($)</label>
@@ -324,8 +329,9 @@ export function CobrosModule({ entregas = [] }) {
       )}
       {/* MODAL: COBRO TOTAL + PLAZO */}
       {showModal === "total" && (
-        <div onClick={e => e.target === e.currentTarget && setShowModal(null)} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-          <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:380, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+        <div onClick={e => e.target === e.currentTarget && setShowModal(null)} className="modal-fondo" style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <CerrarConAtras onClose={() => setShowModal(null)} />
+          <div className="modal-caja" style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:380, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
             <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 18px" }}>Editar Cobro Total</h3>
             <div style={{ marginBottom:14 }}>
               <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Fecha de cobro del total</label>
@@ -345,8 +351,9 @@ export function CobrosModule({ entregas = [] }) {
       )}
       {/* MODAL: ADICIONAL */}
       {showModal === "adicional" && (
-        <div onClick={e => { e.target === e.currentTarget && setShowModal(null); }} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-          <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:380, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+        <div onClick={e => { e.target === e.currentTarget && setShowModal(null); }} className="modal-fondo" style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <CerrarConAtras onClose={() => setShowModal(null)} />
+          <div className="modal-caja" style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:380, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
             <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 18px" }}>{editingAdicionalId ? "Editar adicional" : "Agregar adicional"}</h3>
             <div style={{ marginBottom:14 }}>
               <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Descripción</label>

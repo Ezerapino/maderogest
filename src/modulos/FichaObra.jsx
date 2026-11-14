@@ -8,6 +8,7 @@ import { ESTADOS_MAT, MATERIAL_ESTADOS, UNIDADES, detalleFaltante, resumenMateri
 import { generarPDF, ofrecerInformeCierre } from "../lib/pdf.js";
 import { ESTACION_COLORES, SC_ENTREGA, cambioEstacion, camposEstacion, estadoEntrega, mkStations, normalizarMuebles, obraProgressAixa, saldoDeCobro } from "../lib/produccion.js";
 import { ModalDiaAvance } from "./AvanceObra.jsx";
+import { Icono } from "../components/Icono.jsx";
 
 // Cada rol edita en la ficha lo mismo que puede ver (igual que en las pestañas de siempre)
 export function FichaObra({ proyecto: p, entregas, sesion, onVolver, onModal, onEntregar }) {
@@ -147,7 +148,7 @@ export function FichaObra({ proyecto: p, entregas, sesion, onVolver, onModal, on
     const est = estadoEntrega(e);
     return (
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        <h3 style={{ ...subtitulo, margin: 0 }}>{e.etiqueta || "Entrega"} <span style={{ fontWeight: 500, color: "#64748B", fontSize: 12 }}>· 📅 {e.fecha ? formatDate(e.fecha) : "Sin fecha"}</span></h3>
+        <h3 style={{ ...subtitulo, margin: 0 }}>{e.etiqueta || "Entrega"} <span style={{ fontWeight: 500, color: "#64748B", fontSize: 12 }}>· <Icono n="calendario" /> {e.fecha ? formatDate(e.fecha) : "Sin fecha"}</span></h3>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>{acciones}{chip(SC_ENTREGA[est.status], est.label)}</div>
       </div>
     );
@@ -155,17 +156,17 @@ export function FichaObra({ proyecto: p, entregas, sesion, onVolver, onModal, on
 
   return (
     <div>
-      <button onClick={onVolver} style={{ padding: "7px 14px", background: "#ffffff", border: "1px solid #E2E8F0", borderRadius: 8, color: "#475569", fontSize: 13, fontWeight: 500, cursor: "pointer", marginBottom: 16, fontFamily: "'Inter', sans-serif" }}>← Volver a Entregas</button>
+      <button onClick={onVolver} style={{ padding: "7px 14px", background: "#ffffff", border: "1px solid #E2E8F0", borderRadius: 8, color: "#475569", fontSize: 13, fontWeight: 500, cursor: "pointer", marginBottom: 16, fontFamily: "'Inter', sans-serif" }}><Icono n="flechaIzq" /> Volver a Entregas</button>
 
       <div style={{ marginBottom: 18 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <h1 style={{ fontFamily: "'Sora', sans-serif", fontSize: 24, fontWeight: 800, color: "#1A2B4A", margin: 0 }}>{p.nombre}</h1>
-          <button title="Cambiar nombre o dirección de la obra" onClick={() => onModal({ modo: "editar-obra", proyecto: p })} style={boton}>✎ Editar obra</button>
+          <button title="Cambiar nombre o dirección de la obra" onClick={() => onModal({ modo: "editar-obra", proyecto: p })} style={boton}><Icono n="editar" /> Editar obra</button>
         </div>
         <div style={{ fontSize: 13, color: "#64748B", marginTop: 6, display: "flex", gap: 14, flexWrap: "wrap" }}>
-          {p.lugar && <span>📍 {p.lugar}</span>}
-          <span>📦 {ordenadas.length} entrega{ordenadas.length !== 1 ? "s" : ""}</span>
-          {proxima && <span>⏭ Próxima: {proxima.etiqueta || "entrega"} el {formatDate(proxima.fecha)} ({estadoEntrega(proxima).label.toLowerCase()})</span>}
+          {p.lugar && <span><Icono n="ubicacion" /> {p.lugar}</span>}
+          <span><Icono n="paquete" /> {ordenadas.length} entrega{ordenadas.length !== 1 ? "s" : ""}</span>
+          {proxima && <span><Icono n="saltar" /> Próxima: {proxima.etiqueta || "entrega"} el {formatDate(proxima.fecha)} ({estadoEntrega(proxima).label.toLowerCase()})</span>}
         </div>
       </div>
 
@@ -223,11 +224,11 @@ export function FichaObra({ proyecto: p, entregas, sesion, onVolver, onModal, on
                         </td>}
                         {ve.materiales && <td style={{ padding: "10px 8px", fontSize: 12 }}>
                           {!nItems ? <span style={{ color: "#94A3B8" }}>Sin cargar</span>
-                            : mat.completo ? <span style={{ color: "#059669", fontWeight: 600 }}>✓ Completos</span>
+                            : mat.completo ? <span style={{ color: "#059669", fontWeight: 600 }}><Icono n="check" /> Completos</span>
                             : <span style={{ color: "#DC2626", fontWeight: 600 }}>{[mat.faltaPedir.length && `${mat.faltaPedir.length} sin pedir`, mat.faltaRecibir.length && `${mat.faltaRecibir.length} sin recibir`].filter(Boolean).join(" · ")}</span>}
                         </td>}
                         {ve.cobro && <td style={{ padding: "10px 8px", fontSize: 12 }}>
-                          {!c ? "—" : c.total_cobrado ? <span style={{ color: "#059669", fontWeight: 600 }}>✓ Cobrada</span>
+                          {!c ? "—" : c.total_cobrado ? <span style={{ color: "#059669", fontWeight: 600 }}><Icono n="check" /> Cobrada</span>
                             : Number(c.monto_total) > 0 ? <span style={{ fontWeight: 600 }}>Falta {pesos(saldoDeCobro(c))}</span>
                             : <span style={{ color: "#94A3B8" }}>Monto sin cargar</span>}
                         </td>}
@@ -251,13 +252,13 @@ export function FichaObra({ proyecto: p, entregas, sesion, onVolver, onModal, on
               <button onClick={() => generarPDF(e)} style={boton}>PDF</button>
               {e.estado !== "terminado" && <button onClick={() => onEntregar(e)} style={{ ...boton, background: "#ECFDF5", border: "1px solid #A7F3D0", color: "#059669" }}>Entregar</button>}
             </>)}
-            {e.fecha_inicio && <div style={{ fontSize: 12, color: "#64748B", marginBottom: 8 }}>🔨 Inicio: {formatDate(e.fecha_inicio)}</div>}
+            {e.fecha_inicio && <div style={{ fontSize: 12, color: "#64748B", marginBottom: 8 }}><Icono n="martillo" /> Inicio: {formatDate(e.fecha_inicio)}</div>}
             {muebles.length ? (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {muebles.map((m, i) => <div key={i} style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 6, padding: "4px 10px", fontSize: 12, color: "#475569" }}>{m.nombre}{m.cantidad > 1 ? ` ×${m.cantidad}` : ""}</div>)}
               </div>
             ) : vacio("Sin muebles cargados.")}
-            {e.notas && <div style={{ fontSize: 12, color: "#64748B", marginTop: 10, whiteSpace: "pre-line" }}>📝 {e.notas}</div>}
+            {e.notas && <div style={{ fontSize: 12, color: "#64748B", marginTop: 10, whiteSpace: "pre-line" }}><Icono n="nota" /> {e.notas}</div>}
           </div>
         );
         })}
@@ -314,7 +315,7 @@ export function FichaObra({ proyecto: p, entregas, sesion, onVolver, onModal, on
                         style={{ padding: "4px 6px", border: "1px solid #E2E8F0", borderRadius: 6, background: "#ffffff", color: "#334155", fontSize: 12, maxWidth: 150 }}>
                         {Object.entries(ESTADOS_MAT).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                       </select>
-                      <button disabled={ocupado} onClick={() => eliminarItem(lista, it)} title="Eliminar" style={{ background: "none", border: "none", color: "#CBD5E1", cursor: "pointer", fontSize: 14, padding: 2 }}>✕</button>
+                      <button disabled={ocupado} onClick={() => eliminarItem(lista, it)} title="Eliminar" style={{ background: "none", border: "none", color: "#CBD5E1", cursor: "pointer", fontSize: 14, padding: 2 }}><Icono n="cerrar" /></button>
                     </div>
                   ))}
                 </div>
@@ -355,11 +356,11 @@ export function FichaObra({ proyecto: p, entregas, sesion, onVolver, onModal, on
           <div key={e.id} style={tarjeta}>
             {encabezadoEntrega(e, oa && <button disabled={ocupado} onClick={() => setEditando({ tipo: "dia", oa, dia: null })} style={botonAgregar}>+ Registrar día</button>)}
             {!oa ? vacio("Sin registro en Avance de Obra.") : !dias.length ? vacio("Todavía no hay días registrados.") : <>
-              {oa.finalizada && <div style={{ fontSize: 12, color: "#059669", fontWeight: 600, marginBottom: 8 }}>✅ Obra finalizada</div>}
+              {oa.finalizada && <div style={{ fontSize: 12, color: "#059669", fontWeight: 600, marginBottom: 8 }}><Icono n="checkCirculo" /> Obra finalizada</div>}
               {dias.slice(0, 5).map(d => (
                 <div key={d.id} style={{ padding: "8px 0", borderTop: "1px solid #F1F5F9", display: "flex", gap: 10, alignItems: "flex-start" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>{formatDate(d.fecha)}{d.operarios ? <span style={{ fontWeight: 500, color: "#64748B" }}> · {d.operarios}</span> : ""}{(d.archivos || []).length ? <span style={{ fontWeight: 500, color: "#64748B" }}> · 📷 {(d.archivos || []).length}</span> : ""}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#1A2B4A" }}>{formatDate(d.fecha)}{d.operarios ? <span style={{ fontWeight: 500, color: "#64748B" }}> · {d.operarios}</span> : ""}{(d.archivos || []).length ? <span style={{ fontWeight: 500, color: "#64748B" }}> · <Icono n="camara" /> {(d.archivos || []).length}</span> : ""}</div>
                     {d.detalle && <div style={{ fontSize: 13, color: "#334155", marginTop: 2, whiteSpace: "pre-line" }}>{d.detalle}</div>}
                   </div>
                   <button disabled={ocupado} onClick={() => setEditando({ tipo: "dia", oa, dia: d })} style={boton}>Editar</button>

@@ -42,6 +42,12 @@ export async function apiFetch(path, options = {}) {
 // adicionales (jsonb default '[]'::jsonb), notas (text),
 // created_at (timestamptz default now()), updated_at (timestamptz default now())
 
+// La base devuelve los errores como JSON ({"message": ...}); se muestra el mensaje, y uno claro si venció la sesión
+function mensajeDeError(texto, status) {
+  if (status === 401) return "Tu sesión venció. Recargá la página para volver a ingresar.";
+  try { const j = JSON.parse(texto); return j.message || j.error_description || j.error || texto; } catch { return texto || `Error ${status}`; }
+}
+
 // ─── SUPABASE FETCH (MaderoGest) ──────────────────────────────────────────────
 export async function sbFetch(path, options = {}) {
   const separator = path.includes("?") ? "&" : "?";
@@ -58,7 +64,7 @@ export async function sbFetch(path, options = {}) {
     },
     ...(options.body ? { body: options.body } : {}),
   });
-  if (!res.ok) { const err = await res.text(); throw new Error(err); }
+  if (!res.ok) throw new Error(mensajeDeError(await res.text(), res.status));
   const text = await res.text();
   return text ? JSON.parse(text) : [];
 }
@@ -259,6 +265,8 @@ export async function upsertInformeFinal(obraId, datos, archivos, existingId) {
 }
 
 // ─── MANTENIMIENTO PLANTA API (tabla: mantenimiento, ver supabase/05-mantenimiento.sql) ──
+// Solo lo necesario para el número rojo de la pestaña (tareas sin hacer)
+export async function getMantenimientoPendientes() { return sbFetch("mantenimiento?select=id,realizada,fecha_solicitud&realizada=eq.false"); }
 export async function getMantenimiento() { return sbFetch("mantenimiento?select=*&order=fecha_solicitud.asc,creado_en.asc"); }
 export async function insertMantenimiento(t) { return sbFetch("mantenimiento", { method: "POST", body: JSON.stringify(t) }); }
 export async function updateMantenimiento(id, data) { return sbFetch(`mantenimiento?id=eq.${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ ...data, editado_en: new Date().toISOString() }) }); }

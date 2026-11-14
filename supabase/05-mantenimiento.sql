@@ -22,4 +22,4 @@ create policy "Usuarios con sesion" on public.mantenimiento for all to authentic
 
 -- Que los cambios queden en el Historial de modificaciones (como las demás tablas)
 drop trigger if exists auditar on public.mantenimiento;
-create trigger auditar after insert or update or delete on public.mantenimiento for each row execute function public.auditar();
+create trigger auditar after insert or update or delete on public.mantenimiento for each row execute function public.auditar('tarea');  -- ver paso 7

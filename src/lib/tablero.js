@@ -2,7 +2,7 @@
 // una fila por entrega en curso y una columna por estación, con casilleros vacíos para tildar a mano
 import { avisar } from "./avisos.js";
 import { sbFetch } from "./datos.js";
-import { diasRestantes, formatDate } from "./formato.js";
+import { diasRestantes, formatDate, hoyLocal } from "./formato.js";
 import { mkStations } from "./produccion.js";
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -30,7 +30,6 @@ function textoDias(fecha) {
   return d < 0 ? `Vencida hace ${-d} día${d === -1 ? "" : "s"}` : d === 0 ? "¡Se entrega HOY!" : `Faltan ${d} día${d === 1 ? "" : "s"}`;
 }
 const colorDias = fecha => { if (!fecha) return "#475569"; const d = diasRestantes(fecha); return d <= 7 ? "#DC2626" : "#1A2B4A"; };
-const hoyISO = () => { const h = new Date(); return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, "0")}-${String(h.getDate()).padStart(2, "0")}`; };
 
 export async function imprimirTableroGeneral(entregas) {
   if (!entregas.length) { avisar("No hay entregas en curso para armar el tablero.", { tipo: "aviso" }); return; }
@@ -59,8 +58,8 @@ td.obra{text-align:left;padding:6px 10px}td.obra b{display:block;font-size:19px;
 td.ent b{display:block;font-size:34px;font-weight:900;line-height:1}td.ent span{display:block;font-size:11px;font-weight:700;margin-top:3px}
 .check{width:44px;height:44px;border:3px solid #1A2B4A;border-radius:8px;margin:0 auto}td.na{color:#CBD5E1;background:#F8FAFC}
 .ref{margin-top:10px;font-size:11px;color:#DC2626;font-weight:700}
-</style></head><body><div class="barra"><button onclick="print()">🖨 Imprimir / Guardar PDF</button><span>${filas.length} entrega${filas.length === 1 ? "" : "s"} en curso, ordenadas por fecha de entrega · horizontal · A3 recomendado</span></div>
-<div class="cab"><h1>Tablero del taller</h1><div>Grupo Aixa · Impreso el ${formatDate(hoyISO())}<br>Tildá cada estación al terminarla</div></div>
+</style></head><body><div class="barra"><button onclick="print()">Imprimir / Guardar PDF</button><span>${filas.length} entrega${filas.length === 1 ? "" : "s"} en curso, ordenadas por fecha de entrega · horizontal · A3 recomendado</span></div>
+<div class="cab"><h1>Tablero del taller</h1><div>Grupo Aixa · Impreso el ${formatDate(hoyLocal())}<br>Tildá cada estación al terminarla</div></div>
 <table><colgroup><col style="width:23%"><col style="width:14%">${columnas.map(() => `<col>`).join("")}</colgroup>
 <thead><tr><th>Obra</th><th>Entrega</th>${columnas.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${cuerpo}</tbody></table>
 <div class="ref">Fecha en rojo: vence en 7 días o menos (al día de impresión)</div>

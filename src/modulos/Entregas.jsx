@@ -6,9 +6,11 @@ import { diasRestantes, formatDate, getStatus, uid } from "../lib/formato.js";
 import { generarPDF } from "../lib/pdf.js";
 import { imprimirTableroGeneral } from "../lib/tablero.js";
 import { ESTADO_LABELS, PRIORIDAD_ESTADO, SC_ENTREGA, STATUS_META, estadoEntrega, normalizarMuebles } from "../lib/produccion.js";
-import { linkFicha, navegar, useRuta } from "../lib/rutas.js";
+import { linkFicha, navegar, useRuta, volver } from "../lib/rutas.js";
 import { FichaObra } from "./FichaObra.jsx";
 import { ModalInformeIA } from "./Produccion.jsx";
+import { CerrarConAtras } from "../lib/atras.js";
+import { Icono } from "../components/Icono.jsx";
 
 export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
   const [enviandoAviso, setEnviandoAviso] = useState(false);
@@ -104,12 +106,18 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
     setGuardando(false);
   }
 
+  // Solo cambia el estado (no reescribe la entrega entera, para no pisar lo que otro haya editado) y se puede deshacer
   async function marcarEntregada(e) {
+    const antes = e.estado || "pendiente";
     try {
-      await upsertObra({ ...e, estado: "terminado", editado_por: sesion.id, editado_en: new Date().toISOString() });
+      await patchEntregas(`id=eq.${e.id}`, { estado: "terminado", editado_por: sesion.id, editado_en: new Date().toISOString() });
       await recargarObras();
-    } catch { avisar("Error al actualizar.", { tipo: "error" }); return; }
+    } catch (err) { avisar(`No se pudo marcar como entregada: ${err.message}`, { tipo: "error" }); return; }
     setDetalleId(null);
+    avisar(`"${e.nombre}" marcada como entregada.`, { tipo: "ok", deshacer: async () => {
+      try { await patchEntregas(`id=eq.${e.id}`, { estado: antes }); await recargarObras(); }
+      catch (err) { avisar(`No se pudo deshacer: ${err.message}`, { tipo: "error" }); }
+    } });
   }
 
   async function archivarObra(p) {
@@ -161,7 +169,7 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
   }, [fichaPerdida]);
   if (ficha) return <>
     <FichaObra proyecto={ficha} entregas={entregas.filter(e => e.proyecto_id === ficha.id)} sesion={sesion}
-      onVolver={() => navegar("/entregas")} onModal={setModal} onEntregar={marcarEntregada} />
+      onVolver={() => volver("/entregas")} onModal={setModal} onEntregar={marcarEntregada} />
     {modal && <ModalObraEntrega {...modal} guardando={guardando} onClose={() => setModal(null)} onSave={guardar} />}
   </>;
 
@@ -174,15 +182,16 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
       {/* STATS */}
       <div className="grid-numeros" style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:32 }}>
         {[
-          { num: activas.length, label:"Entregas en curso", color:"#2563EB", border:"#DBEAFE" },
-          { num: urgentes.length, label:"Urgentes", color:"#DC2626", border:"#FECACA" },
-          { num: proximas.length, label:"Próximas", color:"#D97706", border:"#FDE68A" },
-          { num: terminadas.length, label:"Entregadas", color:"#059669", border:"#A7F3D0" },
+          { num: activas.length, label:"Entregas en curso", color:"#2563EB", border:"#DBEAFE", f:"todas" },
+          { num: urgentes.length, label:"Urgentes", color:"#DC2626", border:"#FECACA", f:"urgent" },
+          { num: proximas.length, label:"Próximas", color:"#D97706", border:"#FDE68A", f:"warning" },
+          { num: terminadas.length, label:"Entregadas", color:"#059669", border:"#A7F3D0", f:"done" },
         ].map((s, i) => (
-          <div key={i} style={{ background:"#ffffff", border:`1px solid ${s.border}`, borderRadius:12, padding:"20px 20px 18px", animation:`fadeUp 0.35s ease ${i*0.06}s both` }}>
+          <button key={i} onClick={() => setFilter(s.f)} title="Ver estas entregas" aria-pressed={filter === s.f}
+            style={{ background:"#ffffff", border:`${filter === s.f && s.f !== "todas" ? 2 : 1}px solid ${s.border}`, borderRadius:12, padding:"20px 20px 18px", textAlign:"left", cursor:"pointer", fontFamily:"'Inter', sans-serif", animation:`fadeUp 0.35s ease ${i*0.06}s both` }}>
             <div style={{ fontFamily:"'Sora', sans-serif", fontSize:32, fontWeight:800, color:s.color, lineHeight:1 }}>{s.num}</div>
             <div style={{ fontSize:12, color:"#64748B", fontWeight:500, marginTop:6 }}>{s.label}</div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -194,17 +203,17 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
             <button disabled={enviandoAviso} title="El aviso sale solo los lunes y jueves a las 8:00. Este botón lo manda ahora."
               onClick={async () => { setEnviandoAviso(true); await enviarAvisoAhora("entregas"); setEnviandoAviso(false); }}
               style={{ padding:"6px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:600, cursor: enviandoAviso ? "not-allowed" : "pointer" }}>
-              {enviandoAviso ? "Enviando..." : "📧 Enviar aviso de entregas ahora"}
+              {enviandoAviso ? "Enviando..." : <><Icono n="mail" /> Enviar aviso de entregas ahora</>}
             </button>
           )}
           <button onClick={() => setVerArchivo(true)} title="Obras y entregas archivadas"
             style={{ padding:"6px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:600, cursor:"pointer" }}>
-            🗄 Archivo{enArchivo ? ` (${enArchivo})` : ""}
+            <Icono n="archivo" /> Archivo{enArchivo ? ` (${enArchivo})` : ""}
           </button>
           <button onClick={() => imprimirTableroGeneral(grupos.flatMap(g => g.visibles).filter(e => e.estado !== "terminado"))}
             title="Una hoja con todas las entregas en curso (respeta la búsqueda y los filtros) y casilleros por estación para tildar a mano, para pegar en la pizarra del taller"
             style={{ padding:"6px 12px", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:8, color:"#1D4ED8", fontSize:12, fontWeight:600, cursor:"pointer" }}>
-            📋 Tablero del taller
+            <Icono n="lista" /> Tablero del taller
           </button>
         </div>
         <div className="barra-filtros" style={{ display:"flex", gap:4, background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:10, padding:4 }}>
@@ -223,7 +232,7 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)" }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar obra, dirección, notas..."
             style={{ width:"100%", padding:"9px 12px 9px 36px", background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" }} />
-          {search && <button onClick={() => setSearch("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"#94A3B8", cursor:"pointer", fontSize:14, padding:2 }}>✕</button>}
+          {search && <button onClick={() => setSearch("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"#94A3B8", cursor:"pointer", fontSize:14, padding:2 }}><Icono n="cerrar" /></button>}
         </div>
         <input type="month" value={mesFilter} onChange={e => setMesFilter(e.target.value)}
           style={{ padding:"9px 12px", background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" }} />
@@ -247,12 +256,12 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
                   <a href={linkFicha(p)} onClick={ev => { if (ev.ctrlKey || ev.metaKey || ev.shiftKey) return; ev.preventDefault(); navegar(linkFicha(p)); }} title="Ver la ficha de la obra"
                     style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", lineHeight:1.35, cursor:"pointer", textDecoration:"underline", textDecorationColor:"#CBD5E1", textUnderlineOffset:3, display:"block" }}>{p.nombre}</a>
                   <div style={{ display:"flex", gap:4, flexShrink:0 }}>
-                    {puedeInformeIA && <button title="Informe de la obra con IA" onClick={() => setInformeIA(p)} style={{ ...btnIcono, border:"1px solid #DDD6FE", background:"#F5F3FF", color:"#7C3AED" }}>✨</button>}
-                    <button title="Editar obra" onClick={() => setModal({ modo:"editar-obra", proyecto:p })} style={btnIcono}>✎</button>
-                    {puedeArchivar && <button title="Archivar obra" onClick={() => archivarObra(p)} style={{ ...btnIcono, border:"1px solid #FECACA", background:"#FEF2F2", color:"#DC2626" }}>🗄</button>}
+                    {puedeInformeIA && <button title="Informe de la obra con IA" onClick={() => setInformeIA(p)} style={{ ...btnIcono, border:"1px solid #DDD6FE", background:"#F5F3FF", color:"#7C3AED" }}><Icono n="ia" /></button>}
+                    <button title="Editar obra" onClick={() => setModal({ modo:"editar-obra", proyecto:p })} style={btnIcono}><Icono n="editar" /></button>
+                    {puedeArchivar && <button title="Archivar obra" onClick={() => archivarObra(p)} style={{ ...btnIcono, border:"1px solid #FECACA", background:"#FEF2F2", color:"#DC2626" }}><Icono n="archivo" /></button>}
                   </div>
                 </div>
-                {p.lugar && <div style={{ fontSize:12, color:"#64748B", marginBottom:10 }}>📍 {p.lugar}</div>}
+                {p.lugar && <div style={{ fontSize:12, color:"#64748B", marginBottom:10 }}><Icono n="ubicacion" /> {p.lugar}</div>}
                 <div style={{ fontSize:11, color:"#94A3B8", fontWeight:600, letterSpacing:0.4, marginBottom:6 }}>
                   {todas.length} ENTREGA{todas.length !== 1 ? "S" : ""}{hayFiltro && visibles.length < todas.length ? ` · MOSTRANDO ${visibles.length}` : ""}
                 </div>
@@ -269,8 +278,8 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
                           <span style={{ padding:"2px 8px", borderRadius:6, background:sc.bg, color:sc.text, fontSize:11, fontWeight:700, border:`1px solid ${sc.border}`, whiteSpace:"nowrap" }}>{est.label}</span>
                         </div>
                         <div style={{ fontSize:12, color:"#64748B", marginTop:3, display:"flex", gap:10, flexWrap:"wrap" }}>
-                          {e.fecha_inicio && <span>🔨 {formatDate(e.fecha_inicio)}</span>}
-                          <span>📅 {e.fecha ? formatDate(e.fecha) : "Sin fecha"}</span>
+                          {e.fecha_inicio && <span><Icono n="martillo" /> {formatDate(e.fecha_inicio)}</span>}
+                          <span><Icono n="calendario" /> {e.fecha ? formatDate(e.fecha) : "Sin fecha"}</span>
                         </div>
                         {muebles.length > 0 && (
                           <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:6 }}>
@@ -284,7 +293,7 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
                           <button onClick={() => setModal({ modo:"editar-entrega", proyecto:p, entrega:e })} style={btnSm}>Editar</button>
                           <button onClick={() => generarPDF(e)} style={btnSm}>PDF</button>
                           {e.estado !== "terminado" && <button onClick={() => marcarEntregada(e)} style={{ ...btnSm, background:"#ECFDF5", border:"1px solid #A7F3D0", color:"#059669" }}>Entregar</button>}
-                          {puedeArchivar && <button title="Archivar entrega" onClick={() => archivarEntrega(e)} style={{ ...btnSm, flex:"0 0 auto", padding:"6px 9px", background:"#FEF2F2", border:"1px solid #FECACA", color:"#DC2626" }}>🗄</button>}
+                          {puedeArchivar && <button title="Archivar entrega" onClick={() => archivarEntrega(e)} style={{ ...btnSm, flex:"0 0 auto", padding:"6px 9px", background:"#FEF2F2", border:"1px solid #FECACA", color:"#DC2626" }}><Icono n="archivo" /></button>}
                         </div>
                       </div>
                     );
@@ -370,14 +379,15 @@ function ModalObraEntrega({ modo, proyecto, entrega, etiquetaSugerida = "", guar
   const titulo = { "nueva-obra":"Nueva obra", "editar-obra":"Editar obra", "nueva-entrega":"Nueva entrega", "editar-entrega":"Editar entrega" }[modo];
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:540, maxHeight:"90vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+    <div onClick={e => e.target === e.currentTarget && onClose()} className="modal-fondo" style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <CerrarConAtras onClose={() => onClose()} />
+      <div className="modal-caja" style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:540, maxHeight:"90vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
         <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, background:"#ffffff", borderRadius:"14px 14px 0 0", zIndex:1 }}>
           <div>
             <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{titulo}</h2>
             {!conObra && proyecto && <div style={{ fontSize:12, color:"#64748B", marginTop:3 }}>Obra: {proyecto.nombre}</div>}
           </div>
-          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
+          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}><Icono n="cerrar" /></button>
         </div>
         <div style={{ padding:"24px" }}>
           {conObra && (<>
@@ -416,7 +426,7 @@ function ModalObraEntrega({ modo, proyecto, entrega, etiquetaSugerida = "", guar
                       <span style={{ flex:1, fontSize:13, color:"#1A2B4A" }}>{m.nombre}</span>
                       <span style={{ fontSize:13, fontWeight:700, color:"#2563EB" }}>×{m.cantidad}</span>
                       <button onClick={() => rmMueble(i)} style={{ background:"none", border:"none", color:"#CBD5E1", cursor:"pointer", fontSize:16, padding:"0 2px" }}
-                        onMouseEnter={e => e.currentTarget.style.color="#EF4444"} onMouseLeave={e => e.currentTarget.style.color="#CBD5E1"}>✕</button>
+                        onMouseEnter={e => e.currentTarget.style.color="#EF4444"} onMouseLeave={e => e.currentTarget.style.color="#CBD5E1"}><Icono n="cerrar" /></button>
                     </div>
                   ))}
                 </div>
@@ -473,21 +483,22 @@ function ArchivoObras({ obras, proyectos, sesion, onClose, onCambio }) {
   const botones = (id, restaurar, eliminar) => (
     <div style={{ display:"flex", gap:6, flexShrink:0 }}>
       {trabajando === id ? <span style={{ fontSize:12, color:"#94A3B8" }}>Procesando...</span> : (<>
-        <button onClick={restaurar} disabled={!!trabajando} style={{ ...btn, background:"#ECFDF5", border:"1px solid #A7F3D0", color:"#059669" }}>↩ Restaurar</button>
+        <button onClick={restaurar} disabled={!!trabajando} style={{ ...btn, background:"#ECFDF5", border:"1px solid #A7F3D0", color:"#059669" }}><Icono n="deshacer" /> Restaurar</button>
         {isAdmin && <button onClick={eliminar} disabled={!!trabajando} style={{ ...btn, background:"#FEF2F2", border:"1px solid #FECACA", color:"#DC2626" }}>Eliminar definitivamente</button>}
       </>)}
     </div>
   );
 
   return (
-    <div onClick={e => e.target === e.currentTarget && !trabajando && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:640, maxHeight:"90vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+    <div onClick={e => e.target === e.currentTarget && !trabajando && onClose()} className="modal-fondo" style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <CerrarConAtras onClose={() => { if (trabajando) return false; onClose(); }} />
+      <div className="modal-caja" style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:640, maxHeight:"90vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
         <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, background:"#ffffff", zIndex:1 }}>
           <div>
-            <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>🗄 Archivo</h2>
+            <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}><Icono n="archivo" /> Archivo</h2>
             <div style={{ fontSize:12, color:"#64748B", marginTop:3 }}>Lo archivado no se ve en ninguna pestaña. Restaurarlo lo vuelve a mostrar en todas.</div>
           </div>
-          <button onClick={onClose} disabled={!!trabajando} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
+          <button onClick={onClose} disabled={!!trabajando} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}><Icono n="cerrar" /></button>
         </div>
         <div style={{ padding:"20px 24px" }}>
           <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", letterSpacing:0.5, marginBottom:10 }}>OBRAS ARCHIVADAS ({obrasArchivadas.length})</div>
@@ -497,7 +508,7 @@ function ArchivoObras({ obras, proyectos, sesion, onClose, onCambio }) {
               <div style={{ minWidth:0 }}>
                 <div style={{ fontSize:14, fontWeight:600, color:"#1A2B4A" }}>{g.p.nombre}</div>
                 <div style={{ fontSize:12, color:"#64748B" }}>
-                  {g.p.lugar ? `📍 ${g.p.lugar} · ` : ""}{g.entregas.length} entrega{g.entregas.length !== 1 ? "s" : ""}{g.p.archivada_en ? ` · archivada el ${fechaArch(g.p.archivada_en)}` : ""}
+                  {g.p.lugar ? <><Icono n="ubicacion" /> {g.p.lugar} · </> : ""}{g.entregas.length} entrega{g.entregas.length !== 1 ? "s" : ""}{g.p.archivada_en ? ` · archivada el ${fechaArch(g.p.archivada_en)}` : ""}
                 </div>
               </div>
               {botones(g.p.id, () => restaurarObra(g), () => eliminarObra(g))}
@@ -509,7 +520,7 @@ function ArchivoObras({ obras, proyectos, sesion, onClose, onCambio }) {
             <div key={e.id} style={fila}>
               <div style={{ minWidth:0 }}>
                 <div style={{ fontSize:14, fontWeight:600, color:"#1A2B4A" }}>{e.nombre}</div>
-                <div style={{ fontSize:12, color:"#64748B" }}>📅 {e.fecha ? formatDate(e.fecha) : "Sin fecha"}{e.archivada_en ? ` · archivada el ${fechaArch(e.archivada_en)}` : ""}</div>
+                <div style={{ fontSize:12, color:"#64748B" }}><Icono n="calendario" /> {e.fecha ? formatDate(e.fecha) : "Sin fecha"}{e.archivada_en ? ` · archivada el ${fechaArch(e.archivada_en)}` : ""}</div>
               </div>
               {botones(e.id, () => restaurarEntrega(e), () => eliminarEntrega(e))}
             </div>
@@ -550,15 +561,16 @@ function DetalleObraEntrega({ obra, onClose, onEdit, onDelete, onEntregada, rol,
   const agrInp = { padding:"9px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none" };
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.55)", backdropFilter:"blur(4px)", zIndex:400, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-      <div style={{ background:"#ffffff", borderRadius:"16px 16px 0 0", width:"100%", maxWidth:620, maxHeight:"92vh", overflowY:"auto", boxShadow:"0 -8px 40px rgba(15,23,42,0.15)" }}>
+    <div onClick={e => e.target === e.currentTarget && onClose()} className="modal-fondo" style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.55)", backdropFilter:"blur(4px)", zIndex:400, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+      <CerrarConAtras onClose={() => onClose()} />
+      <div className="modal-caja" style={{ background:"#ffffff", borderRadius:"16px 16px 0 0", width:"100%", maxWidth:620, maxHeight:"92vh", overflowY:"auto", boxShadow:"0 -8px 40px rgba(15,23,42,0.15)" }}>
         <div style={{ display:"flex", justifyContent:"center", padding:"12px 0 0" }}><div style={{ width:36, height:4, background:"#E2E8F0", borderRadius:2 }} /></div>
         <div style={{ padding:"16px 24px 0", display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
           <div style={{ flex:1, paddingRight:12 }}>
             <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:19, fontWeight:700, color:"#1A2B4A", margin:"0 0 8px" }}>{obra.nombre}</h2>
             <span style={{ display:"inline-block", padding:"4px 12px", borderRadius:6, background:sc.bg, color:sc.text, fontSize:11, fontWeight:700, border:`1px solid ${sc.border}` }}>{sc.label} — {diasLabel}</span>
           </div>
-          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
+          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}><Icono n="cerrar" /></button>
         </div>
         <div style={{ padding:"20px 24px 36px" }}>
           <div className="grid-form" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
@@ -623,7 +635,7 @@ function DetalleObraEntrega({ obra, onClose, onEdit, onDelete, onEntregada, rol,
             <button onClick={onEdit} style={{ padding:"9px 18px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Editar</button>
             <button onClick={() => generarPDF(obra)} style={{ padding:"9px 18px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>PDF</button>
             {obra.estado !== "terminado" && <button onClick={onEntregada} style={{ padding:"9px 18px", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:8, color:"#059669", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>Entregada</button>}
-            {(rol === "admin" || rol === "operario") && <button onClick={onDelete} style={{ padding:"9px 18px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>🗄 Archivar</button>}
+            {(rol === "admin" || rol === "operario") && <button onClick={onDelete} style={{ padding:"9px 18px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}><Icono n="archivo" /> Archivar</button>}
           </div>
         </div>
       </div>

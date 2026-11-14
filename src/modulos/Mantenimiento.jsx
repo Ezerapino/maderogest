@@ -4,6 +4,8 @@ import { avisar, confirmar } from "../lib/avisos.js";
 import { deleteMantenimiento, getMantenimiento, getUsuarios, insertMantenimiento, updateMantenimiento } from "../lib/datos.js";
 import { formatDate, sinAcentos, uid } from "../lib/formato.js";
 import { DIAS_ALERTA_MANTENIMIENTO, diasDesdeSolicitud, hoyLocal, tareaAtrasada } from "../lib/mantenimiento.js";
+import { CerrarConAtras } from "../lib/atras.js";
+import { Icono } from "../components/Icono.jsx";
 
 const COLOR = "#B45309";
 const textoHace = d => d < 0 ? (d === -1 ? "mañana" : `dentro de ${-d} días`) : d === 0 ? "hoy" : d === 1 ? "hace 1 día" : `hace ${d} días`;
@@ -25,7 +27,8 @@ export function MantenimientoModule({ sesion }) {
   const [supervisar, setSupervisar] = useState(null);
   const [verAviso, setVerAviso] = useState(false);
   const [nombres, setNombres] = useState([]);
-  const [ocupado, setOcupado] = useState(null);   // id de la tarea que se está guardando
+  const [ocupadas, setOcupadas] = useState(() => new Set());   // ids de las tareas que se están guardando
+  const marcarOcupada = (id, si) => setOcupadas(s => { const n = new Set(s); if (si) n.add(id); else n.delete(id); return n; });
 
   async function cargar({ conAviso = false } = {}) {
     try {
@@ -45,28 +48,28 @@ export function MantenimientoModule({ sesion }) {
   const sugeridos = [...new Set([...nombres, ...(tareas || []).flatMap(t => [t.responsable, t.supervisor])].filter(Boolean))].sort((a, b) => a.localeCompare(b));
 
   async function cambiar(t, cambio, { deshacer } = {}) {
-    setOcupado(t.id);
+    marcarOcupada(t.id, true);
     try {
       await updateMantenimiento(t.id, cambio);
       await cargar();
       if (deshacer) avisar(deshacer.texto, { tipo: "ok", deshacer: async () => {
-        setOcupado(t.id);
+        marcarOcupada(t.id, true);
         try { await updateMantenimiento(t.id, deshacer.volver); await cargar(); }
         catch (e) { avisar(`No se pudo deshacer: ${e.message}`, { tipo: "error" }); }
-        finally { setOcupado(null); }
+        finally { marcarOcupada(t.id, false); }
       } });
       return true;
     } catch (e) { avisar(`No se pudo guardar: ${e.message}`, { tipo: "error" }); return false; }
-    finally { setOcupado(null); }
+    finally { marcarOcupada(t.id, false); }
   }
 
   async function tildar(t) {
     if (!t.realizada) {
       return cambiar(t, { realizada: true, realizada_en: hoyLocal() },
-        { deshacer: { texto: `"${t.tarea}" marcada como hecha.`, volver: { realizada: false, realizada_en: null } } });
+        { deshacer: { texto: `"${t.tarea}" marcada como hecha.`, volver: { realizada: false, realizada_en: null, supervisada: false, supervisada_en: null, supervisada_por: null } } });
     }
     if (!await confirmar(`¿Marcar "${t.tarea}" como NO hecha?${t.supervisada ? "\nTambién se le saca la supervisión." : ""}`, { boton: "Desmarcar", peligro: false })) return;
-    cambiar(t, { realizada: false, realizada_en: null, supervisada: false, supervisada_en: null });
+    cambiar(t, { realizada: false, realizada_en: null, supervisada: false, supervisada_en: null, supervisada_por: null });
   }
 
   async function eliminar(t) {
@@ -106,7 +109,7 @@ export function MantenimientoModule({ sesion }) {
   const q = sinAcentos(busqueda.trim());
   const visibles = tareas
     .filter(t => filtro === "todas" || (filtro === "atrasadas" ? tareaAtrasada(t) : estadoTarea(t) === filtro))
-    .filter(t => !q || [t.tarea, t.detalle, t.responsable, t.supervisor, t.solicitado_por].some(x => sinAcentos(x).includes(q)))
+    .filter(t => !q || [t.tarea, t.detalle, t.responsable, t.supervisor, t.supervisada_por, t.solicitado_por].some(x => sinAcentos(x).includes(q)))
     .sort((a, b) => {
       // Lo que falta hacer, de lo más viejo a lo más nuevo; lo hecho, lo último arriba
       const ea = estadoTarea(a) === "hacer" ? 0 : 1, eb = estadoTarea(b) === "hacer" ? 0 : 1;
@@ -139,7 +142,7 @@ export function MantenimientoModule({ sesion }) {
           <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:18, fontWeight:700, color:"#1A2B4A", margin:0 }}>Mantenimiento de planta</h2>
           {pendientes.length > 0 && (
             <button onClick={() => setVerAviso(true)} style={{ padding:"6px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:600, cursor:"pointer" }}>
-              📋 Ver lo pendiente
+              <Icono n="lista" /> Ver lo pendiente
             </button>
           )}
         </div>
@@ -156,13 +159,13 @@ export function MantenimientoModule({ sesion }) {
         <div style={{ position:"relative", flex:"1 1 200px", maxWidth:320 }}>
           <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar tarea o persona..."
             style={{ width:"100%", padding:"9px 32px 9px 12px", background:"#ffffff", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" }} />
-          {busqueda && <button onClick={() => setBusqueda("")} aria-label="Borrar búsqueda" style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"#94A3B8", cursor:"pointer", fontSize:14, padding:2 }}>✕</button>}
+          {busqueda && <button onClick={() => setBusqueda("")} aria-label="Borrar búsqueda" style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"#94A3B8", cursor:"pointer", fontSize:14, padding:2 }}><Icono n="cerrar" /></button>}
         </div>
         <span style={{ fontSize:12, color:"#94A3B8" }}>{visibles.length} tarea{visibles.length !== 1 ? "s" : ""}</span>
         {filtro === "atrasadas" && (
           <button onClick={() => setFiltro("hacer")} title="Ver todas las tareas para hacer"
             style={{ padding:"4px 10px", borderRadius:99, background:"#FEF2F2", border:"1px solid #FECACA", color:"#DC2626", fontSize:12, fontWeight:600, cursor:"pointer" }}>
-            Solo atrasadas ✕
+            Solo atrasadas <Icono n="cerrar" />
           </button>
         )}
       </div>
@@ -172,13 +175,13 @@ export function MantenimientoModule({ sesion }) {
       {/* LISTA */}
       {visibles.length === 0 ? (
         <div style={{ textAlign:"center", padding:"70px 20px", background:"#ffffff", borderRadius:16, border:"1px solid #E8ECF0" }}>
-          <div style={{ fontSize:30, marginBottom:8 }}>{(filtro === "hacer" || filtro === "atrasadas") && !q ? "🎉" : "🔧"}</div>
+          <div style={{ marginBottom:10, color: (filtro === "hacer" || filtro === "atrasadas") && !q ? "#059669" : "#CBD5E1" }}><Icono n={(filtro === "hacer" || filtro === "atrasadas") && !q ? "checkCirculo" : "llave"} tam={34} grosor={1.6} /></div>
           <div style={{ fontSize:13, color:"#94A3B8" }}>{q ? "Ninguna tarea coincide con la búsqueda" : filtro === "hacer" ? "No hay tareas pendientes" : filtro === "atrasadas" ? "No hay tareas atrasadas" : "No hay tareas acá"}</div>
           {!tareas.length && <div style={{ fontSize:12, color:"#94A3B8", marginTop:6 }}>Cargá la primera con "+ Nueva tarea".</div>}
         </div>
       ) : (
         <div className="grid-tarjetas" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))", gap:14, alignItems:"start" }}>
-          {visibles.map(t => <TarjetaTarea key={t.id} t={t} ocupado={ocupado === t.id}
+          {visibles.map(t => <TarjetaTarea key={t.id} t={t} ocupado={ocupadas.has(t.id)}
             onTildar={() => tildar(t)} onEditar={() => setModal({ tarea: t })} onSupervisar={() => setSupervisar(t)} onEliminar={() => eliminar(t)} />)}
         </div>
       )}
@@ -190,7 +193,7 @@ export function MantenimientoModule({ sesion }) {
 
       {modal && <ModalTarea tarea={modal.tarea} sugeridos={sugeridos} onClose={() => setModal(null)} onSave={guardarTarea} />}
       {supervisar && <ModalSupervisar tarea={supervisar} sugeridos={sugeridos} sesion={sesion} onClose={() => setSupervisar(null)}
-        onSave={async (nombre, fecha) => { if (await cambiar(supervisar, { supervisada: true, supervisada_en: fecha, supervisor: nombre })) setSupervisar(null); }} />}
+        onSave={async (nombre, fecha) => { if (await cambiar(supervisar, { supervisada: true, supervisada_en: fecha, supervisada_por: nombre })) setSupervisar(null); }} />}
       {verAviso && <AvisoPendientes pendientes={pendientes} onClose={() => setVerAviso(false)} onVer={() => { setFiltro("hacer"); setBusqueda(""); setVerAviso(false); }} />}
     </div>
   );
@@ -205,34 +208,34 @@ function TarjetaTarea({ t, ocupado, onTildar, onEditar, onSupervisar, onEliminar
   const btn = { padding:"7px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:7, color:"#475569", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" };
   return (
     <div style={{ background: atrasada ? "#FFFBFB" : "#ffffff", border:`${atrasada ? 2 : 1}px solid ${borde}`, borderRadius:14, overflow:"hidden", boxShadow: atrasada ? "0 0 0 3px rgba(220,38,38,0.10)" : "0 1px 4px rgba(26,43,74,0.05)", opacity: ocupado ? 0.6 : 1 }}>
-      {atrasada && <div style={{ background:"#DC2626", color:"#fff", fontSize:12, fontWeight:700, padding:"5px 14px" }}>⚠ {dias} días sin hacer</div>}
+      {atrasada && <div style={{ background:"#DC2626", color:"#fff", fontSize:12, fontWeight:700, padding:"5px 14px" }}><Icono n="alerta" /> {dias} días sin hacer</div>}
       <div style={{ padding:"14px 14px 12px", display:"flex", gap:12 }}>
         <button onClick={onTildar} disabled={ocupado} aria-label={t.realizada ? "Marcar como no hecha" : "Marcar como hecha"} title={t.realizada ? "Hecha (tocá para desmarcar)" : "Marcar como hecha"}
           style={{ flexShrink:0, width:34, height:34, borderRadius:8, border:`2.5px solid ${t.realizada ? "#059669" : atrasada ? "#DC2626" : "#94A3B8"}`, background: t.realizada ? "#059669" : "#ffffff", color:"#ffffff", fontSize:20, fontWeight:900, lineHeight:1, cursor: ocupado ? "wait" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}>
-          {t.realizada ? "✓" : ""}
+          {t.realizada ? <Icono n="check" tam={20} grosor={3} /> : ""}
         </button>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", lineHeight:1.35, textDecoration: t.realizada ? "line-through" : "none", textDecorationColor:"#94A3B8", wordBreak:"break-word" }}>{t.tarea}</div>
           {t.detalle && <div style={{ fontSize:13, color:"#475569", marginTop:4, lineHeight:1.45, whiteSpace:"pre-wrap", wordBreak:"break-word" }}>{t.detalle}</div>}
           <div style={{ display:"flex", flexDirection:"column", gap:4, marginTop:10, fontSize:12, color:"#64748B" }}>
-            <span>📅 Solicitada el <b style={{ color:"#1A2B4A" }}>{formatDate(t.fecha_solicitud)}</b>{!t.realizada && <> ({textoHace(dias)})</>}{t.solicitado_por ? ` por ${t.solicitado_por}` : ""}</span>
-            <span>👷 Realiza: <b style={{ color: t.responsable ? "#1A2B4A" : "#94A3B8", fontWeight: t.responsable ? 600 : 400 }}>{t.responsable || "sin asignar"}</b></span>
-            <span>🔍 Supervisa: <b style={{ color: t.supervisor ? "#1A2B4A" : "#94A3B8", fontWeight: t.supervisor ? 600 : 400 }}>{t.supervisor || "sin asignar"}</b></span>
+            <span><Icono n="calendario" /> Solicitada el <b style={{ color:"#1A2B4A" }}>{formatDate(t.fecha_solicitud)}</b>{!t.realizada && <> ({textoHace(dias)})</>}{t.solicitado_por ? ` por ${t.solicitado_por}` : ""}</span>
+            <span><Icono n="casco" /> Realiza: <b style={{ color: t.responsable ? "#1A2B4A" : "#94A3B8", fontWeight: t.responsable ? 600 : 400 }}>{t.responsable || "sin asignar"}</b></span>
+            <span><Icono n="supervisar" /> Supervisa: <b style={{ color: t.supervisor ? "#1A2B4A" : "#94A3B8", fontWeight: t.supervisor ? 600 : 400 }}>{t.supervisor || "sin asignar"}</b></span>
           </div>
           {t.realizada && (
             <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:10 }}>
-              <span style={{ padding:"3px 9px", borderRadius:6, background:"#ECFDF5", color:"#059669", border:"1px solid #A7F3D0", fontSize:12, fontWeight:600 }}>✅ Hecha el {formatDate(t.realizada_en)}</span>
+              <span style={{ padding:"3px 9px", borderRadius:6, background:"#ECFDF5", color:"#059669", border:"1px solid #A7F3D0", fontSize:12, fontWeight:600 }}><Icono n="checkCirculo" /> Hecha el {formatDate(t.realizada_en)}</span>
               {t.supervisada
-                ? <span style={{ padding:"3px 9px", borderRadius:6, background:"#ECFDF5", color:"#047857", border:"1px solid #A7F3D0", fontSize:12, fontWeight:600 }}>🔍 Supervisada el {formatDate(t.supervisada_en)}</span>
+                ? <span style={{ padding:"3px 9px", borderRadius:6, background:"#ECFDF5", color:"#047857", border:"1px solid #A7F3D0", fontSize:12, fontWeight:600 }}><Icono n="supervisar" /> Supervisada el {formatDate(t.supervisada_en)}{t.supervisada_por ? ` por ${t.supervisada_por}` : ""}</span>
                 : <span style={{ padding:"3px 9px", borderRadius:6, background:"#FFFBEB", color:"#B45309", border:"1px solid #FDE68A", fontSize:12, fontWeight:600 }}>Falta supervisar</span>}
             </div>
           )}
         </div>
       </div>
       <div style={{ display:"flex", gap:6, padding:"0 14px 12px", flexWrap:"wrap" }}>
-        {t.realizada && !t.supervisada && <button onClick={onSupervisar} disabled={ocupado} style={{ ...btn, background:"#ECFDF5", border:"1px solid #A7F3D0", color:"#047857", fontWeight:600 }}>🔍 Marcar supervisada</button>}
-        <button onClick={onEditar} disabled={ocupado} style={btn}>✎ Editar</button>
-        <button onClick={onEliminar} disabled={ocupado} title="Eliminar tarea" aria-label="Eliminar tarea" style={{ ...btn, background:"#FEF2F2", border:"1px solid #FECACA", color:"#DC2626", marginLeft:"auto" }}>🗑</button>
+        {t.realizada && !t.supervisada && <button onClick={onSupervisar} disabled={ocupado} style={{ ...btn, background:"#ECFDF5", border:"1px solid #A7F3D0", color:"#047857", fontWeight:600 }}><Icono n="supervisar" /> Marcar supervisada</button>}
+        <button onClick={onEditar} disabled={ocupado} style={btn}><Icono n="editar" /> Editar</button>
+        <button onClick={onEliminar} disabled={ocupado} title="Eliminar tarea" aria-label="Eliminar tarea" style={{ ...btn, background:"#FEF2F2", border:"1px solid #FECACA", color:"#DC2626", marginLeft:"auto" }}><Icono n="basura" /></button>
       </div>
     </div>
   );
@@ -242,17 +245,13 @@ function TarjetaTarea({ t, ocupado, onTildar, onEditar, onSupervisar, onEliminar
 const inp = { width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" };
 const lbl = { display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:5 };
 function Ventana({ titulo, onClose, children, ancho = 480 }) {
-  useEffect(() => {
-    const tecla = e => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", tecla);
-    return () => window.removeEventListener("keydown", tecla);
-  }, [onClose]);
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div role="dialog" aria-label={titulo} style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:ancho, maxHeight:"calc(100dvh - 32px)", display:"flex", flexDirection:"column", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+    <div onClick={e => e.target === e.currentTarget && onClose()} className="modal-fondo" style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <CerrarConAtras onClose={() => onClose()} />
+      <div className="modal-caja" role="dialog" aria-label={titulo} style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:ancho, maxHeight:"calc(100dvh - 32px)", display:"flex", flexDirection:"column", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
         <div style={{ padding:"18px 20px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, flexShrink:0 }}>
           <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{titulo}</h2>
-          <button onClick={onClose} aria-label="Cerrar" style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, flexShrink:0, cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
+          <button onClick={onClose} aria-label="Cerrar" style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, flexShrink:0, cursor:"pointer", color:"#64748B", fontSize:16 }}><Icono n="cerrar" /></button>
         </div>
         <div style={{ padding:"18px 20px", overflowY:"auto" }}>{children}</div>
       </div>
@@ -291,13 +290,13 @@ function ModalTarea({ tarea, sugeridos, onClose, onSave }) {
         <textarea value={form.detalle} onChange={set("detalle")} rows={3} placeholder="Dónde, con qué, cualquier aclaración..." style={{ ...inp, resize:"vertical" }} />
       </div>
       <div className="grid-form" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
-        <div><label style={lbl}>👷 Quién la realiza</label><input value={form.responsable} onChange={set("responsable")} list="mant-nombres" placeholder="Nombre" style={inp} /></div>
-        <div><label style={lbl}>🔍 Quién la supervisa</label><input value={form.supervisor} onChange={set("supervisor")} list="mant-nombres" placeholder="Nombre" style={inp} /></div>
+        <div><label style={lbl}><Icono n="casco" /> Quién la realiza</label><input value={form.responsable} onChange={set("responsable")} list="mant-nombres" placeholder="Nombre" style={inp} /></div>
+        <div><label style={lbl}><Icono n="supervisar" /> Quién la supervisa</label><input value={form.supervisor} onChange={set("supervisor")} list="mant-nombres" placeholder="Nombre" style={inp} /></div>
       </div>
       <div className="grid-form" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-        <div><label style={lbl}>📅 Fecha de solicitud</label><input type="date" value={form.fecha_solicitud} onChange={set("fecha_solicitud")} style={inp} /></div>
-        {tarea?.realizada && <div><label style={lbl}>✅ Hecha el</label><input type="date" value={form.realizada_en} onChange={set("realizada_en")} style={inp} /></div>}
-        {tarea?.supervisada && <div><label style={lbl}>🔍 Supervisada el</label><input type="date" value={form.supervisada_en} onChange={set("supervisada_en")} style={inp} /></div>}
+        <div><label style={lbl}><Icono n="calendario" /> Fecha de solicitud</label><input type="date" value={form.fecha_solicitud} onChange={set("fecha_solicitud")} style={inp} /></div>
+        {tarea?.realizada && <div><label style={lbl}><Icono n="checkCirculo" /> Hecha el</label><input type="date" value={form.realizada_en} onChange={set("realizada_en")} style={inp} /></div>}
+        {tarea?.supervisada && <div><label style={lbl}><Icono n="supervisar" /> Supervisada el</label><input type="date" value={form.supervisada_en} onChange={set("supervisada_en")} style={inp} /></div>}
       </div>
       {!tarea && <p style={{ fontSize:12, color:"#94A3B8", margin:"12px 0 0", lineHeight:1.5 }}>Si pasan más de {DIAS_ALERTA_MANTENIMIENTO} días desde la solicitud sin hacerse, la tarea se marca en rojo.</p>}
       <Botones onClose={onClose} onSave={guardar} guardando={guardando} texto={tarea ? "Guardar" : "Cargar tarea"} />
@@ -306,7 +305,7 @@ function ModalTarea({ tarea, sugeridos, onClose, onSave }) {
 }
 
 function ModalSupervisar({ tarea, sugeridos, sesion, onClose, onSave }) {
-  const [nombre, setNombre] = useState(tarea.supervisor || sesion.nombre || "");
+  const [nombre, setNombre] = useState(sesion.nombre || tarea.supervisor || "");
   const [fecha, setFecha] = useState(hoyLocal());
   const [guardando, setGuardando] = useState(false);
   async function guardar() {
@@ -321,7 +320,7 @@ function ModalSupervisar({ tarea, sugeridos, sesion, onClose, onSave }) {
         <div><label style={lbl}>Quién supervisó</label><input value={nombre} onChange={e => setNombre(e.target.value)} list="mant-nombres-sup" style={inp} /></div>
         <div><label style={lbl}>Fecha</label><input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={inp} /></div>
       </div>
-      <Botones onClose={onClose} onSave={guardar} guardando={guardando} texto="Supervisada ✓" />
+      <Botones onClose={onClose} onSave={guardar} guardando={guardando} texto="Marcar supervisada" />
     </Ventana>
   );
 }
@@ -331,8 +330,8 @@ function AvisoPendientes({ pendientes, onClose, onVer }) {
   const lista = [...pendientes].sort((a, b) => (a.fecha_solicitud || "").localeCompare(b.fecha_solicitud || ""));
   const atrasadas = lista.filter(tareaAtrasada).length;
   return (
-    <Ventana titulo={`🔧 ${lista.length} tarea${lista.length !== 1 ? "s" : ""} sin realizar`} onClose={onClose} ancho={520}>
-      {atrasadas > 0 && <div style={{ marginBottom:12, padding:"9px 12px", borderRadius:8, background:"#FEF2F2", border:"1px solid #FECACA", color:"#B91C1C", fontSize:13, fontWeight:600 }}>⚠ {atrasadas} con más de {DIAS_ALERTA_MANTENIMIENTO} días sin hacer</div>}
+    <Ventana titulo={`${lista.length} tarea${lista.length !== 1 ? "s" : ""} sin realizar`} onClose={onClose} ancho={520}>
+      {atrasadas > 0 && <div style={{ marginBottom:12, padding:"9px 12px", borderRadius:8, background:"#FEF2F2", border:"1px solid #FECACA", color:"#B91C1C", fontSize:13, fontWeight:600 }}><Icono n="alerta" /> {atrasadas} con más de {DIAS_ALERTA_MANTENIMIENTO} días sin hacer</div>}
       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
         {lista.map(t => {
           const atr = tareaAtrasada(t), d = diasDesdeSolicitud(t);
@@ -342,7 +341,7 @@ function AvisoPendientes({ pendientes, onClose, onVer }) {
                 <div style={{ fontSize:14, fontWeight:600, color:"#1A2B4A", wordBreak:"break-word" }}>{t.tarea}</div>
                 <div style={{ fontSize:12, fontWeight:700, color: atr ? "#DC2626" : "#64748B", whiteSpace:"nowrap" }}>{textoHace(d)}</div>
               </div>
-              <div style={{ fontSize:12, color:"#64748B", marginTop:2 }}>👷 {t.responsable || "sin asignar"} · solicitada el {formatDate(t.fecha_solicitud)}</div>
+              <div style={{ fontSize:12, color:"#64748B", marginTop:2 }}><Icono n="casco" /> {t.responsable || "sin asignar"} · solicitada el {formatDate(t.fecha_solicitud)}</div>
             </div>
           );
         })}

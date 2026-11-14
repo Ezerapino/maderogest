@@ -98,7 +98,8 @@ begin
   end if;
 
   if uid is not null then select u.nombre into quien from public.usuarios u where u.auth_id = uid limit 1; end if;
-  obra := coalesce(fila ->> 'obra_nombre', fila ->> 'nombre', fila ->> 'name');
+  -- Nombre que se muestra en el Historial: la columna que indique el trigger (ej. auditar('tarea')) o las de siempre
+  obra := coalesce(case when tg_nargs > 0 then fila ->> tg_argv[0] end, fila ->> 'obra_nombre', fila ->> 'nombre', fila ->> 'name');
   if tg_table_name = 'avance_dias' then
     select oa.nombre into obra from public.obras_avance oa where oa.id::text = fila ->> 'obra_id';
   elsif obra is null and fila ? 'obra_id' then

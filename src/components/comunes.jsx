@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { avisar } from "../lib/avisos.js";
 import { formatDate } from "../lib/formato.js";
+import { CerrarConAtras } from "../lib/atras.js";
+import { Icono } from "./Icono.jsx";
 
 // Botón "Enviar por mail": sale de la casilla de alertas a la lista fija de avisos; si se escriben
 // destinatarios, van como "Para" y la lista fija en copia. enviar(para) devuelve la respuesta del servidor.
@@ -23,11 +25,12 @@ export function EnviarPorMail({ enviar, deshabilitado, motivo, estiloBoton }) {
   return (
     <>
       <button onClick={() => setAbierto(true)} disabled={deshabilitado} title={deshabilitado ? motivo : "Enviar desde la casilla de alertas"}
-        style={{ ...estiloBoton, opacity: deshabilitado ? 0.5 : 1, cursor: deshabilitado ? "not-allowed" : "pointer" }}>📧 Enviar por mail</button>
+        style={{ ...estiloBoton, opacity: deshabilitado ? 0.5 : 1, cursor: deshabilitado ? "not-allowed" : "pointer" }}><Icono n="mail" /> Enviar por mail</button>
       {abierto && (
-        <div onClick={e => e.target === e.currentTarget && cerrar()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", zIndex:900, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-          <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:440, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.25)", fontFamily:"'Inter', sans-serif", textTransform:"none", letterSpacing:0 }}>
-            <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 6px" }}>📧 Enviar por mail</h3>
+        <div onClick={e => e.target === e.currentTarget && cerrar()} className="modal-fondo" style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", zIndex:900, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <CerrarConAtras onClose={() => cerrar()} />
+          <div className="modal-caja" style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:440, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.25)", fontFamily:"'Inter', sans-serif", textTransform:"none", letterSpacing:0 }}>
+            <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 6px" }}><Icono n="mail" /> Enviar por mail</h3>
             <p style={{ fontSize:12, color:"#64748B", margin:"0 0 14px", lineHeight:1.5 }}>Sale de la casilla de alertas a la lista de avisos. Si agregás destinatarios (por ejemplo el cliente o el arquitecto), les llega a ellos y la lista va en copia.</p>
             <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Para (opcional)</label>
             <input value={para} onChange={e => setPara(e.target.value)} placeholder="cliente@empresa.com, otro@empresa.com" disabled={enviando}
@@ -59,8 +62,9 @@ export function ModalElegirEntrega({ titulo, entregas, color = "#1A2B4A", onClos
     setGuardando(false);
   }
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:440, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+    <div onClick={e => e.target === e.currentTarget && onClose()} className="modal-fondo" style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <CerrarConAtras onClose={() => onClose()} />
+      <div className="modal-caja" style={{ background:"#fff", borderRadius:14, width:"100%", maxWidth:440, padding:24, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
         <h3 style={{ fontFamily:"'Sora', sans-serif", fontSize:16, fontWeight:700, color:"#1A2B4A", margin:"0 0 6px" }}>{titulo}</h3>
         <p style={{ fontSize:12, color:"#64748B", margin:"0 0 16px" }}>Todas las pestañas usan las obras de Entregas. Las obras y entregas nuevas se crean en la pestaña Entregas.</p>
         {opciones.length === 0 ? (
@@ -101,11 +105,12 @@ export function ModalSimple({ title, onClose, onSave, fields }) {
   const inputStyle = { width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" };
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:460, maxHeight:"90vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+    <div onClick={e => e.target === e.currentTarget && onClose()} className="modal-fondo" style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <CerrarConAtras onClose={() => onClose()} />
+      <div className="modal-caja" style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:460, maxHeight:"90vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
         <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{title}</h2>
-          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
+          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}><Icono n="cerrar" /></button>
         </div>
         <div style={{ padding:"20px 24px" }}>
           {fields.map(fi => (

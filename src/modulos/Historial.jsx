@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { avisar } from "../lib/avisos.js";
 import { getUsuarios, sbFetch } from "../lib/datos.js";
 import { EMAIL_HISTORIAL, TABLAS_HISTORIAL, renglonesHistorial } from "../lib/historial.js";
+import { Icono } from "../components/Icono.jsx";
 
 export function HistorialModule() {
   const POR_PAGINA = 100;
@@ -49,7 +50,7 @@ export function HistorialModule() {
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ fontFamily: "'Sora', sans-serif", fontSize: 18, fontWeight: 700, color: "#1A2B4A", margin: 0 }}>🕑 Historial de modificaciones</h2>
+        <h2 style={{ fontFamily: "'Sora', sans-serif", fontSize: 18, fontWeight: 700, color: "#1A2B4A", margin: 0 }}><Icono n="historial" /> Historial de modificaciones</h2>
         <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>Quién cambió qué y cuándo, en todas las pestañas. Solo lo ve {EMAIL_HISTORIAL}.</div>
       </div>
 
@@ -67,7 +68,7 @@ export function HistorialModule() {
           <input type="date" value={filtro.desde} onChange={e => setFiltro(f => ({ ...f, desde: e.target.value }))} style={si} /></label>
         <label style={{ fontSize: 12, color: "#64748B", display: "flex", alignItems: "center", gap: 6 }}>Hasta
           <input type="date" value={filtro.hasta} onChange={e => setFiltro(f => ({ ...f, hasta: e.target.value }))} style={si} /></label>
-        {hayFiltro && <button onClick={() => setFiltro({ quien: "", tabla: "", obra: "", desde: "", hasta: "" })} style={{ ...si, cursor: "pointer", color: "#64748B" }}>✕ Limpiar</button>}
+        {hayFiltro && <button onClick={() => setFiltro({ quien: "", tabla: "", obra: "", desde: "", hasta: "" })} style={{ ...si, cursor: "pointer", color: "#64748B" }}><Icono n="cerrar" /> Limpiar</button>}
       </div>
 
       {!filas.length ? (

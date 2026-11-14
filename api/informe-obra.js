@@ -122,14 +122,14 @@ export function htmlInforme(nombreObra, inf, generado) {
       <div style="font-size:16px;font-weight:700;color:#1A2B4A;margin-top:2px">${txt(inf.estado_titulo)}</div>
     </div>
     <p style="font-size:14px;line-height:1.6">${txt(inf.resumen)}</p>
-    ${h3("📅 Fechas clave")}${tabla([["concepto", "Concepto"], ["fecha", "Fecha"], ["comentario", "Comentario"]], inf.fechas_clave)}
-    ${h3("📦 Entregas")}${tabla([["nombre", "Entrega"], ["fecha", "Fecha"], ["estado", "Estado"], ["comentario", "Comentario"]], inf.entregas)}
-    ${h3("🏗 Producción por estación")}${tabla([["entrega", "Entrega"], ["estacion", "Estación"], ["estado", "Estado"], ["operario", "Operario"], ["tiempo", "Tiempo"], ["comentario", "Comentario"]], inf.produccion)}
-    ${h3("⏰ Demoras y contratiempos")}${lista(inf.demoras, "No se registran demoras.")}
-    ${h3("🛒 Faltantes")}${lista(inf.faltantes, "No se registran faltantes.")}
-    ${h3("➕ Adicionales")}${lista(inf.adicionales, "No se registran adicionales.")}
-    ${inf.cobros ? `${h3("💰 Cobros")}<p style="font-size:14px;line-height:1.6;margin:0">${txt(inf.cobros)}</p>` : ""}
-    ${h3("➡ Próximos pasos")}${lista(inf.proximos_pasos, "Sin próximos pasos sugeridos.")}
+    ${h3("Fechas clave")}${tabla([["concepto", "Concepto"], ["fecha", "Fecha"], ["comentario", "Comentario"]], inf.fechas_clave)}
+    ${h3("Entregas")}${tabla([["nombre", "Entrega"], ["fecha", "Fecha"], ["estado", "Estado"], ["comentario", "Comentario"]], inf.entregas)}
+    ${h3("Producción por estación")}${tabla([["entrega", "Entrega"], ["estacion", "Estación"], ["estado", "Estado"], ["operario", "Operario"], ["tiempo", "Tiempo"], ["comentario", "Comentario"]], inf.produccion)}
+    ${h3("Demoras y contratiempos")}${lista(inf.demoras, "No se registran demoras.")}
+    ${h3("Faltantes")}${lista(inf.faltantes, "No se registran faltantes.")}
+    ${h3("Adicionales")}${lista(inf.adicionales, "No se registran adicionales.")}
+    ${inf.cobros ? `${h3("Cobros")}<p style="font-size:14px;line-height:1.6;margin:0">${txt(inf.cobros)}</p>` : ""}
+    ${h3("Próximos pasos")}${lista(inf.proximos_pasos, "Sin próximos pasos sugeridos.")}
     <p style="font-size:11px;color:#94A3B8;margin-top:20px">Informe de ${esc(nombreObra)} generado con IA (Claude) a partir de los datos cargados en MaderoGest${generado ? ` el ${esc(generado)}` : ""}. Revisalo antes de tomar decisiones.</p>`;
 }
 

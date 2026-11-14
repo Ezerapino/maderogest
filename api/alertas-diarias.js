@@ -102,8 +102,8 @@ function mailEntregas({ hoy, proximas, vencidas }) {
         <th style="padding:8px 10px">Obra</th><th style="padding:8px 10px">Entrega</th><th style="padding:8px 10px">Plazo</th><th style="padding:8px 10px">Materiales</th>
       </tr>${filas.map(fila).join("")}</table>`;
   const cuerpo = `
-    ${proximas.length ? `<h3 style="font-size:15px;color:#1A2B4A;margin:0 0 10px">📅 Entregas de los próximos ${DIAS_ALERTA} días (${proximas.length})</h3>${tabla(proximas)}` : `<p style="font-size:13px;color:#64748B">No hay entregas en los próximos ${DIAS_ALERTA} días.</p>`}
-    ${vencidas.length ? `<h3 style="font-size:15px;color:#DC2626;margin:20px 0 10px">⏰ Vencidas sin marcar como entregadas (${vencidas.length})</h3>${tabla(vencidas)}` : ""}`;
+    ${proximas.length ? `<h3 style="font-size:15px;color:#1A2B4A;margin:0 0 10px">Entregas de los próximos ${DIAS_ALERTA} días (${proximas.length})</h3>${tabla(proximas)}` : `<p style="font-size:13px;color:#64748B">No hay entregas en los próximos ${DIAS_ALERTA} días.</p>`}
+    ${vencidas.length ? `<h3 style="font-size:15px;color:#DC2626;margin:20px 0 10px">Vencidas sin marcar como entregadas (${vencidas.length})</h3>${tabla(vencidas)}` : ""}`;
   const texto = [
     `Obras Grupo Aixa S.A. - MaderoGest`, `Entregas próximas - ${fmtFecha(hoy)}`, "",
     ...(proximas.length
@@ -126,11 +126,11 @@ function mailMateriales({ hoy, conFaltantes }) {
   const bloque = x => { const { obra, dias, faltaPedir, faltaRecibir } = x; return `
     <div style="border:1px solid #FECACA;border-left:4px solid #DC2626;border-radius:8px;padding:12px 14px;margin-bottom:10px;background:#FEF2F2">
       <div style="font-size:15px;font-weight:700;color:#1A2B4A">${nombreConLink(x)}${lugar(obra) ? ` <span style="font-weight:400;color:#64748B">— ${esc(lugar(obra))}</span>` : ""} &nbsp;${botonFicha(x)}</div>
-      <div style="font-size:13px;font-weight:700;color:#DC2626;margin:4px 0 8px">📅 ${fmtFecha(obra.fecha)} · ${textoDias(dias)}</div>
-      ${faltaPedir.length ? `<div style="font-size:13px;color:#92400E;margin-bottom:4px">🛒 <b>Falta pedir (${faltaPedir.length}):</b> ${faltaPedir.map(i => esc(detalle(i))).join(" · ")}</div>` : ""}
-      ${faltaRecibir.length ? `<div style="font-size:13px;color:#1E40AF">🚚 <b>Falta recibir (${faltaRecibir.length}):</b> ${faltaRecibir.map(i => esc(detalle(i) + (i.proveedor ? ` — ${i.proveedor}` : ""))).join(" · ")}</div>` : ""}
+      <div style="font-size:13px;font-weight:700;color:#DC2626;margin:4px 0 8px">${fmtFecha(obra.fecha)} · ${textoDias(dias)}</div>
+      ${faltaPedir.length ? `<div style="font-size:13px;color:#92400E;margin-bottom:4px"><b>Falta pedir (${faltaPedir.length}):</b> ${faltaPedir.map(i => esc(detalle(i))).join(" · ")}</div>` : ""}
+      ${faltaRecibir.length ? `<div style="font-size:13px;color:#1E40AF"><b>Falta recibir (${faltaRecibir.length}):</b> ${faltaRecibir.map(i => esc(detalle(i) + (i.proveedor ? ` — ${i.proveedor}` : ""))).join(" · ")}</div>` : ""}
     </div>`; };
-  const cuerpo = `<h3 style="font-size:15px;color:#DC2626;margin:0 0 12px">⚠ Obras con entrega en ${DIAS_ALERTA} días o menos y materiales faltantes (${conFaltantes.length})</h3>${conFaltantes.map(bloque).join("")}`;
+  const cuerpo = `<h3 style="font-size:15px;color:#DC2626;margin:0 0 12px">Obras con entrega en ${DIAS_ALERTA} días o menos y materiales faltantes (${conFaltantes.length})</h3>${conFaltantes.map(bloque).join("")}`;
   const texto = [
     `Obras Grupo Aixa S.A. - MaderoGest`, `Materiales faltantes - ${fmtFecha(hoy)}`, "",
     ...conFaltantes.flatMap(({ obra, dias, faltaPedir, faltaRecibir, link }) => [

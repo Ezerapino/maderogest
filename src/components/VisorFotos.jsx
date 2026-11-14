@@ -1,5 +1,7 @@
 // Visor de fotos en grande
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useCerrarConAtras } from "../lib/atras.js";
+import { Icono } from "./Icono.jsx";
 
 // Visor de fotos en grande: flechas (o teclado / deslizar en el celular) para pasar, Esc o clic afuera para cerrar
 export function VisorFotos({ fotos, inicio = 0, onCerrar }) {
@@ -7,15 +9,15 @@ export function VisorFotos({ fotos, inicio = 0, onCerrar }) {
   const toqueX = useRef(null);
   const total = fotos.length;
   const pasar = useCallback(d => setI(n => (n + d + total) % total), [total]);
+  useCerrarConAtras(onCerrar);   // "atrás" o Escape cierran el visor
   useEffect(() => {
     const tecla = e => {
-      if (e.key === "Escape") onCerrar();
-      else if (e.key === "ArrowRight") pasar(1);
+      if (e.key === "ArrowRight") pasar(1);
       else if (e.key === "ArrowLeft") pasar(-1);
     };
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
-  }, [pasar, onCerrar]);
+  }, [pasar]);
   const f = fotos[i];
   if (!f) return null;
   const src = f.url || f.b64;
@@ -28,12 +30,12 @@ export function VisorFotos({ fotos, inicio = 0, onCerrar }) {
       <img src={src} alt={f.name} style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain", borderRadius:4, boxShadow:"0 10px 40px rgba(0,0,0,0.5)" }} />
       <div style={{ position:"absolute", top:0, left:0, right:0, padding:"12px 16px", display:"flex", alignItems:"center", gap:12, color:"#E2E8F0", fontSize:13 }}>
         <span style={{ flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.name}</span>
-        {f.url && <a href={f.url} target="_blank" rel="noreferrer" style={{ color:"#fff", fontSize:12, fontWeight:600, textDecoration:"none", padding:"6px 12px", borderRadius:8, background:"rgba(255,255,255,0.15)", whiteSpace:"nowrap" }}>Abrir original ↗</a>}
-        <button onClick={onCerrar} title="Cerrar (Esc)" style={{ width:34, height:34, borderRadius:8, border:"none", background:"rgba(255,255,255,0.15)", color:"#fff", fontSize:16, cursor:"pointer" }}>✕</button>
+        {f.url && <a href={f.url} target="_blank" rel="noreferrer" style={{ color:"#fff", fontSize:12, fontWeight:600, textDecoration:"none", padding:"6px 12px", borderRadius:8, background:"rgba(255,255,255,0.15)", whiteSpace:"nowrap", display:"inline-flex", alignItems:"center", gap:6 }}>Abrir original <Icono n="externo" tam={13} /></a>}
+        <button onClick={onCerrar} title="Cerrar (Esc)" aria-label="Cerrar" style={{ width:34, height:34, borderRadius:8, border:"none", background:"rgba(255,255,255,0.15)", color:"#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}><Icono n="cerrar" tam={18} /></button>
       </div>
       {total > 1 && <>
-        <button onClick={() => pasar(-1)} title="Anterior" style={flecha("left")}>‹</button>
-        <button onClick={() => pasar(1)} title="Siguiente" style={flecha("right")}>›</button>
+        <button onClick={() => pasar(-1)} title="Anterior" aria-label="Anterior" style={flecha("left")}><Icono n="chevronIzq" tam={26} /></button>
+        <button onClick={() => pasar(1)} title="Siguiente" aria-label="Siguiente" style={flecha("right")}><Icono n="chevronDer" tam={26} /></button>
         <div style={{ position:"absolute", bottom:20, left:0, right:0, textAlign:"center", color:"#CBD5E1", fontSize:13 }}>{i + 1} de {total}</div>
       </>}
     </div>

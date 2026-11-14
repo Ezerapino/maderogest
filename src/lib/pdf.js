@@ -9,7 +9,7 @@ import { ESTADO_LABELS, STATUS_META, normalizarMuebles, obraProgressAixa } from 
 export function ofrecerInformeCierre(guardada) {
   if (!guardada?.stations?.length || !guardada.stations.every(s => s.status === 'done')) return;
   setTimeout(async () => {
-    if (await confirmar("🎉 ¡Todas las estaciones completadas!\n¿Deseas generar el informe de cierre de obra?", { boton: "Generar informe", peligro: false })) {
+    if (await confirmar("¡Todas las estaciones completadas!\n¿Deseas generar el informe de cierre de obra?", { boton: "Generar informe", peligro: false })) {
       generarInformeCierre(guardada);
     }
   }, 400);
@@ -32,11 +32,11 @@ export async function generarPDF(obra) {
   const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Orden de Entrega – ${obra.nombre}</title>
 <style>body{font-family:Georgia,serif;color:#1e293b;margin:0;padding:0}.portada{background:#1e293b;color:#e8dcc8;padding:48px 48px 36px}.logo{font-size:28px;font-weight:bold;letter-spacing:2px;color:#fff}.obra-titulo{font-size:26px;margin:20px 0 6px;font-style:italic;color:#e8dcc8}.obra-subtitulo{font-size:13px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase}.cuerpo{padding:36px 48px}.status-badge{display:inline-block;padding:5px 16px;border-radius:20px;font-size:12px;font-weight:bold;letter-spacing:1px;background:${sm.bg};color:${sm.color};border:1px solid ${sm.color};margin-bottom:24px}.grid-datos{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:32px;border-bottom:1px solid #e2e8f0;padding-bottom:28px}.dato-item .label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:4px}.dato-item .valor{font-size:15px;font-weight:bold;color:#1e293b}.seccion-titulo{font-size:11px;text-transform:uppercase;letter-spacing:2px;color:#94a3b8;border-bottom:1px solid #e2e8f0;padding-bottom:8px;margin-bottom:16px;margin-top:28px}.firma-box{margin-top:48px;display:flex;justify-content:space-between}.firma{text-align:center}.firma-linea{width:160px;border-bottom:1px solid #1e293b;margin-bottom:6px;height:36px}.firma-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8}.footer{margin-top:40px;padding-top:16px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:11px;color:#94a3b8}</style></head>
 <body><div class="portada"><div class="logo">Obras Grupo Aixa S.A.</div><div class="obra-titulo">${obra.nombre}</div><div class="obra-subtitulo">Orden de entrega · Obras Grupo Aixa S.A.</div></div>
-<div class="cuerpo"><div class="status-badge">${sm.icon} ${sm.label} — ${diasLabel}</div>
-<div class="grid-datos"><div class="dato-item"><div class="label">📍 Lugar</div><div class="valor">${obra.lugar}</div></div><div class="dato-item"><div class="label">📅 Fecha</div><div class="valor">${obra.fecha ? formatDate(obra.fecha) : "Sin fecha"}</div></div><div class="dato-item"><div class="label">⚙️ Estado</div><div class="valor">${ESTADO_LABELS[obra.estado]}</div></div></div>
-<div class="seccion-titulo">🪵 Muebles — ${mueblesList.length} tipos · ${totalUnidades} unidades</div>${mueblesHTML}
-<div class="seccion-titulo">📦 Agregados — ${agregadosList.length} ítems</div>${agregadosHTML}
-${obra.notas ? `<div style="background:#f8fafc;border-left:3px solid #1e40af;padding:14px 18px;border-radius:0 8px 8px 0;margin-top:28px;font-size:13px;line-height:1.7">📝 <strong>Notas:</strong> ${obra.notas}</div>` : ""}
+<div class="cuerpo"><div class="status-badge">${sm.label} — ${diasLabel}</div>
+<div class="grid-datos"><div class="dato-item"><div class="label">Lugar</div><div class="valor">${obra.lugar}</div></div><div class="dato-item"><div class="label">Fecha</div><div class="valor">${obra.fecha ? formatDate(obra.fecha) : "Sin fecha"}</div></div><div class="dato-item"><div class="label">Estado</div><div class="valor">${ESTADO_LABELS[obra.estado]}</div></div></div>
+<div class="seccion-titulo">Muebles — ${mueblesList.length} tipos · ${totalUnidades} unidades</div>${mueblesHTML}
+<div class="seccion-titulo">Agregados — ${agregadosList.length} ítems</div>${agregadosHTML}
+${obra.notas ? `<div style="background:#f8fafc;border-left:3px solid #1e40af;padding:14px 18px;border-radius:0 8px 8px 0;margin-top:28px;font-size:13px;line-height:1.7"><strong>Notas:</strong> ${obra.notas}</div>` : ""}
 <div class="firma-box"><div class="firma"><div class="firma-linea"></div><div class="firma-label">Responsable de entrega</div></div><div class="firma"><div class="firma-linea"></div><div class="firma-label">Firma del cliente</div></div></div>
 <div class="footer"><span>Obras Grupo Aixa S.A.</span><span>Generado: ${new Date().toLocaleDateString("es-AR",{day:"2-digit",month:"long",year:"numeric"})}</span></div></div></body></html>`;
   const win = window.open("", "_blank");
@@ -100,27 +100,27 @@ export function generarInformeCierre(obra) {
   </div>
 </div>
 <div class="body">
-  <div class="verdict ${cumplimiento ? 'v-ok' : 'v-bad'}">${cumplimiento ? '✅ OBRA COMPLETADA DENTRO DEL PLAZO' : `⚠️ OBRA COMPLETADA CON ${Math.abs(diffDias)} DÍA${Math.abs(diffDias)!==1?'S':''} DE RETRASO`}</div>
+  <div class="verdict ${cumplimiento ? 'v-ok' : 'v-bad'}">${cumplimiento ? 'OBRA COMPLETADA DENTRO DEL PLAZO' : `OBRA COMPLETADA CON ${Math.abs(diffDias)} DÍA${Math.abs(diffDias)!==1?'S':''} DE RETRASO`}</div>
   <div class="kpi-grid">
     <div class="kpi"><div class="num" style="color:#2563EB">${totalDias}</div><div class="txt">Días planificados</div></div>
     <div class="kpi"><div class="num" style="color:${cumplimiento?'#059669':'#DC2626'}">${realDias}</div><div class="txt">Días reales</div></div>
     <div class="kpi"><div class="num" style="color:#D97706">${avgD}</div><div class="txt">Promedio x etapa</div></div>
     <div class="kpi"><div class="num" style="color:#DC2626">${blocked.length}</div><div class="txt">Bloqueos</div></div>
   </div>
-  <div class="sec"><div class="sec-t">📊 Duración por estación (días)</div>${barsHTML}</div>
-  <div class="sec"><div class="sec-t">🔴 Cuello de botella principal</div>
+  <div class="sec"><div class="sec-t">Duración por estación (días)</div>${barsHTML}</div>
+  <div class="sec"><div class="sec-t">Cuello de botella principal</div>
     <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:16px">
       <div style="font-size:16px;font-weight:700;color:#dc2626;margin-bottom:4px">${maxSt.name}</div>
       <div style="font-size:13px;color:#64748b">${maxSt.days} días — <strong style="color:#dc2626">${((maxSt.days / Math.max(realDias,1)) * 100).toFixed(0)}%</strong> del tiempo total</div>
       ${maxSt.note ? `<div style="margin-top:6px;font-size:12px;color:#94a3b8;font-style:italic">"${maxSt.note}"</div>` : ''}</div></div>
-  <div class="sec"><div class="sec-t">📋 Línea de tiempo</div>${timelineHTML}</div>
-  ${clarifs.length > 0 ? `<div class="sec"><div class="sec-t">💬 Aclaraciones (${clarifs.length})</div>${clarifs.map(c => `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:3px solid #d97706;border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:8px"><div style="font-weight:600;font-size:13px">${c.title}</div>${c.station?`<div style="font-size:11px;color:#2563eb">📍 ${c.station}</div>`:''}${c.detail?`<div style="font-size:12px;color:#64748b;margin-top:4px">${c.detail}</div>`:''}</div>`).join('')}</div>` : ''}
-  <div class="sec"><div class="sec-t">💡 Recomendaciones</div>
-    ${maxSt.days > avgD * 1.5 ? `<div class="rec">⚠️ <strong>${maxSt.name}</strong> excedió significativamente el promedio (${maxSt.days}d vs ${avgD}d). Reforzar personal o revisar procesos.</div>` : ''}
-    ${blocked.length > 0 ? `<div class="rec">🔴 Se registraron <strong>${blocked.length} bloqueo(s)</strong>: ${blocked.map(b=>b.name).join(', ')}. Revisar causas.</div>` : ''}
-    ${!cumplimiento ? `<div class="rec">📅 Entrega con <strong>${Math.abs(diffDias)} día(s) de retraso</strong>. Evaluar si el plazo fue realista.</div>` : ''}
-    ${clarifs.length > 2 ? `<div class="rec">💬 <strong>${clarifs.length} aclaraciones</strong> registradas. Posible falta de claridad en el alcance inicial.</div>` : ''}
-    ${cumplimiento && blocked.length === 0 ? `<div class="rec" style="background:#ecfdf5;border-left-color:#059669">✅ Completada a tiempo y sin bloqueos. Excelente gestión.</div>` : ''}
+  <div class="sec"><div class="sec-t">Línea de tiempo</div>${timelineHTML}</div>
+  ${clarifs.length > 0 ? `<div class="sec"><div class="sec-t">Aclaraciones (${clarifs.length})</div>${clarifs.map(c => `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:3px solid #d97706;border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:8px"><div style="font-weight:600;font-size:13px">${c.title}</div>${c.station?`<div style="font-size:11px;color:#2563eb">${c.station}</div>`:''}${c.detail?`<div style="font-size:12px;color:#64748b;margin-top:4px">${c.detail}</div>`:''}</div>`).join('')}</div>` : ''}
+  <div class="sec"><div class="sec-t">Recomendaciones</div>
+    ${maxSt.days > avgD * 1.5 ? `<div class="rec"><strong>${maxSt.name}</strong> excedió significativamente el promedio (${maxSt.days}d vs ${avgD}d). Reforzar personal o revisar procesos.</div>` : ''}
+    ${blocked.length > 0 ? `<div class="rec">Se registraron <strong>${blocked.length} bloqueo(s)</strong>: ${blocked.map(b=>b.name).join(', ')}. Revisar causas.</div>` : ''}
+    ${!cumplimiento ? `<div class="rec">Entrega con <strong>${Math.abs(diffDias)} día(s) de retraso</strong>. Evaluar si el plazo fue realista.</div>` : ''}
+    ${clarifs.length > 2 ? `<div class="rec"><strong>${clarifs.length} aclaraciones</strong> registradas. Posible falta de claridad en el alcance inicial.</div>` : ''}
+    ${cumplimiento && blocked.length === 0 ? `<div class="rec" style="background:#ecfdf5;border-left-color:#059669">Completada a tiempo y sin bloqueos. Excelente gestión.</div>` : ''}
   </div>
   <div class="footer"><span>Obras Grupo Aixa S.A. — Informe automático</span><span>${new Date().toLocaleDateString("es-AR",{day:"2-digit",month:"long",year:"numeric"})}</span></div>
 </div></body></html>`;
@@ -146,7 +146,7 @@ export async function generarPDFDiaAvance(obra, dia) {
     : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;align-items:start">${fotosEmb.map(f=>`<div style="border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;page-break-inside:avoid;break-inside:avoid"><div style="background:#f1f5f9;display:flex;align-items:center;justify-content:center"><img src="${f.b64}" style="display:block;max-width:100%;max-height:115mm;height:auto"/></div><div style="padding:5px 8px;background:#f8fafc;font-size:10px;color:#64748b">${f.name}</div></div>`).join('')}</div>`;
 
   const otrosHTML = otrosArchivos.length > 0
-    ? `<div style="margin-top:14px">${otrosArchivos.map(f=>`<div style="padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:#475569;margin-bottom:4px">📎 ${f.name}</div>`).join('')}</div>` : '';
+    ? `<div style="margin-top:14px">${otrosArchivos.map(f=>`<div style="padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:#475569;margin-bottom:4px">${f.name}</div>`).join('')}</div>` : '';
 
   const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Avance de Obra – ${dia.fecha ? formatDate(dia.fecha) : ''}</title>
 <style>@page{margin:18mm 15mm}body{font-family:'Segoe UI',system-ui,sans-serif;color:#1e293b;margin:0}
@@ -165,18 +165,18 @@ export async function generarPDFDiaAvance(obra, dia) {
   <div class="cover-grid">
     ${obra.fecha_entrega ? `<div class="citem"><div class="lbl">Entrega pactada</div><div class="val">${formatDate(obra.fecha_entrega)}</div></div>` : ''}
     <div class="citem"><div class="lbl">Fecha del día</div><div class="val">${dia.fecha ? formatDate(dia.fecha) : '—'}</div></div>
-    ${obra.finalizada ? '<div class="citem"><div class="lbl">Estado</div><div class="val">✅ Finalizada</div></div>' : ''}
+    ${obra.finalizada ? '<div class="citem"><div class="lbl">Estado</div><div class="val">Finalizada</div></div>' : ''}
   </div>
 </div>
 <div class="body">
   <div style="margin-bottom:24px">
-    <div class="sec-t">📋 Detalle del día</div>
+    <div class="sec-t">Detalle del día</div>
     <div class="campo"><div class="lbl">Fecha</div><div class="val">${dia.fecha ? formatDate(dia.fecha) : '—'}</div></div>
     <div class="campo"><div class="lbl">Operarios</div><div class="val">${dia.operarios || '—'}</div></div>
     <div class="campo"><div class="lbl">Detalle de trabajo</div><div class="val">${dia.detalle || '—'}</div></div>
   </div>
   <div style="margin-bottom:24px">
-    <div class="sec-t">📷 Fotos (${fotosEmb.length})</div>
+    <div class="sec-t">Fotos (${fotosEmb.length})</div>
     ${fotosHTML}${otrosHTML}
   </div>
   <div class="footer"><span>Obras Grupo Aixa S.A. — Avance de Obra</span><span>Generado: ${ahora}</span></div>
@@ -209,7 +209,7 @@ export function generarPDFMateriales(lista, entrega) {
     </tr>`;
   }).join("");
   const faltantesHTML = items.length === 0 ? '' : r.completo
-    ? `<div style="background:#ecfdf5;border-left:4px solid #059669;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:18px;font-size:13px;color:#065f46"><strong>✓ Están todos los materiales</strong> (${r.stock} en stock, ${r.recibidos} recibidos).</div>`
+    ? `<div style="background:#ecfdf5;border-left:4px solid #059669;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:18px;font-size:13px;color:#065f46"><strong>Están todos los materiales</strong> (${r.stock} en stock, ${r.recibidos} recibidos).</div>`
     : `<div style="background:#fef2f2;border-left:4px solid #dc2626;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:18px;font-size:12px;color:#7f1d1d">
         <strong style="font-size:13px">Faltan materiales</strong>
         ${r.faltaPedir.length ? `<div style="margin-top:6px"><strong>Falta pedir (${r.faltaPedir.length}):</strong> ${r.faltaPedir.map(detalleFaltante).join(' · ')}</div>` : ''}
@@ -246,7 +246,7 @@ tr{page-break-inside:avoid}
 </div>
 <div class="body">
   ${faltantesHTML}
-  ${lista.notas?`<div class="nota">📝 <strong>Notas:</strong> ${lista.notas}</div>`:''}
+  ${lista.notas?`<div class="nota"><strong>Notas:</strong> ${lista.notas}</div>`:''}
   ${items.length===0?'<p style="color:#94a3b8;text-align:center;padding:40px 0">Sin materiales cargados.</p>':`
   <table>
     <thead><tr>

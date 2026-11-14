@@ -4,28 +4,30 @@ import { avisar, confirmar } from "../lib/avisos.js";
 import { crearUsuario, deleteUsuario, getUsuarios } from "../lib/datos.js";
 import { diasRestantes } from "../lib/formato.js";
 import { enviarWhatsApp } from "../lib/produccion.js";
+import { CerrarConAtras } from "../lib/atras.js";
+import { Icono } from "../components/Icono.jsx";
 
 // ─── GESTIÓN USUARIOS ─────────────────────────────────────────────────────────
 export function GestionUsuarios({ onClose }) {
   const [usuarios, setUsuarios] = useState([]);
   const [form, setForm] = useState({ nombre:"", email:"", password:"", rol:"operario" });
   const ROL_META = { admin: { label:"ADMIN", color:"#1A2B4A", bg:"#EFF6FF", border:"#DBEAFE" }, operario: { label:"OPERARIO", color:"#0F766E", bg:"#F0FDF4", border:"#BBF7D0" }, finanzas: { label:"FINANZAS", color:"#7C3AED", bg:"#F5F3FF", border:"#DDD6FE" }, arquitecto: { label:"ARQUITECTO", color:"#B45309", bg:"#FEF3C7", border:"#FDE68A" } };
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState(null);   // { ok, texto }
   const [guardando, setGuardando] = useState(false);
   useEffect(() => { getUsuarios().then(u => u && setUsuarios(u)).catch(() => {}); }, []);
 
   async function agregar() {
-    if (!form.nombre || !form.email || !form.password) { setMsg("⚠️ Completá todos los campos"); return; }
-    if (usuarios.find(u => u.email.toLowerCase() === form.email.toLowerCase())) { setMsg("⚠️ Ya existe ese email"); return; }
-    if (form.password.length < 6) { setMsg("⚠️ La contraseña debe tener al menos 6 caracteres"); return; }
+    if (!form.nombre || !form.email || !form.password) { setMsg({ ok: false, texto: "Completá todos los campos" }); return; }
+    if (usuarios.find(u => u.email.toLowerCase() === form.email.toLowerCase())) { setMsg({ ok: false, texto: "Ya existe ese email" }); return; }
+    if (form.password.length < 6) { setMsg({ ok: false, texto: "La contraseña debe tener al menos 6 caracteres" }); return; }
     setGuardando(true);
     try {
       const nuevo = await crearUsuario(form);
       setUsuarios(u => [...u, nuevo]);
       setForm({ nombre:"", email:"", password:"", rol:"operario" });
-      setMsg("✅ Usuario creado");
-      setTimeout(() => setMsg(""), 3000);
-    } catch (e) { setMsg(`⚠️ ${e.message}`); }
+      setMsg({ ok: true, texto: "Usuario creado" });
+      setTimeout(() => setMsg(null), 3000);
+    } catch (e) { setMsg({ ok: false, texto: e.message }); }
     setGuardando(false);
   }
 
@@ -37,11 +39,12 @@ export function GestionUsuarios({ onClose }) {
   const si = { width:"100%", padding:"10px 13px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontFamily:"'Inter', sans-serif", fontSize:13, outline:"none", boxSizing:"border-box" };
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:480, maxHeight:"88vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+    <div onClick={e => e.target === e.currentTarget && onClose()} className="modal-fondo" style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <CerrarConAtras onClose={() => onClose()} />
+      <div className="modal-caja" style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:480, maxHeight:"88vh", overflowY:"auto", boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
         <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>Equipo</h2>
-          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
+          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}><Icono n="cerrar" /></button>
         </div>
         <div style={{ padding:"16px 24px" }}>
           {usuarios.map(u => (
@@ -57,7 +60,7 @@ export function GestionUsuarios({ onClose }) {
                 {(ROL_META[u.rol]||ROL_META.operario).label}
               </span>
               {u.id !== "admin" && <button onClick={() => eliminar(u.id)} style={{ background:"none", border:"none", color:"#CBD5E1", cursor:"pointer", fontSize:15, padding:0 }}
-                onMouseEnter={e => e.currentTarget.style.color="#EF4444"} onMouseLeave={e => e.currentTarget.style.color="#CBD5E1"}>✕</button>}
+                onMouseEnter={e => e.currentTarget.style.color="#EF4444"} onMouseLeave={e => e.currentTarget.style.color="#CBD5E1"}><Icono n="cerrar" /></button>}
             </div>
           ))}
           <div style={{ marginTop:20, paddingTop:20, borderTop:"1px solid #F1F5F9" }}>
@@ -77,7 +80,7 @@ export function GestionUsuarios({ onClose }) {
                 <option value="arquitecto">Arquitecto</option>
               </select>
             </div>
-            {msg && <div style={{ padding:"9px 13px", borderRadius:8, background: msg.startsWith("✅") ? "#ECFDF5" : "#FEF2F2", border:`1px solid ${msg.startsWith("✅") ? "#A7F3D0" : "#FECACA"}`, color: msg.startsWith("✅") ? "#059669" : "#DC2626", fontSize:13, marginBottom:12 }}>{msg}</div>}
+            {msg && <div style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 13px", borderRadius:8, background: msg.ok ? "#ECFDF5" : "#FEF2F2", border:`1px solid ${msg.ok ? "#A7F3D0" : "#FECACA"}`, color: msg.ok ? "#059669" : "#DC2626", fontSize:13, marginBottom:12 }}><Icono n={msg.ok ? "checkCirculo" : "alerta"} />{msg.texto}</div>}
             <button onClick={agregar} disabled={guardando} style={{ width:"100%", padding:"11px", background: guardando ? "#94A3B8" : "#1A2B4A", border:"none", borderRadius:8, fontFamily:"'Inter', sans-serif", fontSize:14, fontWeight:600, color:"#ffffff", cursor: guardando ? "not-allowed" : "pointer" }}>
               {guardando ? "Guardando..." : "Agregar usuario"}
             </button>
@@ -99,11 +102,12 @@ export function ConfigWhatsApp({ obras, onClose }) {
   const proximas = obras.filter(o => o.estado !== "terminado" && diasRestantes(o.fecha) > 7 && diasRestantes(o.fecha) <= 21).length;
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:440, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
+    <div onClick={e => e.target === e.currentTarget && onClose()} className="modal-fondo" style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", backdropFilter:"blur(4px)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <CerrarConAtras onClose={() => onClose()} />
+      <div className="modal-caja" style={{ background:"#ffffff", borderRadius:14, width:"100%", maxWidth:440, boxShadow:"0 24px 60px rgba(15,23,42,0.2)" }}>
         <div style={{ padding:"20px 24px", borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>Alertas WhatsApp</h2>
-          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}>✕</button>
+          <button onClick={onClose} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}><Icono n="cerrar" /></button>
         </div>
         <div style={{ padding:"20px 24px" }}>
           <div className="grid-form" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>

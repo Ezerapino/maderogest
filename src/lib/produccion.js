@@ -4,11 +4,11 @@ import { calcDurMinAixa, diasRestantes, fmtDurAixa, getStatus } from "./formato.
 
 export const ESTADO_LABELS = { pendiente: "Pendiente", en_proceso: "En proceso", terminado: "Terminado" };
 export const STATUS_META = {
-  urgent:  { color: "#e05555", bg: "rgba(224,85,85,0.13)", label: "URGENTE", icon: "🚨" },
-  warning: { color: "#d4783a", bg: "rgba(212,120,58,0.13)", label: "PRÓXIMA", icon: "⏰" },
-  ok:      { color: "#4a9a6a", bg: "rgba(74,154,106,0.12)", label: "A TIEMPO", icon: "✅" },
-  done:    { color: "#6a8a9a", bg: "rgba(106,138,154,0.1)", label: "ENTREGADA", icon: "📦" },
-  vencida: { color: "#c84040", bg: "rgba(200,64,64,0.18)", label: "VENCIDA", icon: "⛔" },
+  urgent:  { color: "#e05555", bg: "rgba(224,85,85,0.13)", label: "URGENTE" },
+  warning: { color: "#d4783a", bg: "rgba(212,120,58,0.13)", label: "PRÓXIMA" },
+  ok:      { color: "#4a9a6a", bg: "rgba(74,154,106,0.12)", label: "A TIEMPO" },
+  done:    { color: "#6a8a9a", bg: "rgba(106,138,154,0.1)", label: "ENTREGADA" },
+  vencida: { color: "#c84040", bg: "rgba(200,64,64,0.18)", label: "VENCIDA" },
 };
 
 export function normalizarMuebles(muebles) {

@@ -53,7 +53,7 @@ export default async function handler(req, res) {
       ${seccion("Pendientes a resolver", campo("Pendientes", d.faltantes))}
       ${seccion("Información a destacar", campo("Información relevante", d.informacionDestacada))}
       ${imagenes.length ? seccion(`Fotos (${imagenes.length})`, imagenes.map(f => `<div style="margin-bottom:14px"><img src="${esc(f.url)}" alt="${esc(f.name)}" style="max-width:100%;border:1px solid #E2E8F0;border-radius:6px"><div style="font-size:11px;color:#94A3B8">${esc(f.name)}</div></div>`).join("")) : ""}
-      ${otros.length ? seccion(`Archivos (${otros.length})`, otros.map(f => `<div style="font-size:13px;margin-bottom:6px">📎 <a href="${esc(f.url)}">${esc(f.name)}</a></div>`).join("")) : ""}
+      ${otros.length ? seccion(`Archivos (${otros.length})`, otros.map(f => `<div style="font-size:13px;margin-bottom:6px"><a href="${esc(f.url)}">${esc(f.name)}</a></div>`).join("")) : ""}
       <p style="font-size:12px;color:#94A3B8;margin-top:18px">Enviado por ${esc(caller.nombre)} desde MaderoGest.</p>`;
     const texto = [
       `Informe final de obra: ${d.nombreObra || obra.nombre}`,

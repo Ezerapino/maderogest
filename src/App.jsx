@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { Avisos } from "./components/Avisos.jsx";
+import { Icono } from "./components/Icono.jsx";
 import { Login } from "./components/Login.jsx";
-import { cerrarSesion, getMantenimiento, getMateriales, getObras, getProyectos, getSesion, patchEntregas, supabase, upsertProyecto, vinculoEntregas } from "./lib/datos.js";
+import { cerrarSesion, getMantenimientoPendientes, getMateriales, getObras, getProyectos, getSesion, patchEntregas, supabase, upsertProyecto, vinculoEntregas } from "./lib/datos.js";
 import { LOGO_AIXA, diasRestantes, uid } from "./lib/formato.js";
 import { EMAIL_HISTORIAL } from "./lib/historial.js";
-import { DIAS_ALERTA_MANTENIMIENTO, tareaAtrasada } from "./lib/mantenimiento.js";
+import { DIAS_ALERTA_MANTENIMIENTO, puedeVerMantenimiento, tareaAtrasada } from "./lib/mantenimiento.js";
 import { alertasMateriales } from "./lib/materiales.js";
 import { RUTAS_PESTANAS, navegar, useRuta } from "./lib/rutas.js";
 import { ObrasAceptadasModule } from "./modulos/Aceptadas.jsx";
@@ -74,9 +75,9 @@ function Aplicacion() {
   // estando en Mantenimiento lo actualiza la propia pestaña con el evento "mantenimiento-actualizado"
   const [mantAlertCount, setMantAlertCount] = useState(0);
   useEffect(() => {
-    if (!sesion || sesion.rol === "arquitecto" || sesion.rol === "finanzas" || ruta.pestana === "mantenimiento") return;
+    if (!sesion || !puedeVerMantenimiento(sesion.rol) || ruta.pestana === "mantenimiento") return;
     let vigente = true;
-    getMantenimiento().then(ts => { if (vigente) setMantAlertCount((ts || []).filter(tareaAtrasada).length); }).catch(() => {});
+    getMantenimientoPendientes().then(ts => { if (vigente) setMantAlertCount((ts || []).filter(tareaAtrasada).length); }).catch(() => {});
     return () => { vigente = false; };
   }, [sesion, ruta.pestana]);
   useEffect(() => {
@@ -96,7 +97,7 @@ function Aplicacion() {
   const canSeeAvanceProduccion = !isArquitecto && !isFinanzas;
   const canSeeAvanceObra = !isFinanzas;
   const canSeeMateriales = !isArquitecto && !isFinanzas;
-  const canSeeMantenimiento = !isArquitecto && !isFinanzas;
+  const canSeeMantenimiento = puedeVerMantenimiento(sesion?.rol);
   const canSeeHistorial = sesion?.email?.toLowerCase() === EMAIL_HISTORIAL;
 
   // La pestaña sale de la dirección; si el rol no la puede ver (o la dirección es "/"), va a su pantalla de inicio
@@ -132,19 +133,19 @@ function Aplicacion() {
           {/* TABS (en el celular pasan a una barra fija abajo, ver index.css) */}
           <nav className="app-tabs" style={{ display:"flex", gap:2, background:"#F1F5F9", borderRadius:10, padding:3 }}>
             {[
-              { id:"entregas",    icono:"📦", nombre:"Entregas",             corto:"Entregas",   ver:true },
-              { id:"aceptadas",   icono:"🗂️", nombre:"Obras Aceptadas",      corto:"Aceptadas",  ver:true },
-              { id:"avance",      icono:"🏗", nombre:"Avance de Producción", corto:"Producción", ver:canSeeAvanceProduccion },
-              { id:"avance_obra", icono:"🏠", nombre:"Avance de Obra",       corto:"Obra",       ver:canSeeAvanceObra },
-              { id:"cobros",      icono:"💰", nombre:"Cobros",               corto:"Cobros",     ver:canSeeCobros, color:"#7C3AED" },
-              { id:"materiales",  icono:"🪵", nombre:"Materiales",           corto:"Materiales", ver:canSeeMateriales, color:"#0F766E", alertas:matAlertCount, alertaTitulo:`${matAlertCount} obra(s) con entrega próxima y materiales faltantes` },
-              { id:"mantenimiento", icono:"🔧", nombre:"Mantenimiento planta", corto:"Planta", ver:canSeeMantenimiento, color:"#B45309", alertas:mantAlertCount, alertaTitulo:`${mantAlertCount} tarea(s) de mantenimiento con más de ${DIAS_ALERTA_MANTENIMIENTO} días sin hacer` },
+              { id:"entregas",    icono:"camion", nombre:"Entregas",             corto:"Entregas",   ver:true },
+              { id:"aceptadas",   icono:"carpeta", nombre:"Obras Aceptadas",      corto:"Aceptadas",  ver:true },
+              { id:"avance",      icono:"fabrica", nombre:"Avance de Producción", corto:"Producción", ver:canSeeAvanceProduccion },
+              { id:"avance_obra", icono:"casa", nombre:"Avance de Obra",       corto:"Obra",       ver:canSeeAvanceObra },
+              { id:"cobros",      icono:"dinero", nombre:"Cobros",               corto:"Cobros",     ver:canSeeCobros, color:"#7C3AED" },
+              { id:"materiales",  icono:"madera", nombre:"Materiales",           corto:"Materiales", ver:canSeeMateriales, color:"#0F766E", alertas:matAlertCount, alertaTitulo:`${matAlertCount} obra(s) con entrega próxima y materiales faltantes` },
+              { id:"mantenimiento", icono:"llave", nombre:"Mantenimiento planta", corto:"Planta", ver:canSeeMantenimiento, color:"#B45309", alertas:mantAlertCount, alertaTitulo:`${mantAlertCount} tarea(s) de mantenimiento con más de ${DIAS_ALERTA_MANTENIMIENTO} días sin hacer` },
             ].filter(t => t.ver).map(t => {
               const activa = activeTab === t.id;
               return (
                 <button key={t.id} onClick={() => setActiveTab(t.id)} className={activa ? "app-tab activa" : "app-tab"} aria-current={activa ? "page" : undefined}
-                  style={{ "--tab-color": t.color || "#1A2B4A", position:"relative", padding:"7px 18px", borderRadius:8, border:"none", background: activa ? (t.color || "#1A2B4A") : "transparent", color: activa ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activa ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
-                  <span className="app-tab-icono">{t.icono}</span> <span className="app-tab-nombre">{t.nombre}</span><span className="app-tab-corto">{t.corto}</span>
+                  style={{ "--tab-color": t.color || "#1A2B4A", position:"relative", display:"inline-flex", alignItems:"center", gap:6, padding:"7px 18px", borderRadius:8, border:"none", background: activa ? (t.color || "#1A2B4A") : "transparent", color: activa ? "#ffffff" : "#64748B", fontFamily:"'Sora', sans-serif", fontSize:12, fontWeight: activa ? 700 : 500, cursor:"pointer", transition:"all 0.15s", letterSpacing:0.3 }}>
+                  <span className="app-tab-icono"><Icono n={t.icono} tam={15} /></span><span className="app-tab-nombre">{t.nombre}</span><span className="app-tab-corto">{t.corto}</span>
                   {t.alertas > 0 && (
                     <span className="app-tab-alerta" title={t.alertaTitulo}
                       style={{ marginLeft:6, background:"#DC2626", color:"#fff", borderRadius:99, padding:"1px 7px", fontSize:10, fontWeight:700 }}>{t.alertas}</span>
@@ -158,7 +159,7 @@ function Aplicacion() {
         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
           {canSeeHistorial && (
             <button onClick={() => setActiveTab("historial")} className="btn-icon" title="Historial de modificaciones"
-              style={{ background: activeTab === "historial" ? "#1A2B4A" : "transparent", border:"1px solid #E8ECF0", borderRadius:8, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:16 }}>🕑</button>
+              style={{ background: activeTab === "historial" ? "#1A2B4A" : "transparent", border:"1px solid #E8ECF0", borderRadius:8, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color: activeTab === "historial" ? "#ffffff" : "#475569" }}><Icono n="historial" tam={17} /></button>
           )}
 
           {/* WhatsApp */}
@@ -182,9 +183,9 @@ function Aplicacion() {
             {isArquitecto && <span className="solo-escritorio" style={{ fontSize:10, color:"#92400E", background:"#FEF3C7", border:"1px solid #FDE68A", borderRadius:4, padding:"1px 6px", fontWeight:600 }}>ARQUITECTO</span>}
           </div>
 
-          <button onClick={handleLogout}
-            style={{ background:"transparent", border:"1px solid #E8ECF0", borderRadius:8, padding:"7px 14px", color:"#64748B", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
-            Salir
+          <button onClick={handleLogout} title="Cerrar sesión" aria-label="Cerrar sesión" className="boton-salir"
+            style={{ display:"flex", alignItems:"center", gap:6, background:"transparent", border:"1px solid #E8ECF0", borderRadius:8, padding:"7px 14px", color:"#64748B", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>
+            <Icono n="salir" tam={15} /><span className="solo-escritorio">Salir</span>
           </button>
         </div>
       </header>
