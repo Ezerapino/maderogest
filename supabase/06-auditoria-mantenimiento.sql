@@ -1,6 +1,6 @@
 -- PASO 6: que el Historial muestre el nombre de la tarea en los cambios de "Mantenimiento planta".
--- Solo reemplaza la función auditar() (misma que en el paso 4, con "tarea" como nombre de respaldo).
--- No cambia datos existentes.
+-- Reemplaza la función auditar() (misma que en el paso 4, con "tarea" como nombre de respaldo)
+-- y completa el nombre en las entradas del Historial de Mantenimiento que quedaron sin él.
 
 create or replace function public.auditar() returns trigger
 language plpgsql security definer set search_path = public as $$
@@ -47,5 +47,5 @@ end $$;
 -- Las entradas ya anotadas sin nombre: se completan con el nombre de la tarea
 update public.auditoria a
 set obra = coalesce(case when jsonb_typeof(a.cambios -> 'tarea') = 'string' then a.cambios ->> 'tarea' end,
-(select m.tarea from public.mantenimiento m where m.id = a.fila_id))
+                   (select m.tarea from public.mantenimiento m where m.id = a.fila_id))
 where a.tabla = 'mantenimiento' and a.obra is null;
