@@ -4,7 +4,7 @@ import { Login } from "./components/Login.jsx";
 import { cerrarSesion, getMantenimiento, getMateriales, getObras, getProyectos, getSesion, patchEntregas, supabase, upsertProyecto, vinculoEntregas } from "./lib/datos.js";
 import { LOGO_AIXA, diasRestantes, uid } from "./lib/formato.js";
 import { EMAIL_HISTORIAL } from "./lib/historial.js";
-import { tareaAtrasada } from "./lib/mantenimiento.js";
+import { DIAS_ALERTA_MANTENIMIENTO, tareaAtrasada } from "./lib/mantenimiento.js";
 import { alertasMateriales } from "./lib/materiales.js";
 import { RUTAS_PESTANAS, navegar, useRuta } from "./lib/rutas.js";
 import { ObrasAceptadasModule } from "./modulos/Aceptadas.jsx";
@@ -70,12 +70,15 @@ function Aplicacion() {
     getMateriales().then(ls => setMatAlertCount(alertasMateriales((ls || []).filter(l => !archivadas.has(l.obra_id)), activas).length)).catch(() => {});
   }, [sesion, obras, ruta]);
 
-  // Tareas de mantenimiento con más de 5 días sin hacer (número rojo en la pestaña)
+  // Tareas de mantenimiento atrasadas (número rojo en la pestaña). Se lee al cambiar de pestaña;
+  // estando en Mantenimiento lo actualiza la propia pestaña con el evento "mantenimiento-actualizado"
   const [mantAlertCount, setMantAlertCount] = useState(0);
   useEffect(() => {
-    if (!sesion || sesion.rol === "arquitecto" || sesion.rol === "finanzas") return;
-    getMantenimiento().then(ts => setMantAlertCount((ts || []).filter(tareaAtrasada).length)).catch(() => {});
-  }, [sesion, ruta]);
+    if (!sesion || sesion.rol === "arquitecto" || sesion.rol === "finanzas" || ruta.pestana === "mantenimiento") return;
+    let vigente = true;
+    getMantenimiento().then(ts => { if (vigente) setMantAlertCount((ts || []).filter(tareaAtrasada).length); }).catch(() => {});
+    return () => { vigente = false; };
+  }, [sesion, ruta.pestana]);
   useEffect(() => {
     const alCambiar = e => setMantAlertCount(e.detail);
     window.addEventListener("mantenimiento-actualizado", alCambiar);
@@ -135,7 +138,7 @@ function Aplicacion() {
               { id:"avance_obra", icono:"🏠", nombre:"Avance de Obra",       corto:"Obra",       ver:canSeeAvanceObra },
               { id:"cobros",      icono:"💰", nombre:"Cobros",               corto:"Cobros",     ver:canSeeCobros, color:"#7C3AED" },
               { id:"materiales",  icono:"🪵", nombre:"Materiales",           corto:"Materiales", ver:canSeeMateriales, color:"#0F766E", alertas:matAlertCount, alertaTitulo:`${matAlertCount} obra(s) con entrega próxima y materiales faltantes` },
-              { id:"mantenimiento", icono:"🔧", nombre:"Mantenimiento planta", corto:"Planta", ver:canSeeMantenimiento, color:"#B45309", alertas:mantAlertCount, alertaTitulo:`${mantAlertCount} tarea(s) de mantenimiento con más de 5 días sin hacer` },
+              { id:"mantenimiento", icono:"🔧", nombre:"Mantenimiento planta", corto:"Planta", ver:canSeeMantenimiento, color:"#B45309", alertas:mantAlertCount, alertaTitulo:`${mantAlertCount} tarea(s) de mantenimiento con más de ${DIAS_ALERTA_MANTENIMIENTO} días sin hacer` },
             ].filter(t => t.ver).map(t => {
               const activa = activeTab === t.id;
               return (

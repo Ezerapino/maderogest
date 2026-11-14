@@ -6,7 +6,7 @@ import { formatDate, sinAcentos, uid } from "../lib/formato.js";
 import { DIAS_ALERTA_MANTENIMIENTO, diasDesdeSolicitud, hoyLocal, tareaAtrasada } from "../lib/mantenimiento.js";
 
 const COLOR = "#B45309";
-const textoHace = d => d <= 0 ? "hoy" : d === 1 ? "hace 1 día" : `hace ${d} días`;
+const textoHace = d => d < 0 ? (d === -1 ? "mañana" : `dentro de ${-d} días`) : d === 0 ? "hoy" : d === 1 ? "hace 1 día" : `hace ${d} días`;
 const estadoTarea = t => !t.realizada ? "hacer" : t.supervisada ? "terminada" : "supervisar";
 
 const FILTROS = [
@@ -49,7 +49,12 @@ export function MantenimientoModule({ sesion }) {
     try {
       await updateMantenimiento(t.id, cambio);
       await cargar();
-      if (deshacer) avisar(deshacer.texto, { tipo: "ok", deshacer: async () => { await updateMantenimiento(t.id, deshacer.volver); await cargar(); } });
+      if (deshacer) avisar(deshacer.texto, { tipo: "ok", deshacer: async () => {
+        setOcupado(t.id);
+        try { await updateMantenimiento(t.id, deshacer.volver); await cargar(); }
+        catch (e) { avisar(`No se pudo deshacer: ${e.message}`, { tipo: "error" }); }
+        finally { setOcupado(null); }
+      } });
       return true;
     } catch (e) { avisar(`No se pudo guardar: ${e.message}`, { tipo: "error" }); return false; }
     finally { setOcupado(null); }
@@ -71,15 +76,19 @@ export function MantenimientoModule({ sesion }) {
   }
 
   async function guardarTarea(form) {
+    const orig = modal.tarea;
     const datos = {
       tarea: form.tarea.trim(), detalle: form.detalle.trim() || null, responsable: form.responsable.trim() || null, supervisor: form.supervisor.trim() || null,
-      fecha_solicitud: form.fecha_solicitud || hoyLocal(),
+      // Si se borra la fecha, se mantiene la que tenía (no se reinicia la antigüedad de la tarea)
+      fecha_solicitud: form.fecha_solicitud || orig?.fecha_solicitud || hoyLocal(),
     };
     try {
-      if (modal.tarea) {
-        if (modal.tarea.realizada) datos.realizada_en = form.realizada_en || modal.tarea.realizada_en;
-        if (modal.tarea.supervisada) datos.supervisada_en = form.supervisada_en || modal.tarea.supervisada_en;
-        await updateMantenimiento(modal.tarea.id, datos);
+      if (orig) {
+        if (orig.realizada) datos.realizada_en = form.realizada_en || orig.realizada_en;
+        if (orig.supervisada) datos.supervisada_en = form.supervisada_en || orig.supervisada_en;
+        // Solo se guarda lo que se cambió en el formulario, para no pisar lo que otro haya guardado mientras tanto
+        const cambio = Object.fromEntries(Object.entries(datos).filter(([k, v]) => (v ?? null) !== (orig[k] ?? null)));
+        if (Object.keys(cambio).length) await updateMantenimiento(orig.id, cambio);
       } else {
         await insertMantenimiento({ id: uid(), ...datos, solicitado_por: sesion.nombre, realizada: false, supervisada: false });
       }
@@ -96,7 +105,7 @@ export function MantenimientoModule({ sesion }) {
   const terminadas = tareas.filter(t => t.realizada && t.supervisada);
   const q = sinAcentos(busqueda.trim());
   const visibles = tareas
-    .filter(t => filtro === "todas" || estadoTarea(t) === filtro)
+    .filter(t => filtro === "todas" || (filtro === "atrasadas" ? tareaAtrasada(t) : estadoTarea(t) === filtro))
     .filter(t => !q || [t.tarea, t.detalle, t.responsable, t.supervisor, t.solicitado_por].some(x => sinAcentos(x).includes(q)))
     .sort((a, b) => {
       // Lo que falta hacer, de lo más viejo a lo más nuevo; lo hecho, lo último arriba
@@ -112,7 +121,7 @@ export function MantenimientoModule({ sesion }) {
       <div className="grid-numeros" style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:28 }}>
         {[
           { num: pendientes.length, label: "Para hacer", color: "#1A2B4A", border: "#E8ECF0", f: "hacer" },
-          { num: atrasadas.length, label: `Atrasadas (+${DIAS_ALERTA_MANTENIMIENTO} días)`, color: "#DC2626", border: atrasadas.length ? "#FECACA" : "#E8ECF0", f: "hacer" },
+          { num: atrasadas.length, label: `Atrasadas (+${DIAS_ALERTA_MANTENIMIENTO} días)`, color: "#DC2626", border: atrasadas.length ? "#FECACA" : "#E8ECF0", f: "atrasadas" },
           { num: porSupervisar.length, label: "Hechas, falta supervisar", color: "#D97706", border: "#E8ECF0", f: "supervisar" },
           { num: terminadas.length, label: "Terminadas y supervisadas", color: "#059669", border: "#E8ECF0", f: "terminada" },
         ].map((s, i) => (
@@ -150,6 +159,12 @@ export function MantenimientoModule({ sesion }) {
           {busqueda && <button onClick={() => setBusqueda("")} aria-label="Borrar búsqueda" style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"#94A3B8", cursor:"pointer", fontSize:14, padding:2 }}>✕</button>}
         </div>
         <span style={{ fontSize:12, color:"#94A3B8" }}>{visibles.length} tarea{visibles.length !== 1 ? "s" : ""}</span>
+        {filtro === "atrasadas" && (
+          <button onClick={() => setFiltro("hacer")} title="Ver todas las tareas para hacer"
+            style={{ padding:"4px 10px", borderRadius:99, background:"#FEF2F2", border:"1px solid #FECACA", color:"#DC2626", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+            Solo atrasadas ✕
+          </button>
+        )}
       </div>
 
       {error && <div style={{ marginBottom:16, padding:"10px 14px", borderRadius:8, background:"#FEF2F2", border:"1px solid #FECACA", color:"#DC2626", fontSize:13 }}>No se pudieron leer las tareas: {error}</div>}
@@ -157,8 +172,8 @@ export function MantenimientoModule({ sesion }) {
       {/* LISTA */}
       {visibles.length === 0 ? (
         <div style={{ textAlign:"center", padding:"70px 20px", background:"#ffffff", borderRadius:16, border:"1px solid #E8ECF0" }}>
-          <div style={{ fontSize:30, marginBottom:8 }}>{filtro === "hacer" && !q ? "🎉" : "🔧"}</div>
-          <div style={{ fontSize:13, color:"#94A3B8" }}>{q ? "Ninguna tarea coincide con la búsqueda" : filtro === "hacer" ? "No hay tareas pendientes" : "No hay tareas acá"}</div>
+          <div style={{ fontSize:30, marginBottom:8 }}>{(filtro === "hacer" || filtro === "atrasadas") && !q ? "🎉" : "🔧"}</div>
+          <div style={{ fontSize:13, color:"#94A3B8" }}>{q ? "Ninguna tarea coincide con la búsqueda" : filtro === "hacer" ? "No hay tareas pendientes" : filtro === "atrasadas" ? "No hay tareas atrasadas" : "No hay tareas acá"}</div>
           {!tareas.length && <div style={{ fontSize:12, color:"#94A3B8", marginTop:6 }}>Cargá la primera con "+ Nueva tarea".</div>}
         </div>
       ) : (
