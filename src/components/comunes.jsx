@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { avisar } from "../lib/avisos.js";
 import { formatDate } from "../lib/formato.js";
 import { CerrarConAtras } from "../lib/atras.js";
+import { linkFicha, navegar } from "../lib/rutas.js";
 import { Icono } from "./Icono.jsx";
 
 // Botón "Enviar por mail": sale de la casilla de alertas a la lista fija de avisos; si se escriben
@@ -207,5 +208,17 @@ export function FiltroMes({ valor, onCambio, etiqueta = "Fechas" }) {
         <input type="month" value={valor} autoFocus={eligiendo} aria-label="Mes" onChange={e => { onCambio(e.target.value); }} style={{ ...estilo, cursor:"text" }} />
       )}
     </div>
+  );
+}
+
+// Botón para ir a la ficha de la obra a la que pertenece una entrega (desde cualquier pestaña)
+export function BotonFicha({ entrega, estilo, texto = "Ficha de la obra" }) {
+  if (!entrega?.proyecto_id) return null;
+  const link = linkFicha({ id: entrega.proyecto_id, nombre: entrega.nombre });
+  return (
+    <a href={link} title="Ver todo lo de esta obra en una página" onClick={e => { if (e.ctrlKey || e.metaKey || e.shiftKey) return; e.preventDefault(); navegar(link); }}
+      style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"7px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#1A2B4A", fontSize:12, fontWeight:600, textDecoration:"none", whiteSpace:"nowrap", ...estilo }}>
+      <Icono n="documento" /> {texto}
+    </a>
   );
 }

@@ -1,7 +1,7 @@
 // Pestaña Avance de Obra (días, fotos e informe final)
 import { useState, useEffect, useRef } from "react";
 import { VisorFotos } from "../components/VisorFotos.jsx";
-import { EnviarPorMail } from "../components/comunes.jsx";
+import { BotonFicha, EnviarPorMail } from "../components/comunes.jsx";
 import { avisar, confirmar } from "../lib/avisos.js";
 import { apiFetch, b64ToBlob, deleteDiaAvanceById, modificarFila, deleteFileAvance, deleteObraAvanceById, getDiasAvance, getInformeFinal, getInformesFinalesObraIds, getObrasAvance, imgToBase64, insertDiaAvance, insertObraAvance, updateDiaAvance, updateObraAvance, uploadFileAvance, uploadFileInforme, upsertInformeFinal, vinculoEntregas } from "../lib/datos.js";
 import { formatDate } from "../lib/formato.js";
@@ -251,6 +251,7 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
                     {selected.finalizada ? "Reabrir obra" : <><Icono n="checkCirculo" /> Finalizar obra</>}
                   </button>
                 )}
+                <BotonFicha entrega={entregas.find(e => e.id === selected.obra_id)} />
                 <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16, flexShrink:0 }}><Icono n="cerrar" /></button>
               </div>
             </div>

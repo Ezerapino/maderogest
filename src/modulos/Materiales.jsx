@@ -1,6 +1,6 @@
 // Pestaña Materiales
 import { useState, useEffect, useRef } from "react";
-import { ModalElegirEntrega } from "../components/comunes.jsx";
+import { BotonFicha, ModalElegirEntrega } from "../components/comunes.jsx";
 import { avisar, confirmar } from "../lib/avisos.js";
 import { apiFetch, deleteMaterialById, enviarAvisoAhora, getMateriales, getObrasAceptadas, insertMaterial, modificarFila, uploadArchivoImportacion, vinculoEntregas } from "../lib/datos.js";
 import { diasHastaFecha, fmtDateAixa, sinAcentos, textoDiasEntrega, uid } from "../lib/formato.js";
@@ -481,7 +481,7 @@ export function MaterialesModule({ sesion, entregas = [] }) {
                     <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:17, fontWeight:700, color:"#1A2B4A", margin:0 }}>{selected.obra_nombre}</h2>
                     {selected.obra_lugar && <div style={{ fontSize:12, color:"#94A3B8", marginTop:2 }}><Icono n="ubicacion" /> {selected.obra_lugar}</div>}
                   </div>
-                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                  <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", justifyContent:"flex-end" }}>
                     <button onClick={() => { setNotasEdit(selected.notas||""); setShowNotasModal(true); }}
                       style={{ padding:"7px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#64748B", fontSize:12, cursor:"pointer" }}><Icono n="nota" /> Notas</button>
                     <button onClick={() => generarPDFMateriales(selected, entrega)}
@@ -496,6 +496,7 @@ export function MaterialesModule({ sesion, entregas = [] }) {
                       onMouseEnter={e=>e.currentTarget.style.background="#FEE2E2"} onMouseLeave={e=>e.currentTarget.style.background="#FEF2F2"}>
                       <Icono n="basura" /> Eliminar
                     </button>}
+                    <BotonFicha entrega={entrega} />
                     <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16 }}><Icono n="cerrar" /></button>
                   </div>
                 </div>

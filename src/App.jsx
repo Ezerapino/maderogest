@@ -2,11 +2,12 @@ import { useState, useEffect } from "react";
 import { Avisos } from "./components/Avisos.jsx";
 import { Icono } from "./components/Icono.jsx";
 import { Login } from "./components/Login.jsx";
-import { cerrarSesion, getMantenimientoPendientes, getMateriales, getObras, getProyectos, getSesion, patchEntregas, supabase, upsertProyecto, vinculoEntregas } from "./lib/datos.js";
+import { cerrarSesion, getMantenimientoPendientes, getMateriales, getProduccionResumen, getObras, getProyectos, getSesion, patchEntregas, supabase, upsertProyecto, vinculoEntregas } from "./lib/datos.js";
 import { LOGO_AIXA, diasRestantes, uid } from "./lib/formato.js";
 import { EMAIL_HISTORIAL } from "./lib/historial.js";
 import { DIAS_ALERTA_MANTENIMIENTO, puedeVerMantenimiento, tareaAtrasada } from "./lib/mantenimiento.js";
 import { alertasMateriales } from "./lib/materiales.js";
+import { riesgosDeEntregas } from "./lib/riesgo.js";
 import { RUTAS_PESTANAS, navegar, useRuta } from "./lib/rutas.js";
 import { ObrasAceptadasModule } from "./modulos/Aceptadas.jsx";
 import { ConfigWhatsApp, GestionUsuarios } from "./modulos/Administracion.jsx";
@@ -64,12 +65,20 @@ function Aplicacion() {
   }, []);
 
   const [matAlertCount, setMatAlertCount] = useState(0);
-  // Recalcula el contador de alertas de materiales al entrar y al cambiar de pestaña
+  const [riesgos, setRiesgos] = useState({});   // { idEntrega: { texto, motivos } } entregas en riesgo
+  // Al entrar y al cambiar de pestaña: contador de alertas de materiales y entregas en riesgo
   useEffect(() => {
-    if (!sesion || sesion.rol === "arquitecto" || sesion.rol === "finanzas") return;
+    if (!sesion) return;
+    let vigente = true;
     const { activas, archivadas } = vinculoEntregas(obras);
-    getMateriales().then(ls => setMatAlertCount(alertasMateriales((ls || []).filter(l => !archivadas.has(l.obra_id)), activas).length)).catch(() => {});
-  }, [sesion, obras, ruta]);
+    Promise.all([getMateriales(), getProduccionResumen()]).then(([ls, prod]) => {
+      if (!vigente) return;
+      const listas = (ls || []).filter(l => !archivadas.has(l.obra_id));
+      if (sesion.rol !== "arquitecto" && sesion.rol !== "finanzas") setMatAlertCount(alertasMateriales(listas, activas).length);
+      setRiesgos(riesgosDeEntregas(activas, prod || [], listas, diasRestantes));
+    }).catch(() => {});
+    return () => { vigente = false; };
+  }, [sesion, obras, ruta.pestana]);
 
   // Tareas de mantenimiento atrasadas (número rojo en la pestaña). Se lee al cambiar de pestaña;
   // estando en Mantenimiento lo actualiza la propia pestaña con el evento "mantenimiento-actualizado"
@@ -192,9 +201,9 @@ function Aplicacion() {
 
       {/* MAIN CONTENT */}
       <main className="app-main" style={{ maxWidth:1200, margin:"0 auto", padding:"28px 24px 100px" }}>
-        {activeTab === "entregas" && <EntregasModule sesion={sesion} obras={obras} proyectos={proyectos} recargarObras={recargarObras} />}
+        {activeTab === "entregas" && <EntregasModule sesion={sesion} riesgos={riesgos} obras={obras} proyectos={proyectos} recargarObras={recargarObras} />}
         {activeTab === "aceptadas" && <ObrasAceptadasModule sesion={sesion} proyectos={proyectos} recargarObras={recargarObras} />}
-        {activeTab === "avance" && canSeeAvanceProduccion && <AvanceModule sesion={sesion} entregas={obras} />}
+        {activeTab === "avance" && canSeeAvanceProduccion && <AvanceModule sesion={sesion} entregas={obras} riesgos={riesgos} />}
         {activeTab === "avance_obra" && canSeeAvanceObra && <AvanceObraModule sesion={sesion} entregas={obras} />}
         {activeTab === "cobros" && canSeeCobros && <CobrosModule entregas={obras} />}
         {activeTab === "materiales" && canSeeMateriales && <MaterialesModule sesion={sesion} entregas={obras} />}

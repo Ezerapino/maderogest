@@ -6,6 +6,7 @@
 // Variables en Vercel: CRON_SECRET y las del envío de mails (ver _email.js).
 import { adminClient, getCaller, sendError } from "./_lib.js";
 import { APP_URL, enviarEmail, esc, linkFicha } from "./_email.js";
+import { evaluarRiesgo, porcentajeProduccion } from "../src/lib/riesgo.js";   // la misma regla que muestra la app
 
 const DIAS_ALERTA = 10;
 
@@ -26,11 +27,13 @@ function detalle(it) {
 function textoDias(d) { return d < 0 ? `vencida hace ${-d} día${d === -1 ? "" : "s"}` : d === 0 ? "entrega HOY" : `faltan ${d} día${d === 1 ? "" : "s"}`; }
 
 export async function armarResumen(db) {
-  const [{ data: todas, error: e1 }, { data: todasLasListas, error: e2 }, { data: proyectos, error: e3 }] = await Promise.all([
+  const [{ data: todas, error: e1 }, { data: todasLasListas, error: e2 }, { data: proyectos, error: e3 }, { data: produccion, error: e4 }] = await Promise.all([
     db.from("obras").select("id, nombre, lugar, fecha, estado, archivada, proyecto_id"),
     db.from("materiales").select("obra_id, obra_nombre, items"),
     db.from("proyectos").select("id, nombre"),
+    db.from("avance_obras").select("obra_id, stations"),
   ]);
+  if (e4) throw e4;
   if (e1) throw e1;
   if (e2) throw e2;
   if (e3) throw e3;
@@ -51,7 +54,9 @@ export async function armarResumen(db) {
     const faltaPedir = items.filter(i => !i.estado || i.estado === "pendiente");
     const faltaRecibir = items.filter(i => i.estado === "pedido" || i.estado === "parcial");
     const link = linkFicha(proyectos.find(p => p.id === o.proyecto_id));
-    enVentana.push({ obra: o, dias, items, tieneLista: !!lista, faltaPedir, faltaRecibir, link });
+    const prod = (produccion || []).find(p => p.obra_id === o.id);
+    const riesgo = evaluarRiesgo({ dias, estado: o.estado, produccion: prod ? porcentajeProduccion(prod.stations) : null, faltaPedir: faltaPedir.length, faltaRecibir: faltaRecibir.length });
+    enVentana.push({ obra: o, dias, items, tieneLista: !!lista, faltaPedir, faltaRecibir, link, riesgo });
   }
   enVentana.sort((a, b) => a.dias - b.dias);
   return {
@@ -59,6 +64,7 @@ export async function armarResumen(db) {
     proximas: enVentana.filter(x => x.dias >= 0),
     vencidas: enVentana.filter(x => x.dias < 0),
     conFaltantes: enVentana.filter(x => x.faltaPedir.length || x.faltaRecibir.length),
+    enRiesgo: enVentana.filter(x => x.riesgo),
   };
 }
 
@@ -86,7 +92,7 @@ function marco(titulo, cuerpo) {
 }
 
 // Lunes y jueves: entregas de los próximos días (y vencidas sin marcar)
-function mailEntregas({ hoy, proximas, vencidas }) {
+function mailEntregas({ hoy, proximas, vencidas, enRiesgo = [] }) {
   const fila = x => {
     const est = estadoMateriales(x);
     const colorEst = est === "materiales completos" ? "#059669" : est === "sin materiales cargados" ? "#94A3B8" : "#DC2626";
@@ -101,11 +107,18 @@ function mailEntregas({ hoy, proximas, vencidas }) {
       <tr style="background:#F8FAFC;text-align:left;font-size:11px;color:#64748B;text-transform:uppercase">
         <th style="padding:8px 10px">Obra</th><th style="padding:8px 10px">Entrega</th><th style="padding:8px 10px">Plazo</th><th style="padding:8px 10px">Materiales</th>
       </tr>${filas.map(fila).join("")}</table>`;
-  const cuerpo = `
+  const riesgoHtml = enRiesgo.length ? `
+    <div style="border:1px solid #FECACA;border-left:4px solid #DC2626;border-radius:8px;padding:12px 14px;margin-bottom:18px;background:#FEF2F2">
+      <div style="font-size:15px;font-weight:700;color:#DC2626;margin-bottom:6px">En riesgo (${enRiesgo.length})</div>
+      ${enRiesgo.map(x => `<div style="font-size:13px;color:#1A2B4A;margin-bottom:4px">${nombreConLink(x)}: ${esc(x.riesgo.texto)} &nbsp;${botonFicha(x)}</div>`).join("")}
+    </div>` : "";
+  const cuerpo = `${riesgoHtml}
     ${proximas.length ? `<h3 style="font-size:15px;color:#1A2B4A;margin:0 0 10px">Entregas de los próximos ${DIAS_ALERTA} días (${proximas.length})</h3>${tabla(proximas)}` : `<p style="font-size:13px;color:#64748B">No hay entregas en los próximos ${DIAS_ALERTA} días.</p>`}
     ${vencidas.length ? `<h3 style="font-size:15px;color:#DC2626;margin:20px 0 10px">Vencidas sin marcar como entregadas (${vencidas.length})</h3>${tabla(vencidas)}` : ""}`;
   const texto = [
     `Obras Grupo Aixa S.A. - MaderoGest`, `Entregas próximas - ${fmtFecha(hoy)}`, "",
+    ...(enRiesgo.length ? [`EN RIESGO (${enRiesgo.length})`, ...enRiesgo.map(x => `- ${x.obra.nombre}: ${x.riesgo.texto}
+  ${x.link}`), ""] : []),
     ...(proximas.length
       ? [`ENTREGAS DE LOS PROXIMOS ${DIAS_ALERTA} DIAS (${proximas.length})`, ...proximas.map(x => `- ${x.obra.nombre}${lugar(x.obra) ? ` (${lugar(x.obra)})` : ""}: ${fmtFecha(x.obra.fecha)}, ${textoDias(x.dias)} - ${estadoMateriales(x)}\n  ${x.link}`), ""]
       : [`No hay entregas en los próximos ${DIAS_ALERTA} días.`, ""]),
@@ -115,7 +128,7 @@ function mailEntregas({ hoy, proximas, vencidas }) {
   const n = proximas.length;
   return {
     total: proximas.length + vencidas.length,
-    asunto: `MaderoGest: ${n} entrega${n !== 1 ? "s" : ""} en los próximos ${DIAS_ALERTA} días${vencidas.length ? ` y ${vencidas.length} vencida${vencidas.length !== 1 ? "s" : ""}` : ""}`,
+    asunto: `MaderoGest: ${n} entrega${n !== 1 ? "s" : ""} en los próximos ${DIAS_ALERTA} días${vencidas.length ? ` y ${vencidas.length} vencida${vencidas.length !== 1 ? "s" : ""}` : ""}${enRiesgo.length ? ` · ${enRiesgo.length} en riesgo` : ""}`,
     html: marco(`Entregas próximas — ${fmtFecha(hoy)}`, cuerpo),
     texto,
   };

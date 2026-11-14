@@ -9,9 +9,11 @@ import { generarPDF, ofrecerInformeCierre } from "../lib/pdf.js";
 import { ESTACION_COLORES, SC_ENTREGA, cambioEstacion, camposEstacion, estadoEntrega, mkStations, normalizarMuebles, obraProgressAixa, saldoDeCobro } from "../lib/produccion.js";
 import { ModalDiaAvance } from "./AvanceObra.jsx";
 import { Icono } from "../components/Icono.jsx";
+import { VisorFotos } from "../components/VisorFotos.jsx";
+import { esImagenAceptada, getFileIconAceptada } from "../lib/aceptadas.js";
 
 // Cada rol edita en la ficha lo mismo que puede ver (igual que en las pestañas de siempre)
-export function FichaObra({ proyecto: p, entregas, sesion, onVolver, onModal, onEntregar }) {
+export function FichaObra({ proyecto: p, entregas, sesion, riesgos = {}, onVolver, onModal, onEntregar }) {
   const rol = sesion.rol;
   const ve = {
     produccion: rol !== "arquitecto" && rol !== "finanzas",
@@ -25,6 +27,7 @@ export function FichaObra({ proyecto: p, entregas, sesion, onVolver, onModal, on
   const [recarga, setRecarga] = useState(0);
   const [editando, setEditando] = useState(null); // { tipo: "estacion" | "item" | "montos" | "adicional" | "dia", ... }
   const [ocupado, setOcupado] = useState(false);
+  const [visor, setVisor] = useState(null);   // { fotos, inicio }
   const ids = entregas.map(e => e.id);
   // Si cambia la fecha o el estado de una entrega, las otras pestañas también cambian: se vuelve a leer
   const clave = entregas.map(e => `${e.id}:${e.editado_en || ""}:${e.estado}`).join(",");
@@ -78,16 +81,17 @@ export function FichaObra({ proyecto: p, entregas, sesion, onVolver, onModal, on
     const lista = `in.(${ids.map(id => `"${id}"`).join(",")})`;
     const pedir = (ok, ruta) => ok && ids.length ? sbFetch(ruta).catch(e => { console.error("Ficha:", e); return []; }) : Promise.resolve([]);
     (async () => {
-      const [produccion, materiales, cobros, obrasAvance] = await Promise.all([
+      const [produccion, materiales, cobros, obrasAvance, aceptadas] = await Promise.all([
         pedir(ve.produccion, `avance_obras?obra_id=${lista}`),
         pedir(ve.materiales, `materiales?obra_id=${lista}`),
         pedir(ve.cobro, `cobros?obra_id=${lista}`),
         pedir(ve.obra, `obras_avance?obra_id=${lista}`),
+        sbFetch(`obras_aceptadas?proyecto_id=eq.${encodeURIComponent(p.id)}&select=id,nombre,archivos`).catch(() => []),
       ]);
       const dias = obrasAvance.length
         ? await sbFetch(`avance_dias?obra_id=in.(${obrasAvance.map(o => `"${o.id}"`).join(",")})&order=fecha.desc`).catch(() => [])
         : [];
-      if (vivo) setDatos({ produccion, materiales, cobros, obrasAvance, dias });
+      if (vivo) setDatos({ produccion, materiales, cobros, obrasAvance, dias, aceptadas });
     })();
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -129,6 +133,7 @@ export function FichaObra({ proyecto: p, entregas, sesion, onVolver, onModal, on
     ve.materiales && { id: "materiales", label: "Materiales" },
     ve.cobro && { id: "cobro", label: "Cobro" },
     ve.obra && { id: "obra", label: "Avance de obra" },
+    { id: "archivos", label: "Archivos" },
   ].filter(Boolean);
 
   const tarjeta = { background: "#ffffff", border: "1px solid #E8ECF0", borderRadius: 14, padding: 18, marginBottom: 14 };
@@ -169,6 +174,14 @@ export function FichaObra({ proyecto: p, entregas, sesion, onVolver, onModal, on
           {proxima && <span><Icono n="saltar" /> Próxima: {proxima.etiqueta || "entrega"} el {formatDate(proxima.fecha)} ({estadoEntrega(proxima).label.toLowerCase()})</span>}
         </div>
       </div>
+
+      {ordenadas.some(e => riesgos[e.id]) && (
+        <div role="status" style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 10, background: "#FEF2F2", border: "1px solid #FECACA", color: "#991B1B", fontSize: 13, lineHeight: 1.5 }}>
+          {ordenadas.filter(e => riesgos[e.id]).map(e => (
+            <div key={e.id}><Icono n="alerta" /> <b>{e.etiqueta || "Entrega"} en riesgo</b>: {riesgos[e.id].texto}</div>
+          ))}
+        </div>
+      )}
 
       <div className="grid-numeros" style={{ display: "grid", gridTemplateColumns: `repeat(${numeros.length},1fr)`, gap: 12, marginBottom: 20 }}>
         {numeros.map(n => (
@@ -421,6 +434,42 @@ export function FichaObra({ proyecto: p, entregas, sesion, onVolver, onModal, on
             { key: "monto", label: "Monto ($)", type: "number", initial: a?.monto ? String(a.monto) : "" },
           ]} />;
       })()}
+
+      {solapa === "archivos" && (cargando || (() => {
+        // Planos, presupuestos y fotos cargados en Obras Aceptadas (vinculadas a esta obra)
+        const archivos = (datos.aceptadas || []).flatMap(a => (a.archivos || []).map(f => ({ ...f, origen: a.nombre })));
+        const fotos = archivos.filter(esImagenAceptada);
+        const docs = archivos.filter(f => !esImagenAceptada(f));
+        if (!archivos.length) return <div style={{ ...tarjeta, color: "#94A3B8", fontSize: 13 }}>No hay archivos. Se cargan en Obras Aceptadas (planos, presupuestos, fotos) y aparecen acá cuando la obra aceptada está vinculada a esta obra.</div>;
+        return <>
+          {docs.length > 0 && (
+            <div style={tarjeta}>
+              <h2 style={subtitulo}>Documentos ({docs.length})</h2>
+              {docs.map(f => (
+                <a key={f.path || f.url} href={f.url} target="_blank" rel="noreferrer"
+                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 8, border: "1px solid #F1F5F9", marginBottom: 6, color: "#1A2B4A", textDecoration: "none", fontSize: 13 }}>
+                  <Icono n={getFileIconAceptada(f.type)} tam={18} color="#64748B" />
+                  <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                  <Icono n="externo" color="#94A3B8" />
+                </a>
+              ))}
+            </div>
+          )}
+          {fotos.length > 0 && (
+            <div style={tarjeta}>
+              <h2 style={subtitulo}>Imágenes ({fotos.length})</h2>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {fotos.map((f, i) => (
+                  <img key={f.path || f.url} src={f.url} alt={f.name} loading="lazy" title="Ver en grande" onClick={() => setVisor({ fotos, inicio: i })}
+                    style={{ width: 110, height: 110, objectFit: "cover", borderRadius: 8, border: "1px solid #E2E8F0", cursor: "zoom-in" }} />
+                ))}
+              </div>
+            </div>
+          )}
+        </>;
+      })())}
+
+      {visor && <VisorFotos fotos={visor.fotos} inicio={visor.inicio} onCerrar={() => setVisor(null)} />}
 
       {editando?.tipo === "dia" && <ModalDiaAvance dia={editando.dia} onClose={() => setEditando(null)} onSave={form => guardarDia(editando, form)} />}
     </div>

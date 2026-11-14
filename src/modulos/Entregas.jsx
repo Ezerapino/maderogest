@@ -7,6 +7,7 @@ import { generarPDF } from "../lib/pdf.js";
 import { imprimirTableroGeneral } from "../lib/tablero.js";
 import { ESTADO_LABELS, PRIORIDAD_ESTADO, SC_ENTREGA, STATUS_META, estadoEntrega, normalizarMuebles } from "../lib/produccion.js";
 import { linkFicha, navegar, useRuta, volver } from "../lib/rutas.js";
+import { DIAS_RIESGO, PROD_MINIMA_RIESGO } from "../lib/riesgo.js";
 import { FichaObra } from "./FichaObra.jsx";
 import { RevisarNombres } from "./RevisarNombres.jsx";
 import { FiltroMes, MenuMas } from "../components/comunes.jsx";
@@ -14,7 +15,7 @@ import { ModalInformeIA } from "./Produccion.jsx";
 import { CerrarConAtras } from "../lib/atras.js";
 import { Icono } from "../components/Icono.jsx";
 
-export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
+export function EntregasModule({ sesion, obras, proyectos, recargarObras, riesgos = {} }) {
   const [enviandoAviso, setEnviandoAviso] = useState(false);
   const [filter, setFilter] = useState("todas");
   const [search, setSearch] = useState("");
@@ -46,6 +47,7 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
     }
     if (mesFilter && !(o.fecha || "").startsWith(mesFilter) && !(o.fecha_inicio || "").startsWith(mesFilter)) return false;
     if (filter === "todas") return true;
+    if (filter === "riesgo") return !!riesgos[o.id];
     const s = estadoEntrega(o).status;
     return filter === "urgent" ? (s === "urgent" || s === "vencida") : s === filter;
   }
@@ -165,7 +167,7 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
     navegar("/entregas", { reemplazar: true });
   }, [fichaPerdida]);
   if (ficha) return <>
-    <FichaObra proyecto={ficha} entregas={entregas.filter(e => e.proyecto_id === ficha.id)} sesion={sesion}
+    <FichaObra proyecto={ficha} entregas={entregas.filter(e => e.proyecto_id === ficha.id)} sesion={sesion} riesgos={riesgos}
       onVolver={() => volver("/entregas")} onModal={setModal} onEntregar={marcarEntregada} />
     {modal && <ModalObraEntrega {...modal} proyectos={proyectos} guardando={guardando} onClose={() => setModal(null)} onSave={guardar} />}
   </>;
@@ -242,6 +244,23 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
         {hayFiltro && <span style={{ fontSize:12, color:"#94A3B8" }}>{grupos.length} obra{grupos.length !== 1 ? "s" : ""} · {entregasVisibles} entrega{entregasVisibles !== 1 ? "s" : ""}</span>}
       </div>
 
+      {/* ENTREGAS EN RIESGO (ver lib/riesgo.js) */}
+      {(() => {
+        const n = entregas.filter(e => riesgos[e.id]).length;
+        if (!n && filter !== "riesgo") return null;
+        return (
+          <div role="status" style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:16, padding:"10px 14px", borderRadius:10, background:"#FEF2F2", border:"1px solid #FECACA", color:"#991B1B", fontSize:13 }}>
+            <Icono n="alerta" tam={18} />
+            <span style={{ flex:1, minWidth:200 }}>
+              <b>{n} entrega{n !== 1 ? "s" : ""} en riesgo</b>: faltan {DIAS_RIESGO} días o menos (o ya venció) y la producción va por debajo del {PROD_MINIMA_RIESGO}% o faltan materiales.
+            </span>
+            {filter === "riesgo"
+              ? <button onClick={() => setFilter("todas")} style={{ padding:"6px 12px", borderRadius:8, border:"1px solid #DC2626", background:"#fff", color:"#DC2626", fontSize:12, fontWeight:600, cursor:"pointer" }}>Ver todas</button>
+              : <button onClick={() => setFilter("riesgo")} style={{ padding:"6px 12px", borderRadius:8, border:"none", background:"#DC2626", color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>Ver solo estas</button>}
+          </div>
+        );
+      })()}
+
       {/* GRID DE OBRAS */}
       {grupos.length === 0 ? (
         <div style={{ textAlign:"center", padding:"80px 20px", background:"#ffffff", borderRadius:16, border:"1px solid #E8ECF0" }}>
@@ -280,6 +299,11 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras }) {
                           <div style={{ fontSize:13, fontWeight:600, color:"#1A2B4A" }}>{e.etiqueta || "Entrega"}</div>
                           <span style={{ padding:"2px 8px", borderRadius:6, background:sc.bg, color:sc.text, fontSize:11, fontWeight:700, border:`1px solid ${sc.border}`, whiteSpace:"nowrap" }}>{est.label}</span>
                         </div>
+                        {riesgos[e.id] && (
+                          <div title={riesgos[e.id].texto} style={{ marginTop:5, fontSize:12, color:"#B91C1C", fontWeight:600, lineHeight:1.4 }}>
+                            <Icono n="alerta" /> En riesgo: {riesgos[e.id].motivos.join(", ")}
+                          </div>
+                        )}
                         <div style={{ fontSize:12, color:"#64748B", marginTop:3, display:"flex", gap:10, flexWrap:"wrap" }}>
                           {e.fecha_inicio && <span><Icono n="martillo" /> {formatDate(e.fecha_inicio)}</span>}
                           <span><Icono n="calendario" /> {e.fecha ? formatDate(e.fecha) : "Sin fecha"}</span>

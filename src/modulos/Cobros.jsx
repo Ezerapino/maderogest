@@ -1,6 +1,6 @@
 // Pestaña Cobros
 import { useState, useEffect } from "react";
-import { ModalElegirEntrega } from "../components/comunes.jsx";
+import { BotonFicha, ModalElegirEntrega } from "../components/comunes.jsx";
 import { avisar, confirmar } from "../lib/avisos.js";
 import { deleteCobro, getCobros, insertCobro, modificarFila, vinculoEntregas } from "../lib/datos.js";
 import { formatDate, uid } from "../lib/formato.js";
@@ -191,6 +191,7 @@ export function CobrosModule({ entregas = [] }) {
                   onMouseEnter={e=>e.currentTarget.style.background="#FEE2E2"} onMouseLeave={e=>e.currentTarget.style.background="#FEF2F2"}>
                   <Icono n="basura" /> Eliminar
                 </button>}
+                <BotonFicha entrega={entregas.find(e => e.id === selected.obra_id)} />
                 <button onClick={() => setSelected(null)} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#64748B", fontSize:16, flexShrink:0 }}><Icono n="cerrar" /></button>
               </div>
             </div>

@@ -61,6 +61,10 @@ export function nombresParecidos(a, b) {
   if (x === y) return true;
   // Números distintos (sucursal 217 / 218, piso 26 / 27) son obras distintas
   if ((x.match(/\d+/g) || []).join(",") !== (y.match(/\d+/g) || []).join(",")) return false;
+  // Uno contiene todas las palabras del otro ("Criba escritorio" / "Criba Ezeiza escritorio"), con al menos 2 palabras
+  const px = x.split(" "), py = y.split(" ");
+  const [corto, largoP] = px.length <= py.length ? [px, py] : [py, px];
+  if (corto.length >= 2 && corto.every(p => largoP.includes(p))) return true;
   const largo = Math.min(x.length, y.length);
   const tolerancia = largo >= 12 ? 2 : largo >= 6 ? 1 : 0;
   return tolerancia > 0 && distancia(x, y) <= tolerancia;

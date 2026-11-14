@@ -7,7 +7,7 @@ import { b64ToBlob, crearObraConEntrega, deleteFileAvance, renombrarObra, delete
 import { buscarParecidos, formatDate } from "../lib/formato.js";
 import { CerrarConAtras } from "../lib/atras.js";
 import { Icono } from "../components/Icono.jsx";
-import { FiltroMes } from "../components/comunes.jsx";
+import { BotonFicha, FiltroMes } from "../components/comunes.jsx";
 
 export function ObrasAceptadasModule({ sesion, proyectos = [], recargarObras }) {
   const [obrasTodas, setObras] = useState([]);
@@ -173,9 +173,8 @@ export function ObrasAceptadasModule({ sesion, proyectos = [], recargarObras }) 
                     </div>
                   );
                 })()}
-                {obraEnEntregas(o) && (
-                  <div style={{ fontSize:11, color:"#059669", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:6, padding:"4px 9px", marginBottom:12, display:"inline-block" }}><Icono n="link" /> Vinculada a Entregas</div>
-                )}
+                {/* Ya está en Entregas: acceso directo a su ficha */}
+                {obraEnEntregas(o) && <div onClick={e => e.stopPropagation()} style={{ marginBottom:12 }}><BotonFicha entrega={{ proyecto_id: o.proyecto_id, nombre: nombreDe(o) }} /></div>}
                 <div onClick={e => e.stopPropagation()} style={{ display:"flex", gap:6, paddingTop:12, borderTop:"1px solid #F1F5F9" }}>
                   <button onClick={() => setModalObra(o)} style={{ flex:1, padding:"7px 0", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}>{canEdit ? "Editar" : "Ver"}</button>
                   {canEdit && !obraEnEntregas(o) && (

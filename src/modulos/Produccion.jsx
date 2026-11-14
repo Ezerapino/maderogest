@@ -1,6 +1,6 @@
 // Pestaña Avance de Producción
 import { useState, useEffect } from "react";
-import { EnviarPorMail, ModalElegirEntrega, ModalSimple } from "../components/comunes.jsx";
+import { BotonFicha, EnviarPorMail, ModalElegirEntrega, ModalSimple } from "../components/comunes.jsx";
 import { avisar, confirmar } from "../lib/avisos.js";
 import { apiFetch, deleteAixaObraApi, getAixaObras, getAixaUsers, insertAixaObra, modificarFila, vinculoEntregas } from "../lib/datos.js";
 import { fmtDateAixa, fmtDateTimeAixa, fmtDurAixa } from "../lib/formato.js";
@@ -12,7 +12,7 @@ import { Icono } from "../components/Icono.jsx";
 // ═══════════════════════════════════════════════════════════════════════════════
 // AVANCE DE OBRA MODULE (Aixaobra)
 // ═══════════════════════════════════════════════════════════════════════════════
-export function AvanceModule({ sesion, entregas = [] }) {
+export function AvanceModule({ sesion, entregas = [], riesgos = {} }) {
   const [aixaObrasTodas, setAixaObras] = useState([]);
   const [showElegirEntrega, setShowElegirEntrega] = useState(false);
   const { activas, archivadas, existentes } = vinculoEntregas(entregas);
@@ -215,8 +215,9 @@ export function AvanceModule({ sesion, entregas = [] }) {
 
         {/* Obra title & tabs */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:10 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
             <h2 style={{ fontFamily:"'Sora', sans-serif", fontSize:20, fontWeight:700, color:"#1A2B4A", margin:0 }}>{obra.name}</h2>
+            <BotonFicha entrega={entregas.find(e => e.id === obra.obra_id)} />
             {pct === 100 && (
               <button onClick={() => generarInformeCierre(obra)}
                 style={{ padding:"6px 16px", background:"#2563EB", border:"none", borderRadius:8, color:"#ffffff", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif", display:"flex", alignItems:"center", gap:4 }}>
@@ -477,6 +478,11 @@ export function AvanceModule({ sesion, entregas = [] }) {
                   const c = { activa: ["#FFFBEB", "#B45309", "En: "], bloqueada: ["#FEF2F2", "#DC2626", "Bloqueada en: "], sigue: ["#F8FAFC", "#475569", "Próxima: "], sinEmpezar: ["#F8FAFC", "#94A3B8", "Sin empezar"] }[et.tipo];
                   return <div style={{ display:"inline-block", maxWidth:"100%", marginBottom:10, padding:"3px 9px", borderRadius:6, background:c[0], color:c[1], fontSize:12, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c[2]}{et.tipo === "sinEmpezar" ? "" : et.texto}</div>;
                 })()}
+                {riesgos[o.obra_id] && (
+                  <div title={riesgos[o.obra_id].texto} style={{ marginBottom:8, fontSize:12, color:"#B91C1C", fontWeight:600, lineHeight:1.4 }}>
+                    <Icono n="alerta" /> Entrega en riesgo: {riesgos[o.obra_id].texto}
+                  </div>
+                )}
                 <div style={{ height:4, background:"#E8ECF0", borderRadius:99, marginBottom:10 }}>
                   <div style={{ height:4, borderRadius:99, width:`${pct}%`, background:barColor }} />
                 </div>

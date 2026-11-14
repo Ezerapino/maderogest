@@ -70,6 +70,8 @@ export async function sbFetch(path, options = {}) {
 }
 
 // ─── AVANCE API (same Supabase, table: avance_obras) ──────────────────────────
+// Solo lo necesario para calcular el riesgo de las entregas
+export async function getProduccionResumen() { return sbFetch("avance_obras?select=obra_id,stations"); }
 export async function getAixaObras() { return sbFetch("avance_obras?select=*&order=created_at.desc"); }
 export async function insertAixaObra(obra) { return sbFetch("avance_obras", { method: "POST", body: JSON.stringify(obra) }); }
 export async function deleteAixaObraApi(id) { return sbFetch(`avance_obras?id=eq.${id}`, { method: "DELETE" }); }
