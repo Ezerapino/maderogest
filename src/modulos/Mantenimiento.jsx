@@ -9,10 +9,19 @@ import { Icono } from "../components/Icono.jsx";
 
 const COLOR = "#B45309";
 const textoHace = d => d < 0 ? (d === -1 ? "mañana" : `dentro de ${-d} días`) : d === 0 ? "hoy" : d === 1 ? "hace 1 día" : `hace ${d} días`;
-const estadoTarea = t => !t.realizada ? "hacer" : t.supervisada ? "terminada" : "supervisar";
+// "programada": tarea repetida (o cargada a futuro) que todavía no llegó a su fecha
+const estadoTarea = t => !t.realizada ? (t.fecha_solicitud > hoyLocal() ? "programada" : "hacer") : t.supervisada ? "terminada" : "supervisar";
+
+const PRIORIDADES = {
+  urgente: { label: "Urgente / máquina parada", corto: "Urgente", bg: "#FEF2F2", color: "#DC2626", borde: "#FECACA" },
+  normal: { label: "Normal", corto: "Normal", bg: "#F8FAFC", color: "#475569", borde: "#E2E8F0" },
+  mejora: { label: "Mejora (cuando se pueda)", corto: "Mejora", bg: "#F5F3FF", color: "#6D28D9", borde: "#DDD6FE" },
+};
+const ORDEN_PRIORIDAD = { urgente: 0, normal: 1, mejora: 2 };
 
 const FILTROS = [
   { key: "hacer", label: "Para hacer" },
+  { key: "programada", label: "Programadas" },
   { key: "supervisar", label: "Por supervisar" },
   { key: "terminada", label: "Terminadas" },
   { key: "todas", label: "Todas" },
@@ -45,6 +54,7 @@ export function MantenimientoModule({ sesion }) {
   }, []);
 
   // Nombres para sugerir en "Quién la realiza / supervisa": usuarios y los que ya se usaron
+  const sectores = [...new Set((tareas || []).map(t => t.sector).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const sugeridos = [...new Set([...nombres, ...(tareas || []).flatMap(t => [t.responsable, t.supervisor])].filter(Boolean))].sort((a, b) => a.localeCompare(b));
 
   async function cambiar(t, cambio, { deshacer } = {}) {
@@ -63,10 +73,38 @@ export function MantenimientoModule({ sesion }) {
     finally { marcarOcupada(t.id, false); }
   }
 
+  // Tarea que se repite: al hacerla, se programa la siguiente para dentro de N días (si no estaba ya programada)
+  async function programarSiguiente(t) {
+    if (!t.repetir_cada_dias || (tareas || []).some(x => x.anterior_id === t.id)) return null;
+    const d = new Date(); d.setDate(d.getDate() + Number(t.repetir_cada_dias));
+    const fecha = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const nueva = { id: uid(), tarea: t.tarea, detalle: t.detalle, responsable: t.responsable, supervisor: t.supervisor, prioridad: t.prioridad || "normal", sector: t.sector,
+      repetir_cada_dias: t.repetir_cada_dias, anterior_id: t.id, fecha_solicitud: fecha, solicitado_por: "Repetición automática", realizada: false, supervisada: false };
+    await insertMantenimiento(nueva);
+    return nueva;
+  }
+
   async function tildar(t) {
     if (!t.realizada) {
-      return cambiar(t, { realizada: true, realizada_en: hoyLocal() },
-        { deshacer: { texto: `"${t.tarea}" marcada como hecha.`, volver: { realizada: false, realizada_en: null, supervisada: false, supervisada_en: null, supervisada_por: null } } });
+      marcarOcupada(t.id, true);
+      try {
+        await updateMantenimiento(t.id, { realizada: true, realizada_en: hoyLocal() });
+        let siguiente = null;
+        try { siguiente = await programarSiguiente(t); }
+        catch (e) { avisar(`Se marcó como hecha, pero no se pudo programar la próxima: ${e.message}`, { tipo: "error" }); }
+        await cargar();
+        avisar(`"${t.tarea}" marcada como hecha.${siguiente ? ` La próxima quedó programada para el ${formatDate(siguiente.fecha_solicitud)}.` : ""}`, { tipo: "ok", deshacer: async () => {
+          marcarOcupada(t.id, true);
+          try {
+            await updateMantenimiento(t.id, { realizada: false, realizada_en: null, supervisada: false, supervisada_en: null, supervisada_por: null });
+            if (siguiente) await deleteMantenimiento(siguiente.id);
+            await cargar();
+          } catch (e) { avisar(`No se pudo deshacer: ${e.message}`, { tipo: "error" }); }
+          finally { marcarOcupada(t.id, false); }
+        } });
+      } catch (e) { avisar(`No se pudo guardar: ${e.message}`, { tipo: "error" }); }
+      finally { marcarOcupada(t.id, false); }
+      return;
     }
     if (!await confirmar(`¿Marcar "${t.tarea}" como NO hecha?${t.supervisada ? "\nTambién se le saca la supervisión." : ""}`, { boton: "Desmarcar", peligro: false })) return;
     cambiar(t, { realizada: false, realizada_en: null, supervisada: false, supervisada_en: null, supervisada_por: null });
@@ -82,6 +120,8 @@ export function MantenimientoModule({ sesion }) {
     const orig = modal.tarea;
     const datos = {
       tarea: form.tarea.trim(), detalle: form.detalle.trim() || null, responsable: form.responsable.trim() || null, supervisor: form.supervisor.trim() || null,
+      prioridad: form.prioridad || "normal", sector: form.sector.trim() || null,
+      repetir_cada_dias: form.repetir && Number(form.repetir_cada_dias) > 0 ? Number(form.repetir_cada_dias) : null,
       // Si se borra la fecha, se mantiene la que tenía (no se reinicia la antigüedad de la tarea)
       fecha_solicitud: form.fecha_solicitud || orig?.fecha_solicitud || hoyLocal(),
     };
@@ -102,19 +142,22 @@ export function MantenimientoModule({ sesion }) {
 
   if (tareas === null) return <div style={{ padding:60, textAlign:"center", color:"#94A3B8", fontSize:13 }}>Cargando tareas...</div>;
 
-  const pendientes = tareas.filter(t => !t.realizada);
+  const pendientes = tareas.filter(t => estadoTarea(t) === "hacer");
+  const programadas = tareas.filter(t => estadoTarea(t) === "programada");
   const atrasadas = pendientes.filter(tareaAtrasada);
   const porSupervisar = tareas.filter(t => t.realizada && !t.supervisada);
   const terminadas = tareas.filter(t => t.realizada && t.supervisada);
   const q = sinAcentos(busqueda.trim());
   const visibles = tareas
     .filter(t => filtro === "todas" || (filtro === "atrasadas" ? tareaAtrasada(t) : estadoTarea(t) === filtro))
-    .filter(t => !q || [t.tarea, t.detalle, t.responsable, t.supervisor, t.supervisada_por, t.solicitado_por].some(x => sinAcentos(x).includes(q)))
+    .filter(t => !q || [t.tarea, t.detalle, t.responsable, t.supervisor, t.supervisada_por, t.solicitado_por, t.sector].some(x => sinAcentos(x).includes(q)))
     .sort((a, b) => {
-      // Lo que falta hacer, de lo más viejo a lo más nuevo; lo hecho, lo último arriba
-      const ea = estadoTarea(a) === "hacer" ? 0 : 1, eb = estadoTarea(b) === "hacer" ? 0 : 1;
+      // Lo que falta hacer: primero lo urgente, y de lo más viejo a lo más nuevo; lo programado, por fecha; lo hecho, lo último arriba
+      const grupo = t => ({ hacer: 0, programada: 1 }[estadoTarea(t)] ?? 2);
+      const ea = grupo(a), eb = grupo(b);
       if (ea !== eb) return ea - eb;
-      if (ea === 0) return (a.fecha_solicitud || "").localeCompare(b.fecha_solicitud || "");
+      if (ea === 0) return (ORDEN_PRIORIDAD[a.prioridad] ?? 1) - (ORDEN_PRIORIDAD[b.prioridad] ?? 1) || (a.fecha_solicitud || "").localeCompare(b.fecha_solicitud || "");
+      if (ea === 1) return (a.fecha_solicitud || "").localeCompare(b.fecha_solicitud || "");
       return (b.realizada_en || "").localeCompare(a.realizada_en || "");
     });
 
@@ -147,10 +190,10 @@ export function MantenimientoModule({ sesion }) {
           )}
         </div>
         <div className="barra-filtros" style={{ display:"flex", gap:4, background:"#ffffff", border:"1px solid #E8ECF0", borderRadius:10, padding:4 }}>
-          {FILTROS.map(f => (
+          {FILTROS.filter(f => f.key !== "programada" || programadas.length || filtro === "programada").map(f => (
             <button key={f.key} onClick={() => setFiltro(f.key)} className="filter-btn"
               style={{ padding:"6px 14px", borderRadius:7, border:"none", background: filtro === f.key ? COLOR : "transparent", color: filtro === f.key ? "#ffffff" : "#64748B", fontFamily:"'Inter', sans-serif", fontSize:12, fontWeight: filtro === f.key ? 600 : 400, cursor:"pointer" }}>
-              {f.label}
+              {f.label}{f.key === "programada" ? ` (${programadas.length})` : ""}
             </button>
           ))}
         </div>
@@ -191,7 +234,7 @@ export function MantenimientoModule({ sesion }) {
         + Nueva tarea
       </button>
 
-      {modal && <ModalTarea tarea={modal.tarea} sugeridos={sugeridos} onClose={() => setModal(null)} onSave={guardarTarea} />}
+      {modal && <ModalTarea tarea={modal.tarea} sugeridos={sugeridos} sectores={sectores} onClose={() => setModal(null)} onSave={guardarTarea} />}
       {supervisar && <ModalSupervisar tarea={supervisar} sugeridos={sugeridos} sesion={sesion} onClose={() => setSupervisar(null)}
         onSave={async (nombre, fecha) => { if (await cambiar(supervisar, { supervisada: true, supervisada_en: fecha, supervisada_por: nombre })) setSupervisar(null); }} />}
       {verAviso && <AvisoPendientes pendientes={pendientes} onClose={() => setVerAviso(false)} onVer={() => { setFiltro("hacer"); setBusqueda(""); setVerAviso(false); }} />}
@@ -204,7 +247,7 @@ function TarjetaTarea({ t, ocupado, onTildar, onEditar, onSupervisar, onEliminar
   const atrasada = tareaAtrasada(t);
   const dias = diasDesdeSolicitud(t);
   const est = estadoTarea(t);
-  const borde = atrasada ? "#DC2626" : est === "supervisar" ? "#FDE68A" : est === "terminada" ? "#A7F3D0" : "#E8ECF0";
+  const borde = atrasada ? "#DC2626" : est === "hacer" && t.prioridad === "urgente" ? "#FECACA" : est === "supervisar" ? "#FDE68A" : est === "terminada" ? "#A7F3D0" : "#E8ECF0";
   const btn = { padding:"7px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:7, color:"#475569", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" };
   return (
     <div style={{ background: atrasada ? "#FFFBFB" : "#ffffff", border:`${atrasada ? 2 : 1}px solid ${borde}`, borderRadius:14, overflow:"hidden", boxShadow: atrasada ? "0 0 0 3px rgba(220,38,38,0.10)" : "0 1px 4px rgba(26,43,74,0.05)", opacity: ocupado ? 0.6 : 1 }}>
@@ -215,6 +258,16 @@ function TarjetaTarea({ t, ocupado, onTildar, onEditar, onSupervisar, onEliminar
           {t.realizada ? <Icono n="check" tam={20} grosor={3} /> : ""}
         </button>
         <div style={{ flex:1, minWidth:0 }}>
+          {(t.prioridad && t.prioridad !== "normal" || t.sector || t.repetir_cada_dias || est === "programada") && (
+            <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:6 }}>
+              {t.prioridad && t.prioridad !== "normal" && PRIORIDADES[t.prioridad] && (
+                <span style={{ padding:"2px 8px", borderRadius:6, fontSize:11, fontWeight:700, background:PRIORIDADES[t.prioridad].bg, color:PRIORIDADES[t.prioridad].color, border:`1px solid ${PRIORIDADES[t.prioridad].borde}` }}>{PRIORIDADES[t.prioridad].corto}</span>
+              )}
+              {t.sector && <span style={{ padding:"2px 8px", borderRadius:6, fontSize:11, fontWeight:600, background:"#F1F5F9", color:"#334155" }}><Icono n="ajustes" /> {t.sector}</span>}
+              {t.repetir_cada_dias && <span title="Al hacerla, se programa la siguiente sola" style={{ padding:"2px 8px", borderRadius:6, fontSize:11, fontWeight:600, background:"#EFF6FF", color:"#1D4ED8" }}><Icono n="recargar" /> Cada {t.repetir_cada_dias} días</span>}
+              {est === "programada" && <span style={{ padding:"2px 8px", borderRadius:6, fontSize:11, fontWeight:600, background:"#F8FAFC", color:"#64748B", border:"1px solid #E2E8F0" }}>Programada para el {formatDate(t.fecha_solicitud)}</span>}
+            </div>
+          )}
           <div style={{ fontFamily:"'Sora', sans-serif", fontSize:15, fontWeight:700, color:"#1A2B4A", lineHeight:1.35, textDecoration: t.realizada ? "line-through" : "none", textDecorationColor:"#94A3B8", wordBreak:"break-word" }}>{t.tarea}</div>
           {t.detalle && <div style={{ fontSize:13, color:"#475569", marginTop:4, lineHeight:1.45, whiteSpace:"pre-wrap", wordBreak:"break-word" }}>{t.detalle}</div>}
           <div style={{ display:"flex", flexDirection:"column", gap:4, marginTop:10, fontSize:12, color:"#64748B" }}>
@@ -267,9 +320,11 @@ function Botones({ onClose, onSave, guardando, texto = "Guardar" }) {
   );
 }
 
-function ModalTarea({ tarea, sugeridos, onClose, onSave }) {
+function ModalTarea({ tarea, sugeridos, sectores = [], onClose, onSave }) {
   const [form, setForm] = useState({
     tarea: tarea?.tarea || "", detalle: tarea?.detalle || "", responsable: tarea?.responsable || "", supervisor: tarea?.supervisor || "",
+    prioridad: tarea?.prioridad || "normal", sector: tarea?.sector || "",
+    repetir: !!tarea?.repetir_cada_dias, repetir_cada_dias: tarea?.repetir_cada_dias || 30,
     fecha_solicitud: tarea?.fecha_solicitud || hoyLocal(), realizada_en: tarea?.realizada_en || "", supervisada_en: tarea?.supervisada_en || "",
   });
   const [guardando, setGuardando] = useState(false);
@@ -290,6 +345,17 @@ function ModalTarea({ tarea, sugeridos, onClose, onSave }) {
         <textarea value={form.detalle} onChange={set("detalle")} rows={3} placeholder="Dónde, con qué, cualquier aclaración..." style={{ ...inp, resize:"vertical" }} />
       </div>
       <div className="grid-form" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
+        <div><label style={lbl}>Prioridad</label>
+          <select value={form.prioridad} onChange={set("prioridad")} style={inp}>
+            {Object.entries(PRIORIDADES).map(([k, p]) => <option key={k} value={k}>{p.label}</option>)}
+          </select>
+        </div>
+        <div><label style={lbl}><Icono n="ajustes" /> Máquina o sector</label>
+          <datalist id="mant-sectores">{sectores.map(n => <option key={n} value={n} />)}</datalist>
+          <input value={form.sector} onChange={set("sector")} list="mant-sectores" placeholder="Ej: Cabina de lustre" style={inp} />
+        </div>
+      </div>
+      <div className="grid-form" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
         <div><label style={lbl}><Icono n="casco" /> Quién la realiza</label><input value={form.responsable} onChange={set("responsable")} list="mant-nombres" placeholder="Nombre" style={inp} /></div>
         <div><label style={lbl}><Icono n="supervisar" /> Quién la supervisa</label><input value={form.supervisor} onChange={set("supervisor")} list="mant-nombres" placeholder="Nombre" style={inp} /></div>
       </div>
@@ -297,6 +363,18 @@ function ModalTarea({ tarea, sugeridos, onClose, onSave }) {
         <div><label style={lbl}><Icono n="calendario" /> Fecha de solicitud</label><input type="date" value={form.fecha_solicitud} onChange={set("fecha_solicitud")} style={inp} /></div>
         {tarea?.realizada && <div><label style={lbl}><Icono n="checkCirculo" /> Hecha el</label><input type="date" value={form.realizada_en} onChange={set("realizada_en")} style={inp} /></div>}
         {tarea?.supervisada && <div><label style={lbl}><Icono n="supervisar" /> Supervisada el</label><input type="date" value={form.supervisada_en} onChange={set("supervisada_en")} style={inp} /></div>}
+      </div>
+      <div style={{ marginTop:14, padding:"10px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8 }}>
+        <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, color:"#1A2B4A", fontWeight:600, cursor:"pointer" }}>
+          <input type="checkbox" checked={form.repetir} onChange={e => setForm(f => ({ ...f, repetir: e.target.checked }))} style={{ width:16, height:16, accentColor:COLOR }} />
+          <Icono n="recargar" /> Se repite (mantenimiento preventivo)
+        </label>
+        {form.repetir && (
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, fontSize:13, color:"#475569", flexWrap:"wrap" }}>
+            Cada <input type="number" min="1" value={form.repetir_cada_dias} onChange={set("repetir_cada_dias")} style={{ ...inp, width:80 }} /> días.
+            <span style={{ fontSize:12, color:"#94A3B8" }}>Al marcarla como hecha, se programa la siguiente sola.</span>
+          </div>
+        )}
       </div>
       {!tarea && <p style={{ fontSize:12, color:"#94A3B8", margin:"12px 0 0", lineHeight:1.5 }}>Si pasan más de {DIAS_ALERTA_MANTENIMIENTO} días desde la solicitud sin hacerse, la tarea se marca en rojo.</p>}
       <Botones onClose={onClose} onSave={guardar} guardando={guardando} texto={tarea ? "Guardar" : "Cargar tarea"} />

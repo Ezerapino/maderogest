@@ -169,15 +169,19 @@ export default async function handler(req, res) {
   try {
     const secreto = (process.env.CRON_SECRET || "").trim();
     const esCron = secreto && req.headers.authorization === `Bearer ${secreto}`;
-    if (!esCron) await getCaller(req, ["admin"]);
+    const caller = esCron ? null : await getCaller(req, ["admin"]);
 
     const tipo = req.query?.tipo === "entregas" ? "entregas" : "materiales";
-    const resumen = await armarResumen(adminClient());
+    const db = adminClient();
+    const resumen = await armarResumen(db);
     const mail = tipo === "entregas" ? mailEntregas(resumen) : mailMateriales(resumen);
 
     if (req.query?.preview === "1") return res.status(200).json({ tipo, total: mail.total, asunto: mail.asunto, html: mail.html });
     if (!mail.total) return res.status(200).json({ tipo, enviado: false, motivo: tipo === "entregas" ? `No hay entregas en los próximos ${DIAS_ALERTA} días.` : "Ninguna obra próxima a entregar tiene materiales faltantes." });
     const envio = await enviarEmail({ asunto: mail.asunto, html: mail.html, text: mail.texto });
+    // Se anota cuándo salió, para mostrar "último aviso" en la app (si falla, el mail ya salió igual)
+    const { error: eReg } = await db.from("avisos_enviados").insert({ tipo, destinos: envio?.destinos ?? null, por: caller ? caller.nombre : "automático" });
+    if (eReg) console.error("No se pudo anotar el aviso enviado:", eReg.message);
     res.status(200).json({ tipo, enviado: true, total: mail.total, ...envio });
   } catch (e) { sendError(res, e); }
 }

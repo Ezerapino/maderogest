@@ -1,6 +1,6 @@
 // Pestaña Materiales
 import { useState, useEffect, useRef } from "react";
-import { BotonFicha, ModalElegirEntrega } from "../components/comunes.jsx";
+import { BotonFicha, ModalElegirEntrega, SelectorVista, TablaOrdenable, UltimoAviso } from "../components/comunes.jsx";
 import { avisar, confirmar } from "../lib/avisos.js";
 import { apiFetch, deleteMaterialById, enviarAvisoAhora, getMateriales, getObrasAceptadas, insertMaterial, modificarFila, uploadArchivoImportacion, vinculoEntregas } from "../lib/datos.js";
 import { diasHastaFecha, fmtDateAixa, sinAcentos, textoDiasEntrega, uid } from "../lib/formato.js";
@@ -8,6 +8,7 @@ import { CAMPOS_BUSQUEDA_MAT, DIAS_ALERTA_MAT, ESTADOS_MAT, ESTADOS_MAT_PEDIR, E
 import { generarPDFMateriales } from "../lib/pdf.js";
 import { CerrarConAtras } from "../lib/atras.js";
 import { Icono } from "../components/Icono.jsx";
+import { useVista } from "../lib/vista.js";
 
 function ImportarMaterialesIA({ lista, onClose, onAgregar }) {
   const [adjuntos, setAdjuntos] = useState([]);
@@ -180,6 +181,7 @@ export function MaterialesModule({ sesion, entregas = [] }) {
   const [showImportarIA, setShowImportarIA] = useState(false);
   const [enviandoResumen, setEnviandoResumen] = useState(false);
   const [search, setSearch] = useState("");
+  const [vista, setVista] = useVista("materiales");
   const isAdmin = sesion.rol === "admin";
   const puedeImportar = isAdmin || sesion.rol === "operario";
 
@@ -370,6 +372,7 @@ export function MaterialesModule({ sesion, entregas = [] }) {
             {enviandoResumen ? "Enviando..." : <><Icono n="mail" /> Enviar aviso de materiales ahora</>}
           </button>
         )}
+        {isAdmin && <UltimoAviso tipo="materiales" />}
         <button onClick={() => setShowNuevaObra(true)} title="Para entregas que todavía no están acá. Las nuevas se agregan solas al crearlas en Entregas."
           style={{ padding:"9px 18px", background:"#0F766E", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer" }}>
           <Icono n="link" /> Vincular entrega
@@ -385,6 +388,7 @@ export function MaterialesModule({ sesion, entregas = [] }) {
             {search && <button onClick={() => setSearch("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"#94A3B8", cursor:"pointer", fontSize:14, padding:2 }}><Icono n="cerrar" /></button>}
           </div>
           {q && <span style={{ fontSize:12, color:"#94A3B8" }}>{visibles.length} obra{visibles.length !== 1 ? "s" : ""}</span>}
+          <div style={{ marginLeft:"auto" }}><SelectorVista vista={vista} onCambio={setVista} /></div>
         </div>
       )}
 
@@ -400,6 +404,20 @@ export function MaterialesModule({ sesion, entregas = [] }) {
           <div style={{ fontSize:28, marginBottom:10 }}><Icono n="buscar" /></div>
           <div style={{ fontSize:13, color:"#94A3B8" }}>Ninguna obra ni material coincide con "{search.trim()}".</div>
         </div>
+      ) : vista === "tabla" ? (
+        <TablaOrdenable filas={visibles.map(v => ({ ...v, id: v.l.id, entrega: entregaDeLista(v.l, obras), r: resumenes[v.idx] }))} onFila={v => setSelected(v.l)}
+          ordenInicial={{ clave: "orden", asc: true }}
+          columnas={[
+            { clave: "orden", titulo: "Entrega", valor: v => visibles.findIndex(x => x.l.id === v.l.id), celda: v => v.entrega?.fecha ? <>{fmtDateAixa(v.entrega.fecha)}{v.entrega.estado === "terminado" ? <div style={{ fontSize:11, color:"#94A3B8" }}>Entregada</div> : null}</> : <span style={{ color:"#94A3B8" }}>Sin fecha</span> },
+            { clave: "obra", titulo: "Obra", valor: v => v.l.obra_nombre, celda: v => <b>{v.l.obra_nombre}</b> },
+            { clave: "items", titulo: "Ítems", alinear: "right", valor: v => (v.l.items || []).length },
+            { clave: "pedir", titulo: "Falta pedir", alinear: "right", valor: v => v.r.faltaPedir.length, celda: v => v.r.faltaPedir.length ? <span style={{ color:"#D97706", fontWeight:700 }}>{v.r.faltaPedir.length}</span> : "—" },
+            { clave: "recibir", titulo: "Falta recibir", alinear: "right", valor: v => v.r.faltaRecibir.length, celda: v => v.r.faltaRecibir.length ? <span style={{ color:"#2563EB", fontWeight:700 }}>{v.r.faltaRecibir.length}</span> : "—" },
+            { clave: "estado", titulo: "Estado", valor: v => alertas.some(a => a.lista.id === v.l.id) ? 0 : v.r.completo ? 2 : 1,
+              celda: v => alertas.some(a => a.lista.id === v.l.id) ? <span style={{ color:"#DC2626", fontWeight:600 }}><Icono n="alerta" /> Faltan y la entrega está cerca</span>
+                : v.r.completo ? <span style={{ color:"#059669", fontWeight:600 }}><Icono n="check" /> Completo</span>
+                : !(v.l.items || []).length ? <span style={{ color:"#94A3B8" }}>Sin materiales cargados</span> : "En curso" },
+          ]} />
       ) : (
         <div className="grid-tarjetas" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:16 }}>
           {visibles.map(({ l, idx, itemsCoinc }, pos) => {

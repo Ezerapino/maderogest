@@ -1,6 +1,6 @@
 // Pestaña Avance de Producción
 import { useState, useEffect } from "react";
-import { BotonFicha, EnviarPorMail, ModalElegirEntrega, ModalSimple } from "../components/comunes.jsx";
+import { BotonFicha, EnviarPorMail, ModalElegirEntrega, ModalSimple, SelectorVista, TablaOrdenable } from "../components/comunes.jsx";
 import { avisar, confirmar } from "../lib/avisos.js";
 import { apiFetch, deleteAixaObraApi, getAixaObras, getAixaUsers, insertAixaObra, modificarFila, vinculoEntregas } from "../lib/datos.js";
 import { fmtDateAixa, fmtDateTimeAixa, fmtDurAixa } from "../lib/formato.js";
@@ -8,6 +8,7 @@ import { generarInformeCierre, ofrecerInformeCierre } from "../lib/pdf.js";
 import { cambioEstacion, camposEstacion, daysDelayedAixa, etapaActual, isDelayedAixa, mkStations, obraProgressAixa } from "../lib/produccion.js";
 import { CerrarConAtras } from "../lib/atras.js";
 import { Icono } from "../components/Icono.jsx";
+import { useVista } from "../lib/vista.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // AVANCE DE OBRA MODULE (Aixaobra)
@@ -32,6 +33,7 @@ export function AvanceModule({ sesion, entregas = [], riesgos = {} }) {
   const [showClarifModal, setShowClarifModal] = useState(false);
   const [editingClarif, setEditingClarif] = useState(null);
   const [newStationName, setNewStationName] = useState("");
+  const [vista, setVista] = useVista("produccion");
 
   const isAdmin = sesion.rol === "admin";
   const canManageStations = isAdmin || sesion.rol === "operario";
@@ -441,6 +443,7 @@ export function AvanceModule({ sesion, entregas = [], riesgos = {} }) {
             <option value="done">Completadas</option>
             <option value="delayed">Con demora</option>
           </select>
+          <SelectorVista vista={vista} onCambio={setVista} />
           {(isAdmin || sesion.rol === "operario") && <button onClick={() => setShowElegirEntrega(true)} title="Para entregas que todavía no están acá. Las nuevas se agregan solas al crearlas en Entregas." style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"8px 18px", background:"#1A2B4A", border:"none", borderRadius:8, color:"#ffffff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}><Icono n="link" /> Vincular entrega</button>}
         </div>
       </div>
@@ -451,6 +454,15 @@ export function AvanceModule({ sesion, entregas = [], riesgos = {} }) {
           <div style={{ fontSize:32, marginBottom:8 }}><Icono n="fabrica" /></div>
           <div style={{ fontSize:13, color:"#94A3B8" }}>No hay obras registradas</div>
         </div>
+      ) : vista === "tabla" ? (
+        <TablaOrdenable filas={filtered} onFila={o => { setSelectedObra(o.id); setSection("overview"); }} ordenInicial={{ clave: "entrega", asc: true }}
+          columnas={[
+            { clave: "obra", titulo: "Obra", valor: o => o.name, celda: o => <><b>{o.name}</b>{o.client ? <div style={{ fontSize:12, color:"#94A3B8" }}>{o.client}</div> : null}</> },
+            { clave: "entrega", titulo: "Entrega", valor: o => o.due_date || "", celda: o => o.due_date ? fmtDateAixa(o.due_date) : "—" },
+            { clave: "avance", titulo: "Avance", alinear: "right", valor: o => obraProgressAixa(o), celda: o => `${obraProgressAixa(o)}%` },
+            { clave: "etapa", titulo: "Etapa", valor: o => etapaActual(o)?.texto || "", celda: o => { const et = etapaActual(o); return !et ? (obraProgressAixa(o) === 100 ? "Completada" : "—") : et.tipo === "sinEmpezar" ? <span style={{ color:"#94A3B8" }}>Sin empezar</span> : et.tipo === "bloqueada" ? <span style={{ color:"#DC2626" }}>Bloqueada: {et.texto}</span> : et.texto; } },
+            { clave: "demora", titulo: "Demora / riesgo", valor: o => (riesgos[o.obra_id] ? 1000 : 0) + (isDelayedAixa(o) ? daysDelayedAixa(o) : 0), celda: o => <span style={{ color:"#DC2626", fontWeight:600 }}>{isDelayedAixa(o) ? `${daysDelayedAixa(o)}d demora` : ""}{isDelayedAixa(o) && riesgos[o.obra_id] ? " · " : ""}{riesgos[o.obra_id] ? "En riesgo" : ""}</span> },
+          ]} />
       ) : (
         <div className="grid-tarjetas" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))", gap:14 }}>
           {filtered.map((o, idx) => {

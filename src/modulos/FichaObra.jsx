@@ -1,6 +1,6 @@
 // Ficha de obra: todo lo de una obra en una página, y se edita desde acá
 import { useState, useEffect } from "react";
-import { ModalSimple } from "../components/comunes.jsx";
+import { ListaRemito, ModalSimple } from "../components/comunes.jsx";
 import { avisar, confirmar } from "../lib/avisos.js";
 import { insertAixaObra, insertCobro, insertDiaAvance, insertMaterial, modificarFila, sbFetch, updateDiaAvance } from "../lib/datos.js";
 import { formatDate, pesos, uid } from "../lib/formato.js";
@@ -272,6 +272,7 @@ export function FichaObra({ proyecto: p, entregas, sesion, riesgos = {}, onVolve
               </div>
             ) : vacio("Sin muebles cargados.")}
             {e.notas && <div style={{ fontSize: 12, color: "#64748B", marginTop: 10, whiteSpace: "pre-line" }}><Icono n="nota" /> {e.notas}</div>}
+            {(e.remito || []).length > 0 && <div style={{ marginTop: 12 }}><div style={{ fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>Remito / foto de la entrega</div><ListaRemito archivos={e.remito} /></div>}
           </div>
         );
         })}

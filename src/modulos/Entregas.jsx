@@ -10,7 +10,7 @@ import { linkFicha, navegar, useRuta, volver } from "../lib/rutas.js";
 import { DIAS_RIESGO, PROD_MINIMA_RIESGO } from "../lib/riesgo.js";
 import { FichaObra } from "./FichaObra.jsx";
 import { RevisarNombres } from "./RevisarNombres.jsx";
-import { FiltroMes, MenuMas } from "../components/comunes.jsx";
+import { FiltroMes, ListaRemito, MenuMas, ModalEntregar, UltimoAviso } from "../components/comunes.jsx";
 import { ModalInformeIA } from "./Produccion.jsx";
 import { CerrarConAtras } from "../lib/atras.js";
 import { Icono } from "../components/Icono.jsx";
@@ -24,6 +24,7 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras, riesgo
   const [detalleId, setDetalleId] = useState(null);
   const [verArchivo, setVerArchivo] = useState(false);
   const [verNombres, setVerNombres] = useState(false);
+  const [entregando, setEntregando] = useState(null);   // entrega que se está por marcar como entregada
   const [guardando, setGuardando] = useState(false);
   const [informeIA, setInformeIA] = useState(null);
   const { fichaId } = useRuta();
@@ -106,15 +107,16 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras, riesgo
   }
 
   // Solo cambia el estado (no reescribe la entrega entera, para no pisar lo que otro haya editado) y se puede deshacer
-  async function marcarEntregada(e) {
+  async function marcarEntregada(e, remito = []) {
     const antes = e.estado || "pendiente";
+    const remitoAntes = e.remito || [];
     try {
-      await patchEntregas(`id=eq.${e.id}`, { estado: "terminado", editado_por: sesion.id, editado_en: new Date().toISOString() });
+      await patchEntregas(`id=eq.${e.id}`, { estado: "terminado", ...(remito.length ? { remito: [...remitoAntes, ...remito] } : {}), editado_por: sesion.id, editado_en: new Date().toISOString() });
       await recargarObras();
     } catch (err) { avisar(`No se pudo marcar como entregada: ${err.message}`, { tipo: "error" }); return; }
     setDetalleId(null);
     avisar(`"${e.nombre}" marcada como entregada.`, { tipo: "ok", deshacer: async () => {
-      try { await patchEntregas(`id=eq.${e.id}`, { estado: antes }); await recargarObras(); }
+      try { await patchEntregas(`id=eq.${e.id}`, { estado: antes, ...(remito.length ? { remito: remitoAntes } : {}) }); await recargarObras(); }
       catch (err) { avisar(`No se pudo deshacer: ${err.message}`, { tipo: "error" }); }
     } });
   }
@@ -168,7 +170,8 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras, riesgo
   }, [fichaPerdida]);
   if (ficha) return <>
     <FichaObra proyecto={ficha} entregas={entregas.filter(e => e.proyecto_id === ficha.id)} sesion={sesion} riesgos={riesgos}
-      onVolver={() => volver("/entregas")} onModal={setModal} onEntregar={marcarEntregada} />
+      onVolver={() => volver("/entregas")} onModal={setModal} onEntregar={setEntregando} />
+    {entregando && <ModalEntregar entrega={entregando} onClose={() => setEntregando(null)} onConfirmar={r => marcarEntregada(entregando, r)} />}
     {modal && <ModalObraEntrega {...modal} proyectos={proyectos} guardando={guardando} onClose={() => setModal(null)} onSave={guardar} />}
   </>;
 
@@ -205,6 +208,7 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras, riesgo
               {enviandoAviso ? "Enviando..." : <><Icono n="mail" /> Enviar aviso de entregas ahora</>}
             </button>
           )}
+        {isAdmin && <UltimoAviso tipo="entregas" />}
           <button onClick={() => setVerArchivo(true)} title="Obras y entregas archivadas"
             style={{ padding:"6px 12px", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, color:"#475569", fontSize:12, fontWeight:600, cursor:"pointer" }}>
             <Icono n="archivo" /> Archivo{enArchivo ? ` (${enArchivo})` : ""}
@@ -319,7 +323,7 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras, riesgo
                         <div onClick={ev => ev.stopPropagation()} style={{ display:"flex", gap:5, marginTop:8 }}>
                           <button onClick={() => setModal({ modo:"editar-entrega", proyecto:p, entrega:e })} style={btnSm}>Editar</button>
                           <button onClick={() => generarPDF(e)} style={btnSm}>PDF</button>
-                          {e.estado !== "terminado" && <button onClick={() => marcarEntregada(e)} style={{ ...btnSm, background:"#ECFDF5", border:"1px solid #A7F3D0", color:"#059669" }}>Entregar</button>}
+                          {e.estado !== "terminado" && <button onClick={() => setEntregando(e)} style={{ ...btnSm, background:"#ECFDF5", border:"1px solid #A7F3D0", color:"#059669" }}>Entregar</button>}
                           {puedeArchivar && <button title="Archivar entrega" onClick={() => archivarEntrega(e)} style={{ ...btnSm, flex:"0 0 auto", padding:"6px 9px", background:"#FEF2F2", border:"1px solid #FECACA", color:"#DC2626" }}><Icono n="archivo" /></button>}
                         </div>
                       </div>
@@ -350,7 +354,9 @@ export function EntregasModule({ sesion, obras, proyectos, recargarObras, riesgo
       {detalle && <DetalleObraEntrega obra={detalle} sesion={sesion} rol={sesion.rol}
         onClose={() => setDetalleId(null)}
         onEdit={() => { setModal({ modo:"editar-entrega", proyecto: proyectoDe(detalle), entrega: detalle }); setDetalleId(null); }}
-        onDelete={() => archivarEntrega(detalle)} onEntregada={() => marcarEntregada(detalle)} />}
+        onDelete={() => archivarEntrega(detalle)} onEntregada={() => setEntregando(detalle)} />}
+
+      {entregando && <ModalEntregar entrega={entregando} onClose={() => setEntregando(null)} onConfirmar={r => marcarEntregada(entregando, r)} />}
 
       {verNombres && <RevisarNombres obras={obras} proyectos={proyectos} onClose={() => setVerNombres(false)} onCambio={recargarObras} />}
 
@@ -631,6 +637,12 @@ function DetalleObraEntrega({ obra, onClose, onEdit, onDelete, onEntregada, rol,
             ))}
           </div>
           {obra.notas && <div style={{ background:"#F8FAFC", borderLeft:"3px solid #2563EB", padding:"12px 16px", borderRadius:"0 8px 8px 0", marginBottom:20, fontSize:13, color:"#475569", lineHeight:1.7 }}>{obra.notas}</div>}
+          {(obra.remito || []).length > 0 && (
+            <div style={{ marginBottom:20 }}>
+              <span style={{ fontSize:11, fontWeight:600, color:"#94A3B8", letterSpacing:1, display:"block", marginBottom:8 }}>REMITO / FOTO DE LA ENTREGA</span>
+              <ListaRemito archivos={obra.remito} />
+            </div>
+          )}
 
           {/* Muebles */}
           <div style={{ marginBottom:24 }}>

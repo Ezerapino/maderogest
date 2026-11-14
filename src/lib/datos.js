@@ -339,6 +339,19 @@ async function comprimirImagen(file) {
   }
 }
 
+// Sube un archivo (las fotos se achican antes) a una carpeta del bucket y devuelve { url, path, name, type, size }
+export async function subirArchivo(original, carpeta) {
+  const file = await comprimirImagen(original);
+  const path = `${carpeta}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${extArchivo(file.name) || "bin"}`;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${AVANCE_BUCKET}/${path}`, {
+    method: "POST",
+    headers: { Authorization: authHeader(), apikey: SUPABASE_KEY, "Content-Type": file.type || "application/octet-stream", "x-upsert": "true" },
+    body: file,
+  });
+  if (!res.ok) throw new Error(mensajeDeError(await res.text(), res.status));
+  return { url: `${SUPABASE_URL}/storage/v1/object/public/${AVANCE_BUCKET}/${path}`, path, name: file.name, type: file.type, size: file.size };
+}
+
 export async function uploadFileAvance(original, obraId) {
   const file = await comprimirImagen(original);
   const ext = file.name.split('.').pop().toLowerCase();
@@ -416,11 +429,17 @@ export async function cerrarSesion() { await supabase.auth.signOut(); accessToke
 // ═══════════════════════════════════════════════════════════════════════════════
 // ENTREGAS MODULE (MaderoGest) — Simplified inline component
 // ═══════════════════════════════════════════════════════════════════════════════
+// Último aviso por mail de un tipo ("entregas" o "materiales"), o null
+export async function getUltimoAviso(tipo) {
+  const r = await sbFetch(`avisos_enviados?tipo=eq.${tipo}&order=enviado_en.desc&limit=1`);
+  return r?.[0] || null;
+}
 // Manda ahora el aviso por email ("entregas" o "materiales") que también sale automáticamente
 export async function enviarAvisoAhora(tipo) {
   try {
     const r = await apiFetch(`/api/alertas-diarias?tipo=${tipo}`);
     avisar(r.enviado ? `Aviso enviado a ${r.destinos} destinatario(s).` : (r.motivo || "No había nada para avisar."), { tipo: r.enviado ? "ok" : "info" });
+    if (r.enviado) window.dispatchEvent(new CustomEvent("aviso-enviado", { detail: tipo }));
   } catch (e) { avisar(`No se pudo enviar: ${e.message}`, { tipo: "error" }); }
 }
 
