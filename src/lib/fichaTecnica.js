@@ -2,7 +2,7 @@
 import { formatDate, LOGO_AIXA, uid } from "./formato.js";
 
 export const COMPONENTES = ["Estructura interna (cuerpo)", "Frentes (puertas / cajones)", "Laterales vistos", "Tapacantos (bordes)", "Fondos", "Mesada / tapa superior"];
-export const ESPESORES_TAPACANTO = ["0.4 mm", "2 mm"];
+export const ESPESORES_TAPACANTO = ["0.4 mm", "1 mm", "2 mm"];
 export const HERRAJES = [
   { key: "correderas", label: "Tipo de correderas", opciones: ["Económicas / blancas", "Telescópicas estándar", "Cierre suave", "Ocultas", "Push to open", "Laterales box"] },
   { key: "bisagras", label: "Tipo de bisagras", opciones: ["Estándar / resorte", "Cierre suave (pistón)", "Apertura 165°", "Push / expulsión", "N/A corredizo"] },
