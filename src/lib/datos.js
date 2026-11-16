@@ -204,6 +204,8 @@ export async function eliminarEntregaDefinitiva(id) {
     await sbFetch(`avance_dias?obra_id=eq.${a.id}`, { method: "DELETE" });
     for (const inf of (await sbFetch(`informes_finales?obra_id=eq.${a.id}`)) || []) await borrarArchivos(inf.archivos);
     await sbFetch(`informes_finales?obra_id=eq.${a.id}`, { method: "DELETE" });
+    for (const f of (await sbFetch(`fichas_tecnicas?obra_id=eq.${a.id}`).catch(() => [])) || []) await borrarArchivos([...(f.archivos || []), f.firma?.imagen, f.pdf].filter(Boolean));
+    await sbFetch(`fichas_tecnicas?obra_id=eq.${a.id}`, { method: "DELETE" }).catch(() => {});
     await deleteObraAvanceById(a.id);
   }
   for (const m of (await sbFetch(`materiales?obra_id=eq.${id}&select=id`)) || []) await borrarCarpetaStorage(`materiales-import/${m.id}`);
@@ -292,6 +294,42 @@ export async function firmarInformeFinal(id, firma, pdf) {
 export async function reabrirInformeFinal(informe) {
   await sbFetch(`informes_finales?id=eq.${informe.id}`, { method: "PATCH", body: JSON.stringify({ firma: null, pdf: null, firmado_en: null, updated_at: new Date().toISOString() }) });
   for (const p of [informe.firma?.imagen?.path, informe.pdf?.path].filter(Boolean)) await deleteFileAvance(p).catch(() => {});
+}
+
+// ─── FICHAS TÉCNICAS DE MOBILIARIO (tabla: fichas_tecnicas, ver supabase/11) ──
+// Resumen para las tarjetas de Avance de Obra
+export async function getFichasResumen() {
+  return (await sbFetch("fichas_tecnicas?select=obra_id,numero,revision,firmado_en")) || [];
+}
+export async function getFichasObra(obraId) {
+  return (await sbFetch(`fichas_tecnicas?obra_id=eq.${obraId}&order=numero.asc,revision.desc`)) || [];
+}
+export async function getFicha(id) {
+  return (await sbFetch(`fichas_tecnicas?id=eq.${id}&limit=1`))?.[0] || null;
+}
+// Marcas y colores ya usados en otras fichas (para sugerirlos al escribir)
+export async function getFichasDatos() {
+  return (await sbFetch("fichas_tecnicas?select=datos&order=updated_at.desc&limit=200")) || [];
+}
+export async function crearFicha(fila) {
+  return (await sbFetch("fichas_tecnicas", { method: "POST", body: JSON.stringify(fila) }))?.[0] || null;
+}
+export async function guardarFicha(id, datos, archivos) {
+  return (await sbFetch(`fichas_tecnicas?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ datos, archivos, updated_at: new Date().toISOString() }) }))?.[0] || null;
+}
+export async function firmarFicha(id, firma, pdf) {
+  return sbFetch(`fichas_tecnicas?id=eq.${id}&firmado_en=is.null`, { method: "PATCH", body: JSON.stringify({ firma, pdf, firmado_en: firma.fecha, updated_at: new Date().toISOString() }) });
+}
+// Las versiones y las copias comparten fotos: un archivo se borra solo si ninguna otra ficha de la obra lo usa
+export async function borrarArchivosFichaSinUso(obraId, paths, exceptoId) {
+  if (!paths.length) return;
+  const otras = (await sbFetch(`fichas_tecnicas?obra_id=eq.${obraId}&select=id,archivos,firma,pdf`)) || [];
+  const usados = new Set(otras.filter(f => f.id !== exceptoId).flatMap(f => [...(f.archivos || []).map(a => a.path), f.firma?.imagen?.path, f.pdf?.path]).filter(Boolean));
+  for (const p of paths) if (!usados.has(p)) await deleteFileAvance(p).catch(() => {});
+}
+export async function borrarFicha(ficha) {
+  await sbFetch(`fichas_tecnicas?id=eq.${ficha.id}`, { method: "DELETE" });
+  await borrarArchivosFichaSinUso(ficha.obra_id, [...(ficha.archivos || []).map(a => a.path), ficha.firma?.imagen?.path, ficha.pdf?.path].filter(Boolean), ficha.id);
 }
 
 // ─── MANTENIMIENTO PLANTA API (tabla: mantenimiento, ver supabase/05-mantenimiento.sql) ──

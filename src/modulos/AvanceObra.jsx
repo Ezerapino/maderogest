@@ -9,6 +9,8 @@ import { generarPDFDiaAvance } from "../lib/pdf.js";
 import { CerrarConAtras } from "../lib/atras.js";
 import { Icono } from "../components/Icono.jsx";
 import { InformeFinal } from "./InformeFinal.jsx";
+import { FichasTecnicas } from "./FichasTecnicas.jsx";
+import { getFichasResumen } from "../lib/datos.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // AVANCE DE OBRA MODULE (nuevo — con días y fotos)
@@ -36,6 +38,20 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
   const isAdmin = sesion.rol === "admin";
   const canEdit = isAdmin || sesion.rol === "operario" || sesion.rol === "arquitecto";
 
+  // Fichas técnicas: cuántas tiene cada obra (última versión de cada N°) y cuántas están firmadas
+  const [fichasObra, setFichasObra] = useState(null);
+  const [fichasResumen, setFichasResumen] = useState(new Map());
+  async function loadFichas() {
+    try {
+      const ultimas = new Map();
+      for (const f of await getFichasResumen()) { const k = `${f.obra_id}#${f.numero}`; if (!ultimas.has(k) || ultimas.get(k).revision < f.revision) ultimas.set(k, f); }
+      const m = new Map();
+      for (const f of ultimas.values()) { const r = m.get(f.obra_id) || { total: 0, firmadas: 0 }; r.total++; if (f.firmado_en) r.firmadas++; m.set(f.obra_id, r); }
+      setFichasResumen(m);
+    } catch (e) { console.error("Error cargando fichas técnicas:", e); }
+  }
+  const textoFichas = id => { const r = fichasResumen.get(id); return r ? `Fichas (${r.total})` : "Fichas"; };
+
   async function loadInformesIds() {
     try { const filas = await getInformesFinalesObraIds(); setInformesIds(new Map(filas.map(i => [i.obra_id, i]))); } catch (e) { console.error("Error cargando informes finales:", e); }
   }
@@ -48,7 +64,7 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
 
   // Carga inicial al abrir el módulo (cargando ya arranca en true, el setCargando(true) no re-renderiza)
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { loadObras(); loadInformesIds(); }, []);
+  useEffect(() => { loadObras(); loadInformesIds(); loadFichas(); }, []);
 
   async function loadDias(obraId) {
     setCargandoDias(true);
@@ -218,6 +234,7 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
                     </button>
                   )}
                   {obra.finalizada && <button onClick={() => { setInformeFinalObra(obra); setShowInformeFinal(true); }} style={{ flex:1, padding:"7px 0", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:8, color:"#2563EB", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif" }}><Icono n="lista" /> Informe</button>}
+                  <button onClick={() => setFichasObra(obra)} title="Fichas técnicas de mobiliario (materiales, herrajes, medidas) con firma de conformidad" style={{ flex:1, padding:"7px 0", background:"#FFF7ED", border:"1px solid #FED7AA", borderRadius:8, color:"#C2410C", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"'Inter', sans-serif", whiteSpace:"nowrap" }}><Icono n="regla" /> {textoFichas(obra.id)}</button>
                   {(isAdmin || sesion.rol === "operario") && <button onClick={() => deleteObra(obra.id)} style={{ padding:"7px 10px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:8, color:"#DC2626", fontSize:12, cursor:"pointer" }}><Icono n="cerrar" /></button>}
                 </div>
               </div>
@@ -240,7 +257,11 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
                 {selected.direccion && <div style={{ fontSize:12, color:"#64748B", marginTop:3 }}><Icono n="ubicacion" /> {selected.direccion}</div>}
                 {selected.fecha_entrega && <div style={{ fontSize:12, color:"#64748B" }}><Icono n="calendario" /> Entrega pactada: {formatDate(selected.fecha_entrega)}</div>}
               </div>
-              <div style={{ display:"flex", gap:8, alignItems:"center", flexShrink:0 }}>
+              <div style={{ display:"flex", gap:8, alignItems:"center", flexShrink:0, flexWrap:"wrap", justifyContent:"flex-end" }}>
+                <button onClick={() => setFichasObra(selected)}
+                  style={{ padding:"7px 14px", background:"#FFF7ED", border:"1px solid #FED7AA", borderRadius:8, color:"#C2410C", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                  <Icono n="regla" /> {fichasResumen.get(selected.id) ? `Fichas técnicas (${fichasResumen.get(selected.id).total})` : "Fichas técnicas"}
+                </button>
                 {selected.finalizada && (
                   <button onClick={() => { setInformeFinalObra(selected); setShowInformeFinal(true); }}
                     style={{ padding:"7px 14px", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:8, color:"#2563EB", fontSize:12, fontWeight:600, cursor:"pointer" }}>
@@ -348,7 +369,8 @@ export function AvanceObraModule({ sesion, entregas = [] }) {
         entregas={activas.filter(e => e.id === editingObra?.obra_id || !obrasTodas.some(o => o.obra_id === e.id))}
         onClose={() => { setShowObraModal(false); setEditingObra(null); }} onSave={saveObra} />}
       {showDiaModal && <ModalDiaAvance dia={editingDia} onClose={() => { setShowDiaModal(false); setEditingDia(null); }} onSave={saveDia} />}
-      {showInformeFinal && informeFinalObra && <InformeFinal obra={informeFinalObra} sesion={sesion} puedeEditar={canEdit} onClose={() => { setShowInformeFinal(false); setInformeFinalObra(null); }} onSave={() => loadInformesIds()} />}
+      {fichasObra && <FichasTecnicas obra={fichasObra} sesion={sesion} onClose={() => setFichasObra(null)} onCambio={loadFichas} />}
+      {showInformeFinal && informeFinalObra &&<InformeFinal obra={informeFinalObra} sesion={sesion} puedeEditar={canEdit} onClose={() => { setShowInformeFinal(false); setInformeFinalObra(null); }} onSave={() => loadInformesIds()} />}
       {visor && <VisorFotos fotos={visor.fotos} inicio={visor.inicio} onCerrar={() => setVisor(null)} />}
     </div>
   );

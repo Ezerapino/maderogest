@@ -356,16 +356,26 @@ export function InformeFinal({ obra, sesion, puedeEditar, onClose, onSave }) {
         )}
       </div>
 
-      {firmando && <ModalFirma obra={form.nombreObra || obra.nombre} pendientes={pendientes.filter(p => !p.resuelto)} ocupado={ocupado} paso={paso}
+      {firmando && <ModalFirma titulo={form.nombreObra || obra.nombre} ocupado={ocupado} paso={paso}
+        declaracion={<DeclaracionEntrega pendientes={pendientes.filter(p => !p.resuelto)} />}
         onClose={() => setFirmando(false)} onFirmar={async datos => { if (await firmar(datos)) setFirmando(false); }} />}
     </div>
   );
 }
 
-// ─── Pantalla para que firme el encargado / arquitecto / cliente ─────────────────
-function ModalFirma({ obra, pendientes, ocupado, paso, onClose, onFirmar }) {
+function DeclaracionEntrega({ pendientes }) {
+  return <>
+    Recibo conforme los trabajos descriptos en el informe{pendientes.length ? ", con estos pendientes:" : ", sin pendientes."}
+    {pendientes.length > 0 && <ul style={{ margin: "8px 0 0", paddingLeft: 20, color: "#B45309" }}>{pendientes.map(p => <li key={p.id}>{p.texto}</li>)}</ul>}
+  </>;
+}
+
+// ─── Pantalla para que firme el encargado / arquitecto / cliente (informe final y fichas técnicas) ───
+export function ModalFirma({ titulo, etiqueta = "Conformidad de entrega", declaracion, cargos = CARGOS,
+  nota = "Al firmar, el informe queda cerrado y no se puede cambiar. Es una firma electrónica de conformidad, no una firma digital con certificado.",
+  ocupado, paso, onClose, onFirmar }) {
   const [nombre, setNombre] = useState("");
-  const [cargo, setCargo] = useState(CARGOS[0]);
+  const [cargo, setCargo] = useState(cargos[0]);
   const [otroCargo, setOtroCargo] = useState("");
   const [email, setEmail] = useState("");
   const [hayFirma, setHayFirma] = useState(false);
@@ -381,15 +391,14 @@ function ModalFirma({ obra, pendientes, ocupado, paso, onClose, onFirmar }) {
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "16px 16px calc(24px + env(safe-area-inset-bottom))" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", color: GRIS }}>Conformidad de entrega</div>
-            <div style={{ fontFamily: "'Sora',sans-serif", fontSize: 19, fontWeight: 800, color: AZUL }}>{obra}</div>
+            <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", color: GRIS }}>{etiqueta}</div>
+            <div style={{ fontFamily: "'Sora',sans-serif", fontSize: 19, fontWeight: 800, color: AZUL }}>{titulo}</div>
           </div>
           <button onClick={cerrar} disabled={ocupado} aria-label="Volver" style={{ width: 42, height: 42, borderRadius: 10, border: `1px solid ${BORDE}`, background: "#F8FAFC", color: AZUL, cursor: "pointer", flexShrink: 0 }}><Icono n="cerrar" /></button>
         </div>
 
         <div style={{ background: "#F8FAFC", border: `1px solid ${BORDE}`, borderRadius: 12, padding: 14, fontSize: 14, color: AZUL, lineHeight: 1.5, marginBottom: 18 }}>
-          Recibo conforme los trabajos descriptos en el informe{pendientes.length ? ", con estos pendientes:" : ", sin pendientes."}
-          {pendientes.length > 0 && <ul style={{ margin: "8px 0 0", paddingLeft: 20, color: "#B45309" }}>{pendientes.map(p => <li key={p.id}>{p.texto}</li>)}</ul>}
+          {declaracion}
         </div>
 
         <label style={lbl}>Nombre y apellido de quien firma</label>
@@ -397,7 +406,7 @@ function ModalFirma({ obra, pendientes, ocupado, paso, onClose, onFirmar }) {
 
         <label style={lbl}>Cargo</label>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: cargo === "Otro" ? 8 : 14 }}>
-          {[...CARGOS, "Otro"].map(c => (
+          {[...cargos, "Otro"].map(c => (
             <button key={c} onClick={() => setCargo(c)} style={{ padding: "10px 14px", minHeight: 42, borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: "pointer", border: `1.5px solid ${cargo === c ? AZUL : BORDE}`, background: cargo === c ? AZUL : "#fff", color: cargo === c ? "#fff" : AZUL }}>{c}</button>
           ))}
         </div>
@@ -418,7 +427,7 @@ function ModalFirma({ obra, pendientes, ocupado, paso, onClose, onFirmar }) {
           style={{ ...boton(listo ? NARANJA : "#CBD5E1"), width: "100%", marginTop: 16, minHeight: 52, fontSize: 15, cursor: listo ? "pointer" : "not-allowed" }}>
           <Icono n="check" /> {ocupado ? "Firmando…" : "Firmar y enviar PDF"}
         </button>
-        <p style={{ fontSize: 11.5, color: "#94A3B8", textAlign: "center", lineHeight: 1.5, marginTop: 10 }}>Al firmar, el informe queda cerrado y no se puede cambiar. Es una firma electrónica de conformidad, no una firma digital con certificado.</p>
+        <p style={{ fontSize: 11.5, color: "#94A3B8", textAlign: "center", lineHeight: 1.5, marginTop: 10 }}>{nota}</p>
       </div>
     </div>
   );
