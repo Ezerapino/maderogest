@@ -263,24 +263,35 @@ export async function deleteDiaAvanceById(id) { return sbFetch(`avance_dias?id=e
 
 // ─── INFORMES FINALES API ─────────────────────────────────────────────────────
 export async function getInformesFinalesObraIds() {
-  const r = await sbFetch("informes_finales?select=obra_id");
-  return (r || []).map(x => x.obra_id);
+  return (await sbFetch("informes_finales?select=obra_id,firmado_en")) || [];
 }
 export async function getInformeFinal(obraId) {
   const r = await sbFetch(`informes_finales?obra_id=eq.${obraId}&limit=1`);
   return r?.[0] || null;
 }
-export async function upsertInformeFinal(obraId, datos, archivos, existingId) {
+export async function upsertInformeFinal(obraId, datos, archivos, existingId, pendientes = []) {
   if (existingId) {
     return sbFetch(`informes_finales?id=eq.${existingId}`, {
       method: "PATCH",
-      body: JSON.stringify({ datos, archivos, updated_at: new Date().toISOString() })
+      body: JSON.stringify({ datos, archivos, pendientes, updated_at: new Date().toISOString() })
     });
   }
   return sbFetch("informes_finales", {
     method: "POST",
-    body: JSON.stringify({ obra_id: obraId, datos, archivos })
+    body: JSON.stringify({ obra_id: obraId, datos, archivos, pendientes })
   });
+}
+// Un informe firmado solo acepta cambios en los pendientes (marcarlos resueltos); lo controla la base (supabase/10)
+export async function guardarPendientesInforme(id, pendientes) {
+  return sbFetch(`informes_finales?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ pendientes, updated_at: new Date().toISOString() }) });
+}
+export async function firmarInformeFinal(id, firma, pdf) {
+  return sbFetch(`informes_finales?id=eq.${id}&firmado_en=is.null`, { method: "PATCH", body: JSON.stringify({ firma, pdf, firmado_en: firma.fecha, updated_at: new Date().toISOString() }) });
+}
+// Solo admin (la base lo rechaza a los demás). Los archivos de la firma anterior se borran.
+export async function reabrirInformeFinal(informe) {
+  await sbFetch(`informes_finales?id=eq.${informe.id}`, { method: "PATCH", body: JSON.stringify({ firma: null, pdf: null, firmado_en: null, updated_at: new Date().toISOString() }) });
+  for (const p of [informe.firma?.imagen?.path, informe.pdf?.path].filter(Boolean)) await deleteFileAvance(p).catch(() => {});
 }
 
 // ─── MANTENIMIENTO PLANTA API (tabla: mantenimiento, ver supabase/05-mantenimiento.sql) ──
